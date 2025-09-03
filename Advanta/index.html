@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Testing</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cabin:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+  </head>
+
+  <body>
+
+    <aside class="shadow border-radius bg">
+
+      <header class="none">
+        <div class="logo">
+          <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEi2uLYiMhSGZaspY2J9xFH1lPBbO-amNI1syO_YY3pwEQ4PH2Pr8X9T5ln1Vn45lay_7V_0DGJNnVSfxJljzVDace9fH6FgsBZ8CuU80pxx54Yrtf08-uSAWToWLUsSgGgxKeIpVqa6dzWTOFYIApdG8MDrqhupCkT3WxXNPbucNBc_d69GUAmq80cidaE/s16000/Ozik%20Putra%20Jarwo.jpg" alt="Kode Jarwo">
+        </div>
+        <div class="text">
+          <h1>Kode Jarwo</h1>
+        </div>
+        <div class="side-button">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M14.2893 5.70708C13.8988 5.31655 13.2657 5.31655 12.8751 5.70708L7.98768 10.5993C7.20729 11.3805 7.2076 12.6463 7.98837 13.427L12.8787 18.3174C13.2693 18.7079 13.9024 18.7079 14.293 18.3174C14.6835 17.9269 14.6835 17.2937 14.293 16.9032L10.1073 12.7175C9.71678 12.327 9.71678 11.6939 10.1073 11.3033L14.2893 7.12129C14.6799 6.73077 14.6799 6.0976 14.2893 5.70708Z"/> </svg>
+        </div>
+      </header>
+
+      <h3>ACCOUNT</h3>
+
+      <div id="account">
+        <div class="content">
+          <div class="img">
+            <img id="userphoto" src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgElWVe9s5fUzO_jELc-HOlHD5jIPRWfuN5IlgNM2Vt9nxrGbSlFTCA7Djji_PME6vX0EWkGImmGhBlz_bd6jTZdUC13A9y5BngO5MDMxZ5CrHBHHdP9Ms5NvMjVWYw4iRxqllQ032Td69euEX5aCEo9iyddOFJFzyBSipJLWt7_bJkV0YLivNmQGYSRp8/s1600/user-svgrepo-com.png" alt="User">
+          </div>
+          <div class="name"><span class='hello'>Hello,</span><span id="username">Guest</span><span id="useremail" class="none">-</span></div>
+          <div class="actions">
+            <button id="login" style="display:none;">
+              <svg viewBox="-0.5 0 48 48" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"> <title>Google-color</title> <desc>Created with Sketch.</desc> <defs> </defs> <g id="Icons" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"> <g id="Color-" transform="translate(-401.000000, -860.000000)"> <g id="Google" transform="translate(401.000000, 860.000000)"> <path d="M9.82727273,24 C9.82727273,22.4757333 10.0804318,21.0144 10.5322727,19.6437333 L2.62345455,13.6042667 C1.08206818,16.7338667 0.213636364,20.2602667 0.213636364,24 C0.213636364,27.7365333 1.081,31.2608 2.62025,34.3882667 L10.5247955,28.3370667 C10.0772273,26.9728 9.82727273,25.5168 9.82727273,24" id="Fill-1" fill="#FBBC05"> </path> <path d="M23.7136364,10.1333333 C27.025,10.1333333 30.0159091,11.3066667 32.3659091,13.2266667 L39.2022727,6.4 C35.0363636,2.77333333 29.6954545,0.533333333 23.7136364,0.533333333 C14.4268636,0.533333333 6.44540909,5.84426667 2.62345455,13.6042667 L10.5322727,19.6437333 C12.3545909,14.112 17.5491591,10.1333333 23.7136364,10.1333333" id="Fill-2" fill="#EB4335"> </path> <path d="M23.7136364,37.8666667 C17.5491591,37.8666667 12.3545909,33.888 10.5322727,28.3562667 L2.62345455,34.3946667 C6.44540909,42.1557333 14.4268636,47.4666667 23.7136364,47.4666667 C29.4455,47.4666667 34.9177955,45.4314667 39.0249545,41.6181333 L31.5177727,35.8144 C29.3995682,37.1488 26.7323182,37.8666667 23.7136364,37.8666667" id="Fill-3" fill="#34A853"> </path> <path d="M46.1454545,24 C46.1454545,22.6133333 45.9318182,21.12 45.6113636,19.7333333 L23.7136364,19.7333333 L23.7136364,28.8 L36.3181818,28.8 C35.6879545,31.8912 33.9724545,34.2677333 31.5177727,35.8144 L39.0249545,41.6181333 C43.3393409,37.6138667 46.1454545,31.6490667 46.1454545,24" id="Fill-4" fill="#4285F4"> </path> </g> </g> </g> </svg>
+              <span>Login</span>
+            </button>
+            <button id="logout" style="display:none;">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path fill-rule="evenodd" clip-rule="evenodd" d="M2 6.5C2 4.01472 4.01472 2 6.5 2H12C14.2091 2 16 3.79086 16 6V7C16 7.55228 15.5523 8 15 8C14.4477 8 14 7.55228 14 7V6C14 4.89543 13.1046 4 12 4H6.5C5.11929 4 4 5.11929 4 6.5V17.5C4 18.8807 5.11929 20 6.5 20H12C13.1046 20 14 19.1046 14 18V17C14 16.4477 14.4477 16 15 16C15.5523 16 16 16.4477 16 17V18C16 20.2091 14.2091 22 12 22H6.5C4.01472 22 2 19.9853 2 17.5V6.5ZM18.2929 8.29289C18.6834 7.90237 19.3166 7.90237 19.7071 8.29289L22.7071 11.2929C23.0976 11.6834 23.0976 12.3166 22.7071 12.7071L19.7071 15.7071C19.3166 16.0976 18.6834 16.0976 18.2929 15.7071C17.9024 15.3166 17.9024 14.6834 18.2929 14.2929L19.5858 13L11 13C10.4477 13 10 12.5523 10 12C10 11.4477 10.4477 11 11 11L19.5858 11L18.2929 9.70711C17.9024 9.31658 17.9024 8.68342 18.2929 8.29289Z" fill="#0F1729"></path> </g></svg>
+              <span>Logout</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <h3>APPLICATIONS</h3>
+
+      <nav>
+        <div class="item">
+          <div class="item-main" data-toggle="trial-manager">
+            <div class="icon">
+              <svg viewBox="0 0 1024 1024" class="icon"  version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M978.578286 900.461714l-108.617143-108.617143c30.134857-39.570286 48.274286-88.795429 48.274286-142.189714a235.739429 235.739429 0 0 0-235.52-235.373714 235.739429 235.739429 0 0 0-235.373715 235.373714 235.739429 235.739429 0 0 0 235.446857 235.52c53.467429 0 102.692571-18.139429 142.189715-48.274286l108.617143 108.544a31.524571 31.524571 0 0 0 44.836571 0 31.744 31.744 0 0 0 0.146286-44.982857zM510.902857 649.654857a172.105143 172.105143 0 0 1 171.885714-171.885714 171.885714 171.885714 0 0 1 0 343.771428 172.178286 172.178286 0 0 1-171.885714-171.885714z m270.262857-378.514286c0 17.554286-14.262857 31.744-31.817143 31.744H431.396571a31.744 31.744 0 0 1 0-63.488h317.952c17.554286 0 31.817143 14.189714 31.817143 31.744z m-609.426285 620.032h211.968a31.890286 31.890286 0 0 1 0 63.634286H171.739429c-58.368 0-106.057143-47.542857-106.057143-106.057143V283.062857c0-14.262857 5.12-28.086857 14.262857-39.058286L240.420571 53.101714a57.417143 57.417143 0 0 1 43.885715-20.48h517.997714c58.441143 0 106.057143 47.542857 106.057143 106.057143V366.445714a31.744 31.744 0 0 1-63.634286 0V138.605714a42.422857 42.422857 0 0 0-42.276571-42.349714H336.018286V280.137143a50.688 50.688 0 0 1-50.980572 50.176H129.389714v518.509714c0 23.332571 19.017143 42.349714 42.349715 42.349714zM272.457143 113.810286l-128.512 152.868571h128.512v-152.868571z m79.506286 476.16a31.744 31.744 0 0 0 0-63.634286H240.64a31.744 31.744 0 0 0 0 63.634286h111.323429z m0 146.066285a31.744 31.744 0 0 0 0-63.561142H240.64a31.744 31.744 0 0 0 0 63.561142h111.323429z m31.744-353.206857H240.64a31.744 31.744 0 0 0 0 63.561143h143.067429a31.744 31.744 0 0 0 0-63.561143z" fill="#000000" /></svg>
+            </div>
+            <div class="text">Trial Manager</div>
+          </div>
+        </div>
+        <div class="item">
+          <div class="item-main" data-toggle="input-data">
+            <div class="icon">
+              <svg viewBox="0 0 1024 1024" class="icon"  version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M352.329143 79.286857c35.474286 0 64.146286 28.525714 64.146286 63.853714v190.902858a64 64 0 0 1-64.146286 63.853714H180.955429a63.926857 63.926857 0 0 1-64.073143-63.853714v-190.902858c0-35.254857 28.672-63.853714 64.073143-63.853714h171.373714z m0 510.244572c35.474286 0 64.146286 28.525714 64.146286 63.853714v190.902857a64 64 0 0 1-64.146286 63.853714H180.955429a63.926857 63.926857 0 0 1-64.073143-63.853714v-190.902857c0-35.328 28.672-63.853714 64.073143-63.853714h171.373714z m490.715428-510.244572c35.401143 0 64.073143 28.525714 64.073143 63.853714v190.902858a64 64 0 0 1-64.073143 63.853714H671.670857a63.926857 63.926857 0 0 1-64.146286-63.853714v-190.902858c0-35.254857 28.745143-63.853714 64.146286-63.853714h171.373714z m-669.988571 379.611429h187.172571c64.512 0 116.736-51.931429 116.736-116.077715v-208.457142A116.297143 116.297143 0 0 0 360.228571 18.285714H173.129143C108.617143 18.285714 56.32 70.217143 56.32 134.436571v208.384a116.297143 116.297143 0 0 0 116.736 116.077715z m0 510.244571h187.172571c64.512 0 116.736-51.931429 116.736-116.150857V644.608a116.297143 116.297143 0 0 0-116.736-116.077714H173.129143c-64.512 0-116.736 51.931429-116.736 116.077714v208.457143a116.297143 116.297143 0 0 0 116.736 116.077714z m490.788571-510.244571h187.026286c64.512 0 116.736-51.931429 116.736-116.077715v-208.457142A116.297143 116.297143 0 0 0 850.870857 18.285714H663.771429C599.259429 18.285714 547.108571 70.217143 547.108571 134.436571v208.384a116.297143 116.297143 0 0 0 116.736 116.077715z m178.980572 448.877714H663.698286c-38.619429 0-55.296-16.091429-55.296-54.784V644.608c0-38.546286 16.749714-55.369143 55.369143-55.369143h187.099428c38.765714 0 56.173714 16.749714 56.173714 55.296V853.138286c0 12.8 13.677714 27.501714 31.524572 27.501714s29.037714-14.701714 29.037714-27.501714V644.534857a116.297143 116.297143 0 0 0-116.736-116.004571H663.771429c-64.512 0-116.736 51.931429-116.736 116.077714v208.457143a116.297143 116.297143 0 0 0 116.662857 116.077714H850.285714c13.458286 0 30.72-10.971429 30.72-30.793143a30.72 30.72 0 0 0-30.134857-30.573714h-7.972571z" fill="#000000" /></svg>
+            </div>
+            <div class="text">Input Data</div>
+          </div>
+        </div>
+        <div class="item" id="inventory">
+          <div class="item-main" data-toggle="crops">
+            <div class="icon">
+              <svg viewBox="0 0 1024 1024" class="icon"  version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M702.537143 218.477714c31.085714-10.825143 55.003429-23.113143 69.924571-35.328 10.24-8.338286 13.458286-13.824 13.458286-16.018285s-3.218286-7.68-13.458286-16.091429c-14.921143-12.141714-38.765714-24.429714-69.924571-35.254857C634.368 92.16 540.013714 78.336 438.857143 78.336s-195.510857 13.897143-263.68 37.449143c-31.085714 10.825143-55.003429 23.113143-69.924572 35.328-10.24 8.338286-13.458286 13.750857-13.458285 16.018286 0 2.194286 3.218286 7.68 13.458285 16.091428 14.921143 12.141714 38.765714 24.429714 69.924572 35.254857 68.169143 23.625143 162.523429 37.449143 263.68 37.449143s195.510857-13.897143 263.68-37.449143zM69.485714 464.749714v128.804572c37.961143 40.009143 140.068571 88.722286 264.777143 103.277714 182.857143 21.284571 355.986286-18.651429 473.526857-98.304l0.438857-131.657143C683.008 540.525714 506.733714 571.465143 328.484571 550.619429c-110.372571-12.8-204.361143-46.08-259.072-85.869715z m0-80.457143c38.034286 39.936 140.068571 88.649143 264.777143 103.131429 183.222857 21.357714 356.717714-18.724571 474.258286-98.742857l0.512-145.993143C734.208 286.573714 596.48 315.977143 438.857143 315.977143c-156.964571 0-294.253714-29.257143-369.152-72.777143A132116.333714 132116.333714 0 0 0 69.485714 384.219429z m0.146286 289.865143l0.292571 108.105143-1.097142-7.460571c22.381714 74.020571 165.302857 133.485714 378.148571 133.485714 115.931429 0 206.774857-17.554286 276.626286-52.077714 19.602286-9.728 34.523429-17.92 49.152-28.598857 9.728-7.094857 16.091429-11.410286 26.550857-20.626286 10.825143-9.581714 27.501714-7.241143 37.156571 3.657143 9.581714 10.752 10.825143 28.306286 0 37.961143-11.702857 10.24-17.188571 14.848-28.598857 23.186285-17.042286 12.434286-36.425143 25.380571-58.806857 36.498286-77.092571 38.107429-155.648 60.854857-302.08 60.854857-243.931429 0-405.211429-77.165714-436.077714-179.2l-1.097143-3.657143v-3.803428L9.362286 628.077714a116682.532571 116682.532571 0 0 1 0.365714-455.68 52.662857 52.662857 0 0 1-0.292571-5.266285C9.508571 84.918857 201.728 18.285714 438.857143 18.285714c237.129143 0 429.348571 66.633143 429.348571 148.845715a53.028571 53.028571 0 0 1-0.804571 9.581714 23.405714 23.405714 0 0 1 1.024 7.094857l-1.682286 520.411429c-0.073143 14.482286-13.385143 26.185143-29.769143 26.112-16.384 0-29.622857-11.776-29.549714-26.331429v-27.355429c-125.074286 73.216-301.056 104.082286-478.939429 83.382858-110.226286-12.873143-204.214857-46.08-258.925714-85.869715z m668.525714-290.962285a25.746286 25.746286 0 0 1-25.965714-25.453715c0-14.043429 11.702857-25.380571 26.038857-25.380571 14.336 0 26.038857 11.337143 26.038857 25.380571 0 14.116571-11.702857 25.453714-26.038857 25.453715z m0 209.408a25.746286 25.746286 0 0 1-25.965714-25.453715c0-14.043429 11.702857-25.453714 26.038857-25.453714 14.336 0 26.038857 11.410286 26.038857 25.453714 0 14.043429-11.702857 25.453714-26.038857 25.453715z m0 212.114285a25.746286 25.746286 0 0 1-25.965714-25.526857c0-14.043429 11.702857-25.453714 26.038857-25.453714 14.336 0 26.038857 11.410286 26.038857 25.453714 0 14.043429-11.702857 25.453714-26.038857 25.453714z" fill="#000000" /></svg>
+            </div>
+            <div class="text">Inventory</div>
+          </div>
+          <div class="item-sub">
+            <div class="item-sub-item" data-toggle="crops">Crops</div>
+            <div class="item-sub-item" data-toggle="lines">Lines</div>
+            <div class="item-sub-item" data-toggle="observation-parameters">Observation Parameters</div>
+          </div>
+        </div>
+        <div class="item">
+          <div class="item-main" data-toggle="library">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M12 10.4V20M12 10.4C12 8.15979 12 7.03969 11.564 6.18404C11.1805 5.43139 10.5686 4.81947 9.81596 4.43597C8.96031 4 7.84021 4 5.6 4H4.6C4.03995 4 3.75992 4 3.54601 4.10899C3.35785 4.20487 3.20487 4.35785 3.10899 4.54601C3 4.75992 3 5.03995 3 5.6V16.4C3 16.9601 3 17.2401 3.10899 17.454C3.20487 17.6422 3.35785 17.7951 3.54601 17.891C3.75992 18 4.03995 18 4.6 18H7.54668C8.08687 18 8.35696 18 8.61814 18.0466C8.84995 18.0879 9.0761 18.1563 9.29191 18.2506C9.53504 18.3567 9.75977 18.5065 10.2092 18.8062L12 20M12 10.4C12 8.15979 12 7.03969 12.436 6.18404C12.8195 5.43139 13.4314 4.81947 14.184 4.43597C15.0397 4 16.1598 4 18.4 4H19.4C19.9601 4 20.2401 4 20.454 4.10899C20.6422 4.20487 20.7951 4.35785 20.891 4.54601C21 4.75992 21 5.03995 21 5.6V16.4C21 16.9601 21 17.2401 20.891 17.454C20.7951 17.6422 20.6422 17.7951 20.454 17.891C20.2401 18 19.9601 18 19.4 18H16.4533C15.9131 18 15.643 18 15.3819 18.0466C15.15 18.0879 14.9239 18.1563 14.7081 18.2506C14.465 18.3567 14.2402 18.5065 13.7908 18.8062L12 20" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/> </svg>
+            </div>
+            <div class="text">Library</div>
+          </div>
+        </div>
+      </nav>
+
+    </aside>
+
+    <main>
+
+      <div id="trial-manager" class="item-container active">
+
+        <div class="type-trial item">
+          <div class="title">
+            <h2>Trial Manager</h2>
+          </div>
+          <div class="content-container">
+          
+            <div class="content-item">
+              <label for="types-of-trials">Types of Trials</label>
+              <select name="types-of-trials" id="types-of-trials">
+                <option value="parent-test">Parent Test</option>
+                <option value="micropilot">Micropilot</option>
+                <option value="process-research">Process Research</option>
+                <option value="demoplot">Demoplot</option>
+              </select>
+            </div>
+          
+            <div class="content-item">
+              <label for="experimental-design">Experimental Design</label>
+              <select name="experimental-design" id="experimental-design">
+                <option value="crd">Completely Randomized Design</option>
+                <option value="rbd">Randomized Block Design</option>
+                <option value="fd">Factorial Design</option>
+                <option value="sp">Split Plot Design</option>
+              </select>
+            </div>
+          
+          </div>
+        </div>
+
+        <div class="trial-observation item">
+          <div class="title">
+            <h2>Observation Parameters</h2>
+          </div>
+          <div class="content-container">
+            <div class="content-item">Loading data...</div>
+          </div>
+        </div>
+
+        <div class="trial-option item">
+          <div class="title">
+            <h2>Options</h2>
+          </div>
+          <div class="content-container">
+
+            <div class="content-item">
+              <label for="option-line">Parent Line (Qty)</label>
+              <select name="option-line" id="option-line">
+                <option value="Loading data..." selected disabled>Loading data...</option>
+              </select>
+            </div>
+
+            <div class="content-item">
+              <label for="option-year">Year</label>
+              <input type="number" id="option-year">
+            </div>
+
+            <div class="content-item">
+              <label for="option-rep">No. of Replication</label>
+              <input type="number" id="option-rep">
+            </div>
+
+            <div class="content-item">
+              <label for="option-entry">No. of Entry</label>
+              <input type="number" id="option-entry">
+            </div>
+
+            <div class="content-item">
+              <label for="option-season">Season</label>
+              <select name="option-season" id="option-season">
+                <option value="dry">Dry Season</option>
+                <option value="wet">Wet Season</option>
+              </select>
+            </div>
+
+            <div class="content-item">
+              <label for="option-no-location">No. of Location</label>
+              <input type="number" id="option-no-location">
+            </div>
+
+            <div class="content-item set-location">
+              <label for="option-location">Location</label>
+              <div id="map" style="height: 400px;"></div>
+              <input type="text" id="location" placeholder="Click on map..." disabled/>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <div id="input-data" class="item-container">Input Data</div>
+
+      <div id="crops" class="item-container single-inventory">
+
+        <div class="item">
+          <div class="title">
+            <h2>Crops</h2>
+            <div class="actions">
+              <button onclick="openPopup('.crops')"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M12 8V16M16 12H8M6 20H18C19.1046 20 20 19.1046 20 18V6C20 4.89543 19.1046 4 18 4H6C4.89543 4 4 4.89543 4 6V18C4 19.1046 4.89543 20 6 20Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> </svg></button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="table">
+              <div class="thead">
+                <div class="tr">
+                  <div class="th center">No</div>
+                  <div class="th">Name</div>
+                  <div class="th">Action</div>
+                </div>
+              </div>
+              <div class="tbody"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div id="lines" class="item-container">
+
+        <div class="item">
+          <div class="title">
+            <h2>Lines</h2>
+            <div class="actions">
+              <button onclick="openPopup('.lines')"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M12 8V16M16 12H8M6 20H18C19.1046 20 20 19.1046 20 18V6C20 4.89543 19.1046 4 18 4H6C4.89543 4 4 4.89543 4 6V18C4 19.1046 4.89543 20 6 20Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> </svg></button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="table">
+              <div class="thead">
+                <div class="tr">
+                  <div class="th center">No</div>
+                  <div class="th">Name</div>
+                  <div class="th">Crop</div>
+                  <div class="th">Hybrid Code</div>
+                  <div class="th">SPR Code</div>
+                  <div class="th">Year</div>
+                  <div class="th">Stages</div>
+                  <div class="th">Qty</div>
+                  <div class="th">Date Added</div>
+                  <div class="th">Action</div>
+                </div>
+              </div>
+              <div class="tbody"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div id="observation-parameters" class="item-container single-inventory">
+        
+        <div class="item">
+          <div class="title">
+            <h2>Observation Parameters</h2>
+            <div class="actions">
+              <button onclick="openPopup('.params')"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M12 8V16M16 12H8M6 20H18C19.1046 20 20 19.1046 20 18V6C20 4.89543 19.1046 4 18 4H6C4.89543 4 4 4.89543 4 6V18C4 19.1046 4.89543 20 6 20Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> </svg></button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="table">
+              <div class="thead">
+                <div class="tr">
+                  <div class="th center">No</div>
+                  <div class="th">Name</div>
+                  <div class="th">Action</div>
+                </div>
+              </div>
+              <div class="tbody"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div id="library" class="item-container">
+
+        <div class="item">
+          <div class="title">
+            <h2>Library</h2>
+            <div class="actions">
+              <button onclick="openPopup('.library')"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M12 8V16M16 12H8M6 20H18C19.1046 20 20 19.1046 20 18V6C20 4.89543 19.1046 4 18 4H6C4.89543 4 4 4.89543 4 6V18C4 19.1046 4.89543 20 6 20Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> </svg></button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="table fix">
+              <div class="thead">
+                <div class="tr">
+                  <div class="th"></div>
+                  <div class="th">File Name</div>
+                  <div class="th">Last Changes</div>
+                  <div class="th">File Size</div>
+                  <div class="th">Format</div>
+                  <div class="th">Action</div>
+                </div>
+              </div>
+              <div class="tbody">
+                <div class="tr">
+                  <div class="td"></div>
+                  <div class="td">No files</div>
+                </div>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+    <div id="popup">
+
+      <div class="popup single-popup crops none">
+        <div class="container">
+          <div class="head">
+            <h2>Crops</h2>
+            <button class="close" onclick="closePopup();resetCropForm();">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M6 6L18 18M18 6L6 18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/> </svg>
+            </button>
+          </div>
+          <div class="body">
+            <form id="cropForm" onsubmit="event.preventDefault(); saveCrop();">
+              <div>
+                <input type="hidden" id="editCropId">
+              </div>
+              <div>
+                <label for="cropName">Crop Name</label>
+                <input id="cropName" placeholder="Crop Name" required>
+              </div>
+              <div class="actions">
+                <button type="submit" id="saveCropBtn">Add Crop</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+  
+      <div class="popup lines none">
+        <div class="container">
+          <div class="head">
+            <h2>Lines</h2>
+            <button class="close" onclick="resetForm();closePopup()">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M6 6L18 18M18 6L6 18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/> </svg>
+            </button>
+          </div>
+          <div class="body">
+            <form id="lineForm" onsubmit="event.preventDefault(); saveLine();">
+              <input type="hidden" id="editId">
+              <div>
+                <label for="lineName">Line Name</label>
+                <input id="lineName" placeholder="-" required>
+              </div>
+              <div>
+                <label for="cropSelect">Crop</label>
+                <select name="cropSelect" id="cropSelect"></select>
+              </div>
+              <div>
+                <label for="hybridCode">Hybrid Code</label>
+                <input id="hybridCode" placeholder="-">
+              </div>
+              <div>
+                <label for="sprCode">SPR Code</label>
+                <input id="sprCode" placeholder="-">
+              </div>
+              <div>
+                <label for="year">Year</label>
+                <input id="year" type="number" placeholder="-">
+              </div>
+              <div>
+                <label for="stages">Stages</label>
+                <input id="stages" placeholder="-">
+              </div>
+              <div>
+                <label for="qty">Quantity</label>
+                <input id="qty" type="number" placeholder="-">
+              </div>
+              <div>
+                <label for="dateAdded">Date Added</label>
+                <input id="dateAdded" type="date" required>
+              </div>
+              <div class="actions">
+                <button type="submit" id="saveBtn">Add Line</button>
+                <button type="button" id="cancelBtn" style="display:none;" onclick="cancelEdit()">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+  
+      <div class="popup single-popup params none">
+        <div class="container">
+          <div class="head">
+            <h2>Observation Parameters</h2>
+            <button class="close" onclick="closePopup();resetParamForm();">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M6 6L18 18M18 6L6 18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/> </svg>
+            </button>
+          </div>
+          <div class="body">
+            <form id="paramForm" onsubmit="event.preventDefault(); saveParam();">
+              <div>
+                <input type="hidden" id="editId">
+              </div>
+              <div>
+                <label for="paramName">Parameter Name</label>
+                <input id="paramName" placeholder="Param Name" required>
+              </div>
+              <div class="actions">
+                <button type="submit" id="saveParamBtn">Add Parameter</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+  
+      <div class="popup library none">
+        <div class="container">
+          <div class="head">
+            <h2>Upload to Library</h2>
+            <button class="close" onclick="closePopup()">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M6 6L18 18M18 6L6 18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/> </svg>
+            </button>
+          </div>
+          <div class="body">
+            <label for="fileInput">
+              <svg fill="#000000" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 395.104 395.104" xml:space="preserve"> <g> <g> <g id="Layer_5_85_"> <path d="M360.693,198.729c1.373-6.779,2.1-13.794,2.1-20.979c0-58.085-47.088-105.173-105.174-105.173 c-43.075,0-80.082,25.91-96.342,62.984c-12.494-8.139-27.381-12.912-43.403-12.912c-42.125,0-76.526,32.714-79.396,74.109 C15.79,207.169,0,230.028,0,256.626c0,36.396,29.506,65.902,65.902,65.902c0,0,71.396,0,95.194,0 c4.667,0,4.894-5.179,4.894-5.179v-42.28c0-3.612-2.955-6.567-6.568-6.567h-18.007c-3.612,0-4.809-2.375-2.658-5.276 l54.887-74.094c2.15-2.902,5.668-2.902,7.818,0l54.886,74.094c2.148,2.901,0.953,5.276-2.657,5.276h-18.009 c-3.61,0-6.567,2.955-6.567,6.567v42.364c0,0,0.274,5.095,5.108,5.095c23.746,0,94.979,0,94.979,0 c36.396,0,65.902-29.506,65.902-65.902C395.104,231.639,381.191,209.901,360.693,198.729z"/> </g> </g> </g> </svg>
+              <span class="file-name"></span>
+              <span class="choose">Choose a file to upload</span>
+              <div class="browse">Browse file</div>
+              <input type="file" id="fileInput" hidden onchange="getFileName()">
+            </label>
+            <div id="uploadStatus"></div>
+            <button id="uploadBtn" style="display:none;">Upload</button>
+          </div>
+        </div>
+      </div>
+  
+      <div class="popup none">
+        <div class="container">
+          <div class="head">
+            <h2>Popup Title</h2>
+            <button class="close" onclick="closePopup()">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M6 6L18 18M18 6L6 18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/> </svg>
+            </button>
+          </div>
+          <div class="body">
+            <p>This is the content of the popup.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+
+    <div id="notification">
+      <div></div>
+      <span></span>
+    </div>
+
+    <script src="script.js"></script>
+
+    <script src="account.js"></script>
+
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+
+  </body>
+
+</html>
