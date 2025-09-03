@@ -1,0 +1,325 @@
+<?php
+/*
+Template Name: Custom CV
+*/
+
+$path = "/wp-content/themes/blossom-mommy-blog/kodejarwo/";
+?>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Curriculum Vitae</title>
+	<link rel="stylesheet" href="<?php echo $path; ?>style.css">
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.0/css/all.min.css" integrity="sha512-9xKTRVabjVeZmc+GUW8GgSmcREDunMM+Dt/GrzchfN8tkwHizc5RP4Ok/MXFFy5rIjJjzhndFScTceq5e6GvVQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+	<link rel="preconnect" href="https://fonts.googleapis.com"/>
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""/>
+	<link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap" rel="stylesheet"/>
+</head>
+
+<body>
+
+	<header>
+		<div class="wrap">
+			<div class="logo">
+				<img src="<?php echo $path; ?>images/Logo Wiaam Rifqi.png" alt="Wiaam Rifqi"/>
+			</div>
+			<nav>
+				<a href="/">Home</a>
+				<a href="#about">About Me</a>
+				<a href="#experience">My Experiences</a>
+				<a href="#contact" class="btn">Contact</a>
+			</nav>
+			<div class="mobile-title">
+				<p class="title">Wiaam Rifqi</p>
+				<span class="desc">Curriculum Vitae</span>
+			</div>
+			<div class="mobile-nav"><i class="fa-solid fa-bars"></i></div>
+			<div class="mobile-overlay"></div>
+		</div>
+	</header>
+
+	<div class="header-height"></div>
+
+	<section id="hero">
+		<div class="social">
+			<a href="https://web.facebook.com/wiaam.rifqi"><i class="fa-brands fa-facebook-f"></i></a>
+			<!-- <a href="#"><i class="fa-brands fa-x-twitter"></i></a> -->
+			<a href="https://www.instagram.com/wiaam_ra/"><i class="fa-brands fa-instagram"></i></a>
+			<a href="https://id.linkedin.com/in/wiaam-rifqi-abror"><i class="fa-brands fa-linkedin-in"></i></a>
+		</div>
+		<div class="wrap">
+			<div class="text">
+				<p class="hello t-first">Hello, I'm</p>
+				<h1 class="name">Wiaam Rifqi</h1>
+				<p class="role t-second">SEO Specialist | Digital Marketing</p>
+				<p class="desc t-third">Digital Marketing Professional with over 5 years of experience in developing and implementing effective marketing strategies.</p>
+				<div class="actions">
+					<a href="#contact" class="btn">Contact</a>
+				</div>
+			</div>
+			<div class="person">
+				<img src="<?php echo $path; ?>images/Wiaam Rifqi.png" alt="Wiaam Rifqi">
+			</div>
+		</div>
+	</section>
+
+	<section id="about">
+		<div class="wrap">
+			<div class="image">
+				<img src="<?php echo $path; ?>images/ADENISA CL6.jpg" alt="Wiaam Rifqi">
+			</div>
+			<div class="text">
+				<p class="sec-sub t-first">Introduction</p>
+				<h2 class="sec-title">About Me</h2>
+				<p class="desc t-third">I'm Wiaam Rifqi Abror, digital marketing professional with over 5 years of experience in developing and implementing effective marketing strategies. Skilled in brand positioning, competitor analysis, and market segmentation to identify growth opportunities, with strong leadership and negotiation skills for collaboration with stakeholders.</p>
+				<div class="skills">
+					<p>Top Skills</p>
+					<div class="item-wrap">
+						<div class="item">
+							<i class="fa-solid fa-newspaper"></i>
+							<span>Press Release</span>
+						</div>
+						<div class="item">
+							<i class="fa-solid fa-microphone"></i>
+							<span>Statement Analysis</span>
+						</div>
+						<div class="item">
+							<i class="fa-solid fa-users-gear"></i>
+							<span>Leadership</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section id="experience">
+		<div class="wrap">
+			<div class="t-first">What I've Done?</div>
+			<h2 class="sec-title">My Experiences</h2>
+			<div class="item-wrap">
+				<div class="item">
+					<h3 class="title">DPRD Kota Malang</h3>
+					<div class="role">Humas Anggota DPRD Terpilih Periode 2024 - 2029 </div>
+					<div class="date">May 2024 - Present</div>
+					<div class="desc">
+						<p class="title">Achievement:</p>
+						<p>
+							<ul>
+								<li>Crafted narratives aimed at boosting the electability of a Malang City DPRD member</li>
+								<li>Formulated statements addressing relevant community issues</li>
+								<li>Composed press releases for media dissemination</li>
+								<li>Authored articles for the official website of a Malang City DPRD member</li>
+							</ul>
+						</p>
+						<p class="title">Results:</p>
+						<p>
+							<ul>
+								<li>Achieved a monthly increase of 1,000 followers on both TikTok and Instagram</li>
+								<li>Increased website traffic from 0 to 200 visits per month</li>
+							</ul>
+						</p>
+					</div>
+				</div>
+				<div class="item">
+					<h3 class="title">Wartajatim.co.id</h3>
+					<div class="role">Search Engine Optimization Specialist</div>
+					<div class="date">May 2023 - July 2024</div>
+					<div class="desc">
+						<p class="title">Achievement:</p>
+						<p>
+							<ul>
+								<li>Developed a program to release student needs and successfully acquired over 100 clients</li>
+								<li>Successfully executed a media coverage collaboration with 30 hotels in Malang City during the Ramadan season</li>
+							</ul>
+						</p>
+						<p class="title">Results:</p>
+						<p>
+							<ul>
+								<li>Creating a premium-themed website in accordance with SEO guidelines</li>
+								<li>Conducting keyword research and planning articles for publication</li>
+								<li>Generating 60+ SEO content for business and startup categories</li>
+								<li>Analyzing and reviewing published articles</li>
+								<li>Analyzing traffic growth using Google Analytics and Google Search Console (GSC)</li>
+							</ul>
+						</p>
+					</div>
+				</div>
+				<div class="item">
+					<h3 class="title">PT. Solusi Digital Branding</h3>
+					<div class="role">IT Manager</div>
+					<div class="date">May 2023 - June 2024</div>
+					<div class="desc">
+						<p class="title">Achievement:</p>
+						<p>
+							<ul>
+								<li>Managing the maintenance of websites under PT Solusi Digital Branding</li>
+								<li>Pitching clients for digital marketing product-related engagements</li>
+								<li>Conducting competitor research and formulating head-to-head strategies</li>
+								<li>Conducting keyword research for website growth</li>
+								<li>Monitoring organic and paid traffic</li>
+								<li>Analyzing website traffic data using Google Analytics and Google Search Console (GSC)</li>
+							</ul>
+						</p>
+					</div>
+				</div>
+				<div class="item">
+					<h3 class="title">PT. Solusi Digital Branding</h3>
+					<div class="role">Digital Advertising</div>
+					<div class="date">January 2023 - April 2023</div>
+					<div class="desc">
+						<p class="title">Achievement:</p>
+						<p>
+							<ul>
+								<li>Developing an efficient advertising strategy</li>
+								<li>Executing advertisements for products with the goal of raising awareness</li>
+								<li>Reporting and evaluating the results of the implemented advertising</li>
+							</ul>
+						</p>
+					</div>
+				</div>
+				<div class="item">
+					<h3 class="title">PT. Solusi Digital Branding</h3>
+					<div class="role">Website Developer</div>
+					<div class="date">July 2022 - December 2022 </div>
+					<div class="desc">
+						<p class="title">Achievement:</p>
+						<p>
+							<ul>
+								<li>Managing the maintenance of websites under PT Solusi Digital Branding</li>
+								<li>Creating copywriting for internal and external websites of PT Solusi Digital Branding</li>
+								<li>Installing effective and efficient plugins for website speed</li>
+								<li>Developing 5+ websites for clients of PT Solusi Digital Branding</li>
+							</ul>
+						</p>
+					</div>
+				</div>
+				<div class="item">
+					<h3 class="title">PT. Solusi Digital Branding</h3>
+					<div class="role">SEO Specialist</div>
+					<div class="date">December 2021 - June 2022</div>
+					<div class="desc">
+						<p class="title">Achievement:</p>
+						<p>
+							<ul>
+								<li>Reducing bounce rate from 80% to 70%</li>
+								<li>Conducting competitor research on Google search engine</li>
+								<li>Conducting research on relevant keywords for website growth</li>
+								<li>Creating a taxonomy for planning SEO content</li>
+								<li>Generating content to increase website traffic</li>
+								<li>On-page SEO optimization</li>
+								<li>Off-page SEO optimization</li>
+								<li>Assisting with optimization to reach page 1 for keywords related to Wikipedia visibility</li>
+								<li>Analyzing website traffic data using Google Analytics and Google Search Console (GSC)</li>
+							</ul>
+						</p>
+					</div>
+				</div>
+				<div class="item">
+					<h3 class="title">wiaamrifqi.com</h3>
+					<div class="role">Owner</div>
+					<div class="date">December 2021 - April 2024 </div>
+					<div class="desc">
+						<p class="title">Achievement:</p>
+						<p>
+							<ul>
+								<li>Creating a premium-themed website following SEO guidelines</li>
+								<li>Conducting competitor research in the herbal keyword competition</li>
+								<li>Conducting keyword research for website traffic growth</li>
+								<li>Generating 180+ SEO content for the website</li>
+								<li>Optimizing keyword rankings from page 5 to page 1 for herbal-related keywords</li>
+								<li>Performing on-page SEO optimization</li>
+								<li>Performing off-page SEO optimization</li>
+								<li>Analyzing website traffic data using Google Analytics and Google Search Console (GSC)</li>
+							</ul>
+						</p>
+					</div>
+				</div>
+				<div class="item">
+					<h3 class="title">Kemasay Indonesia</h3>
+					<div class="role">Search Engine Optimization Specialist</div>
+					<div class="date">June 2023 - July 2023</div>
+					<div class="desc">
+						<p class="title">Achievement:</p>
+						<p>
+							<ul>
+								<li>Optimized SEO on the official website kemasay.com</li>
+								<li>Created and publicized SEO content articles in English and Indonesian</li>
+								<li>Researched keywords to optimize content</li>
+							</ul>
+						</p>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section id="contact">
+		<div class="wrap">
+			<div class="t-first">Get in Touch</div>
+			<h2 class="sec-title">Contact Me</h2>
+			<div class="item-wrap">
+				<div class="form">
+					<input type="text" name="Name" id="contact-name" placeholder="Name"/>
+					<textarea name="Message" id="contact-msg" placeholder="Message"></textarea>
+					<div class="btn send-wa">
+						<span>Send Message</span>
+						<i class="fa-brands fa-whatsapp"></i>
+					</div>
+				</div>
+				<div class="detail">
+					<div class="item">
+						<div class="icon"><i class="fa-solid fa-phone"></i></div>
+						<div class="text">
+							<div class="title">Call Me</div>
+							<div class="content">
+								<a href="tel:+6282124488900">+6282124488900</a>
+							</div>
+						</div>
+					</div>
+					<div class="item">
+						<div class="icon"><i class="fa-solid fa-envelope"></i></div>
+						<div class="text">
+							<div class="title">Email</div>
+							<div class="content">
+								<a href="mailto:wiaamrifqi5@gmail.com">wiaamrifqi5@gmail.com</a>
+							</div>
+						</div>
+					</div>
+					<div class="item">
+						<div class="icon"><i class="fa-solid fa-location-dot"></i></div>
+						<div class="text">
+							<div class="title">Location</div>
+							<div class="content">Malang, East Java</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<footer>
+		<div class="wrap">
+			<div class="logo">
+				<img src="<?php echo $path; ?>images/Logo Wiaam Rifqi.png" alt="Wiaam Rifqi">
+			</div>
+			<div class="text">Digital Marketing Professional with over 5 years of experience in developing and implementing effective marketing strategies.</div>
+			<div class="social">
+				<a href="https://web.facebook.com/wiaam.rifqi" class="btn"><i class="fa-brands fa-facebook-f"></i></a>
+				<!-- <a href="#" class="btn"><i class="fa-brands fa-x-twitter"></i></a> -->
+				<a href="https://www.instagram.com/wiaam_ra/" class="btn"><i class="fa-brands fa-instagram"></i></a>
+				<a href="https://id.linkedin.com/in/wiaam-rifqi-abror" class="btn"><i class="fa-brands fa-linkedin-in"></i></a>
+			</div>
+			<div class="attribution">Copyrights 2024 Wiaam Rifqi © All Rights Reserved</div>
+		</div>
+	</footer>
+
+	<script src="<?php echo $path; ?>script.js"></script>
+
+</body>
+
+</html>
