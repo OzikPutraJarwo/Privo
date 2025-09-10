@@ -36,11 +36,11 @@ async function initializeGapiClient() {
     await showUserInfo();
     await ensureFolders();
     await ensureInventoryFiles();
-    await loadCropData();
-    await loadLineData(); 
+    // await loadCropData();
+    // await loadLineData(); 
     await loadParamData(); 
-    await renderParamSelect(".trial-observation .content-item");
-    await renderLineSelect(".trial-option #option-line");
+    // await renderParamSelect(".trial-observation .content-item");
+    // await renderLineSelect(".trial-option #option-line");
     await listLibraryFilesUI();
     notification("success", "All data loaded");
 
@@ -670,16 +670,22 @@ async function loadParamData() {
 function saveParam() {
   const id = document.getElementById("editId").value;
   const paramName = document.getElementById("paramName").value;
+  const paramType = document.getElementById("paramType").value;
+  const paramUnit = document.getElementById("paramUnit").value;
+  const paramPhoto = document.getElementById("paramPhoto").checked;
 
   if (id) {
     const idx = paramData.findIndex(l => l.id === id);
     if (idx !== -1) {
-      paramData[idx] = { id, paramName };
+      paramData[idx] = { id, paramName, paramType, paramUnit, paramPhoto };
     }
   } else {
     paramData.push({
       id: generateId(),
-      paramName
+      paramName,
+      paramType,
+      paramUnit,
+      paramPhoto
     });
   }
 
@@ -695,11 +701,18 @@ function renderParamTable() {
   const tbody = document.querySelector("#observation-parameters .table .tbody");
   tbody.innerHTML = "";
   paramData.forEach(param => {
+    function paramPhoto() {
+      const checkbox = param?.paramPhoto;
+      return checkbox ? "Yes" : "No";
+    }
     const tr = document.createElement("div");
     tr.classList.add('tr');
     tr.innerHTML = `
       <div class="td no center"></div>
       <div class="td">${param.paramName}</div>
+      <div class="td">${param.paramType}</div>
+      <div class="td">${param.paramUnit}</div>
+      <div class="td">${paramPhoto()}</div>
       <div class="td action">
         <button id="edit" onclick="editParam('${param.id}');openPopup('.params')">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <g id="style=paramar"> <g id="edit"> <path id="vector" d="M18.4101 3.6512L20.5315 5.77252C21.4101 6.6512 21.4101 8.07582 20.5315 8.9545L9.54019 19.9458C9.17774 20.3082 8.70239 20.536 8.19281 20.5915L4.57509 20.9856C3.78097 21.072 3.11061 20.4017 3.1971 19.6076L3.59111 15.9898C3.64661 15.4803 3.87444 15.0049 4.23689 14.6425L3.70656 14.1121L4.23689 14.6425L15.2282 3.6512C16.1068 2.77252 17.5315 2.77252 18.4101 3.6512Z" stroke-width="2"/> <path id="vector_2" d="M15.2282 3.6512C16.1068 2.77252 17.5315 2.77252 18.4101 3.6512L20.5315 5.77252C21.4101 6.6512 21.4101 8.07582 20.5315 8.9545L18.7283 10.7576L13.425 5.45432L15.2282 3.6512Z" stroke-width="2"/> </g> </g> </svg>
@@ -719,6 +732,9 @@ function editParam(id) {
 
   document.getElementById("editId").value = param.id;
   document.getElementById("paramName").value = param.paramName;
+  document.getElementById("paramType").value = param.paramType;
+  document.getElementById("paramUnit").value = param.paramUnit;
+  document.getElementById("paramPhoto").checked = param.paramPhoto;
   document.getElementById("saveParamBtn").textContent = "Save Changes";
 }
 

@@ -98,7 +98,7 @@
 
     <main>
 
-      <div id="trial-manager" class="item-container active">
+      <div id="trial-manager" class="item-container">
 
         <div class="type-trial item">
           <div class="title">
@@ -249,7 +249,7 @@
 
       </div>
 
-      <div id="observation-parameters" class="item-container single-inventory">
+      <div id="observation-parameters" class="item-container active">
         
         <div class="item">
           <div class="title">
@@ -264,6 +264,9 @@
                 <div class="tr">
                   <div class="th center">No</div>
                   <div class="th">Name</div>
+                  <div class="th">Type</div>
+                  <div class="th">Unit</div>
+                  <div class="th">Use photo?</div>
                   <div class="th">Action</div>
                 </div>
               </div>
@@ -405,6 +408,28 @@
               <div>
                 <label for="paramName">Parameter Name</label>
                 <input id="paramName" placeholder="Param Name" required>
+              </div>
+              <div>
+                <label for="paramType">Parameter Type</label>
+                <select name="paramType" id="paramType">
+                  <option value="text">Text</option>
+                  <option value="number">Number</option>
+                  <option value="range">Range</option>
+                  <option value="choice">Radio</option>
+                  <option value="checkbox">Checkbox</option>
+                  <option value="date">Date</option>
+                </select>
+              </div>
+              <div>
+                <label for="paramUnit">Parameter Unit</label>
+                <input id="paramUnit" placeholder="Param Unit" required>
+              </div>
+              <div>
+                <label for="paramPhoto">Use Photo</label>
+                <span>
+                  <input id="paramPhoto" type="checkbox">
+                  <label for="paramPhoto">Yes</label>
+                </span>
               </div>
               <div class="actions">
                 <button type="submit" id="saveParamBtn">Add Parameter</button>
