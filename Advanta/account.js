@@ -700,7 +700,8 @@ function saveParam() {
 const paramTypeSelect = document.querySelector('select#paramType');
 const paramTypeForm = document.querySelectorAll('.pop-child form');
 const paramTypeTable = document.querySelectorAll('#paramTypeTable > .type');
-paramTypeSelect.addEventListener('change', () => {
+
+function controlParamTypeSelect() {
   const selectedType = paramTypeSelect.value;
   paramTypeForm.forEach(form => {
     if (form.dataset.value === selectedType) {
@@ -716,6 +717,10 @@ paramTypeSelect.addEventListener('change', () => {
       type.classList.remove('active')
     }
   });
+}
+
+paramTypeSelect.addEventListener('change', () => {
+  controlParamTypeSelect();
 });
 
 function renderParamTable() {
