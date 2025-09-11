@@ -697,6 +697,27 @@ function saveParam() {
   notification("success", "Parameter saved");
 }
 
+const paramTypeSelect = document.querySelector('select#paramType');
+const paramTypeForm = document.querySelectorAll('.pop-child form');
+const paramTypeTable = document.querySelectorAll('#paramTypeTable > .type');
+paramTypeSelect.addEventListener('change', () => {
+  const selectedType = paramTypeSelect.value;
+  paramTypeForm.forEach(form => {
+    if (form.dataset.value === selectedType) {
+      form.classList.add('active')
+    } else {
+      form.classList.remove('active')
+    }
+  });
+  paramTypeTable.forEach(type => {
+    if (type.dataset.value === selectedType) {
+      type.classList.add('active')
+    } else {
+      type.classList.remove('active')
+    }
+  });
+});
+
 function renderParamTable() {
   const tbody = document.querySelector("#observation-parameters .table .tbody");
   tbody.innerHTML = "";

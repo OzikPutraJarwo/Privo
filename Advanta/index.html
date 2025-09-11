@@ -392,7 +392,7 @@
         </div>
       </div>
   
-      <div class="popup single-popup params none">
+      <div class="popup single-popup params">
         <div class="container">
           <div class="head">
             <h2>Observation Parameters</h2>
@@ -406,23 +406,73 @@
                 <input type="hidden" id="editId">
               </div>
               <div>
-                <label for="paramName">Parameter Name</label>
+                <label for="paramName">Name</label>
                 <input id="paramName" placeholder="Param Name" required>
               </div>
               <div>
-                <label for="paramType">Parameter Type</label>
+                <label for="paramUnit">Unit</label>
+                <input id="paramUnit" placeholder="Param Unit" required>
+              </div>
+              <div>
+                <label for="paramType">Type</label>
                 <select name="paramType" id="paramType">
                   <option value="text">Text</option>
                   <option value="number">Number</option>
                   <option value="range">Range</option>
-                  <option value="choice">Radio</option>
+                  <option value="radio">Radio</option>
                   <option value="checkbox">Checkbox</option>
                   <option value="date">Date</option>
                 </select>
               </div>
-              <div>
-                <label for="paramUnit">Parameter Unit</label>
-                <input id="paramUnit" placeholder="Param Unit" required>
+              <div id="paramTypeTable">
+                <div class="type" data-value="range">
+                  <div class="table">
+                    <div class="tbody">
+                      <div class="tr">
+                        <div class="td">0</div>
+                        <div class="td">Description 1</div>
+                      </div>
+                      <div class="tr">
+                        <div class="td">5</div>
+                        <div class="td">Description 2</div>
+                      </div>
+                      <div class="tr">
+                        <div class="td">10</div>
+                        <div class="td">Description 3</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="type" data-value="radio">
+                  <div class="table">
+                    <div class="tbody">
+                      <div class="tr">
+                        <div class="td">Radio 1</div>
+                      </div>
+                      <div class="tr">
+                        <div class="td">Radio 2</div>
+                      </div>
+                      <div class="tr">
+                        <div class="td">Radio 3</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="type" data-value="checkbox">
+                  <div class="table">
+                    <div class="tbody">
+                      <div class="tr">
+                        <div class="td">Checkbox 1</div>
+                      </div>
+                      <div class="tr">
+                        <div class="td">Checkbox 2</div>
+                      </div>
+                      <div class="tr">
+                        <div class="td">Checkbox 3</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div>
                 <label for="paramPhoto">Use Photo</label>
@@ -436,6 +486,26 @@
               </div>
             </form>
           </div>
+        </div>
+        <div class="pop-child">
+          <form id="paramTypeAddRange" data-value="range">
+            <label for="inputRange">Type your next range</label>
+            <input type="number" id="inputRange" placeholder="Number" required>
+            <input type="text" id="inputRangeDesc" placeholder="Description">
+            <button type="button" onclick="addRange()">Add</button>
+          </form>
+          <form id="paramTypeAddRadio" data-value="radio">
+            <label for="inputRadio">Type your next option</label>
+            <input type="number" id="inputRadio" placeholder="Number" required>
+            <input type="text" id="inputRadioDesc" placeholder="Description">
+            <button type="button" onclick="addRadio()">Add</button>
+          </form>
+          <form id="paramTypeAddCheckbox" data-value="checkbox">
+            <label for="inputCheckbox">Type your next option</label>
+            <input type="number" id="inputCheckbox" placeholder="Number" required>
+            <input type="text" id="inputCheckboxDesc" placeholder="Description">
+            <button type="button" onclick="addCheckbox()">Add</button>
+          </form>
         </div>
       </div>
   
