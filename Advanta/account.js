@@ -1,6 +1,5 @@
-////////
 //////// Google Drive API Integration
-////////
+
 
 const CLIENT_ID = "400272927751-t5ehe632lahuk9p38eie583tv2obv60s.apps.googleusercontent.com";
 const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
@@ -106,9 +105,9 @@ function generateId() {
   return 'id-' + Date.now() + '-' + Math.floor(Math.random() * 100000);
 }
 
-////////
+
 //////// User Info and File / Folder Setup
-////////
+
 
 async function showUserInfo() {
   await ensureToken();
@@ -321,9 +320,9 @@ uploadBtn.onclick = async () => {
   }
 };
 
-////////
+
 //////// Crops
-////////
+
 
 let cropFileId = null;
 let cropData = [];
@@ -445,9 +444,9 @@ async function updateCropJson() {
   });
 }
 
-////////
+
 //////// Lines
-////////
+
 
 let lineFileId = null;
 let lineData = [];
@@ -629,9 +628,9 @@ async function updateLineJson() {
   });
 }
 
-////////
+
 //////// Observation Parameters
-////////
+
 
 let paramFileId = null;
 let paramData = [];
@@ -717,7 +716,9 @@ function controlParamTypeSelect() {
       type.classList.remove('active')
     }
   });
-}
+};
+
+controlParamTypeSelect();
 
 paramTypeSelect.addEventListener('change', () => {
   controlParamTypeSelect();
@@ -762,6 +763,8 @@ function editParam(id) {
   document.getElementById("paramUnit").value = param.paramUnit;
   document.getElementById("paramPhoto").checked = param.paramPhoto;
   document.getElementById("saveParamBtn").textContent = "Save Changes";
+
+  controlParamTypeSelect();
 }
 
 function resetParamForm() {
@@ -807,7 +810,11 @@ async function updateParamJson() {
   });
 }
 
-////////
+function addRange() {
+  
+}
+
+//////// Additional
 
 function renderCropSelect(container) {
   const option = document.querySelector(container);
