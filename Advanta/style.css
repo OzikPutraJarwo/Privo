@@ -22,6 +22,7 @@ body {
   height: 100%;
   scroll-behavior: smooth;
   color: #222;
+  height: auto;
 }
 
 *,
@@ -39,7 +40,8 @@ body {
   -webkit-font-smoothing: antialiased;
   word-wrap: break-word;
   -ms-word-wrap: break-word;
-  letter-spacing: .2px
+  letter-spacing: .2px;
+  min-height: calc(100dvh - 1rem);
 }
 
 * {
@@ -232,7 +234,7 @@ body {
   background: #ff414b;
 }
 
-.table .action button#edit {
+.table .action button#edit, .table .action button#info {
   background: #5555d74f;
   padding: 0;
 }
@@ -241,24 +243,32 @@ body {
   stroke: #5555d7;
 }
 
-.table .action button#edit:hover {
+.table .action button#info svg {
+  fill: #5555d7;
+}
+
+.table .action button#edit:hover, .table .action button#info:hover {
   background: #5555d7;
 }
 
-.table .action button#download {
+.table .action button#download, .table .action button#run {
   background: #00997d4f;
 }
 
-.table .action button#download svg {
+.table .action button#download svg, .table .action button#run svg {
   stroke: #00997d;
 }
 
-.table .action button#download:hover {
+.table .action button#download:hover, .table .action button#run:hover {
   background: #00997d;
 }
 
-.table .action button:hover svg {
+.table .action button:not(#info):hover svg {
   stroke: var(--body) !important;
+}
+
+.table .action button#info:hover svg {
+  fill: var(--body) !important;
 }
 
 #notification {
@@ -510,6 +520,45 @@ nav .item .item-sub .item-sub-item.active {
   border-color: #6867e8;
 }
 
+span.running {
+  font-size: 0.8rem;
+  color: #00997d;
+  position: relative;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  margin-top: 0.2rem;
+}
+
+span.running:before {
+  content: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg' width='15' height='15' stroke='%2300997d'%3E%3Cg id='Media / Play'%3E%3Cpath id='Vector' d='M5 17.3336V6.66698C5 5.78742 5 5.34715 5.18509 5.08691C5.34664 4.85977 5.59564 4.71064 5.87207 4.67499C6.18868 4.63415 6.57701 4.84126 7.35254 5.25487L17.3525 10.5882L17.3562 10.5898C18.2132 11.0469 18.642 11.2756 18.7826 11.5803C18.9053 11.8462 18.9053 12.1531 18.7826 12.4189C18.6418 12.7241 18.212 12.9537 17.3525 13.4121L7.35254 18.7454C6.57645 19.1593 6.1888 19.3657 5.87207 19.3248C5.59564 19.2891 5.34664 19.1401 5.18509 18.9129C5 18.6527 5 18.2132 5 17.3336Z' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3C/path%3E%3C/g%3E%3C/svg%3E");
+  animation: blink 1s infinite;
+  display: block;
+  stroke: #00997d;
+  float: left;
+  margin-right: .5rem;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+nav .item .item-main:hover .running, nav .item .item-main.active .running, nav .item:has(.active) .item-main .running {
+  color: white;
+}
+
+nav .item .item-main:hover .running:before, nav .item .item-main.active .running:before, nav .item:has(.active) .item-main .running:before {
+  filter: brightness(0) invert(1);
+}
+
 /* ===== MAIN ===== */
 
 main .item-container {
@@ -584,6 +633,48 @@ main input, main select {
 main select {
   cursor: pointer;
   border-right: .5rem solid #eee;
+}
+
+/* ===== DASHBOARD ===== */
+
+#dashboard .table .tr {
+  display: grid;
+  grid-template-columns: 40px 300px 150px 100px 100px 100px 120px 100px 100px 1fr 100px;
+}
+
+#dashboard .table .tr .no {
+  justify-content: center;
+}
+
+#dashboard .progress span {
+  color: white;
+  font-weight: 700;
+  padding: .4rem .75rem;
+  font-size: .9rem;
+  border-radius: .5rem;
+}
+
+#dashboard .progress span:after {
+  content: "%"
+}
+
+#dashboard .remarks {
+  font-size: .9rem;
+}
+
+#dashboard .action {
+  justify-content: end;
+  gap: .75rem;
+}
+
+#dashboard .action button {
+  width: 30px;
+  height: 30px;
+}
+
+#dashboard .action button svg {
+  width: 15px;
+  height: 15px;
 }
 
 /* ===== TRIAL MANAGER ===== */

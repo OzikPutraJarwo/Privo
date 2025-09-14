@@ -35,11 +35,11 @@ async function initializeGapiClient() {
     await showUserInfo();
     await ensureFolders();
     await ensureInventoryFiles();
-    // await loadCropData();
-    // await loadLineData(); 
+    await loadCropData();
+    await loadLineData(); 
     await loadParamData(); 
-    // await renderParamSelect(".trial-observation .content-item");
-    // await renderLineSelect(".trial-option #option-line");
+    await renderParamSelect(".trial-observation .content-item");
+    await renderLineSelect(".trial-option #option-line");
     await listLibraryFilesUI();
     notification("success", "All data loaded");
 
@@ -143,6 +143,7 @@ async function ensureFolders() {
 
 async function ensureInventoryFiles() {
   await ensureToken();
+  trialFileId = await createOrGetFile('trial.json', subFolders.inventory, { trials: [] });
   cropFileId = await createOrGetFile('crop.json', subFolders.inventory, { crops: [] });
   lineFileId = await createOrGetFile('line.json', subFolders.inventory, { lines: [] });
   paramFileId = await createOrGetFile('param.json', subFolders.inventory, { params: [] });

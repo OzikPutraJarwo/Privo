@@ -38,15 +38,15 @@ function getFileName() {
 // COUNTERS
 
 function giveCounters(parentSelector, childSelector, noSelector) {
-    const parents = document.querySelectorAll(parentSelector);
-    let counter = 1;
-    parents.forEach(parent => {
-        const children = parent.querySelectorAll(childSelector);
-        children.forEach(child => {
-            const noElement = child.querySelector(noSelector);
-            noElement.textContent = counter++ + `.`;
-        });
+  const parents = document.querySelectorAll(parentSelector);
+  let counter = 1;
+  parents.forEach(parent => {
+    const children = parent.querySelectorAll(childSelector);
+    children.forEach(child => {
+      const noElement = child.querySelector(noSelector);
+      noElement.textContent = counter++ + `.`;
     });
+  });
 }
 
 // NOTIFICATION
@@ -78,44 +78,79 @@ function notification(type, message) {
   }
 }
 
-// MAP
+// PROGRESS COLOR
 
-  // 1. Buat peta
-  var map = L.map('map').setView([-7.802585, 112.534504], 8);
+(function () {
+  const colors = [
+    [244, 67, 54],
+    [255, 111, 0],
+    [255, 179, 0],
+    [104, 159, 56],
+    [56, 142, 60]
+  ];
 
-  // 2. Tambahkan tile layer
-  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.{ext}', {
-    minZoom: 0,
-    maxZoom: 20,
-    ext: 'jpg',
-    attribution: `<a href='https://www.kodejarwo.com'><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8" class="leaflet-attribution-flag"><path fill="#ff0000" d="M0 0h12v4H0z"></path><path fill="#FFFFFF" d="M0 4h12v3H0z"></path><path fill="#dfdfdf" d="M0 7h12v1H0z"></path></svg> Ozik Jarwo</a>`
-  }).addTo(map);
-
-  var marker;
-
-  // 3. Event klik
-  map.on('click', function(e) {
-    var lat = e.latlng.lat;
-    var lng = e.latlng.lng;
-
-    // Hapus marker lama
-    if (marker) {
-      map.removeLayer(marker);
+  function applyColors() {
+    function getColor(value) {
+      value = Math.max(0, Math.min(100, value));
+      const step = 100 / (colors.length - 1);
+      const idx = Math.floor(value / step);
+      const t = (value % step) / step;
+      if (idx >= colors.length - 1) return `rgb(${colors[colors.length - 1].join(",")})`;
+      const c1 = colors[idx];
+      const c2 = colors[idx + 1];
+      return `rgb(${Math.round(c1[0] + (c2[0] - c1[0]) * t)},${Math.round(c1[1] + (c2[1] - c1[1]) * t)},${Math.round(c1[2] + (c2[2] - c1[2]) * t)})`;
     }
 
-    // Tambahkan marker baru
-    marker = L.marker([lat, lng]).addTo(map);
-
-    // 4. Reverse geocoding dengan Nominatim
-    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
-      .then(response => response.json())
-      .then(data => {
-        const addr = data.address || {};
-        let city = addr.county || addr.city || addr.town || addr.municipality || addr.state || "Unknown";
-        document.getElementById('location').value = city + ` (${lat.toFixed(6)}, ${lng.toFixed(6)})`;
-      })
-      .catch(err => {
-        console.error(err);
-        document.getElementById('location').value = `(${lat.toFixed(6)}, ${lng.toFixed(6)})`;
+    function updateColors() {
+      document.querySelectorAll('.progress span').forEach(span => {
+        span.style.backgroundColor = getColor(parseInt(span.textContent.trim()));
       });
-  });
+    }
+
+    const observer = new MutationObserver(updateColors);
+    document.querySelectorAll('.progress span').forEach(span => observer.observe(span, { childList: true }));
+    updateColors();
+  }
+
+  applyColors();
+})();
+
+// PROGRESS AVERAGE
+
+const setupProgressUpdater = () => {
+    const valueContainers = Array.from(document.querySelectorAll('[data-progress-value]'));
+    const targetContainers = Array.from(document.querySelectorAll('[data-progress][data-progress-type]'));
+
+    const updateProgress = () => {
+        const valuesMap = {};
+        valueContainers.forEach(el => {
+            const type = el.dataset.progressValue;
+            const val = parseFloat(el.querySelector('span').textContent) || 0;
+            if (!valuesMap[type]) valuesMap[type] = [];
+            valuesMap[type].push(val);
+        });
+
+        targetContainers.forEach(target => {
+            const type = target.dataset.progress;
+            const calcType = target.dataset.progressType;
+            const span = target.querySelector('span');
+            const values = valuesMap[type] || [];
+            let result = 0;
+
+            if (calcType === 'average') {
+                result = values.length ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(0) : 0;
+            } else if (calcType === 'sum') {
+                result = values.length ? values.reduce((a, b) => a + b, 0) : 0;
+            }
+
+            span.textContent = result;
+        });
+    };
+
+    const observer = new MutationObserver(updateProgress);
+    const config = { childList: true, subtree: true };
+    valueContainers.forEach(el => observer.observe(el, config));
+    updateProgress();
+};
+
+setupProgressUpdater();
