@@ -652,7 +652,7 @@ main select {
 }
 
 #paramTypeTable > .type.active {
-  max-height: 200px;
+  max-height: 221px;
 }
 
 #paramTypeTable .table .tbody .tr {
@@ -660,11 +660,18 @@ main select {
 }
 
 #paramTypeTable [data-value="range"] .table .tbody .tr {
-  grid-template-columns: 50px 1fr 75px;
+  grid-template-columns: 50px 1fr 45px;
 }
 
 #paramTypeTable [data-value="range"] .table .tbody .tr .td:first-child {
   border-right: 1px solid #ededef;
+  padding: .6rem;
+  margin: 0;
+  justify-content: center;
+}
+
+#paramTypeTable :not([data-value="range"]) .table .tbody .tr {
+  grid-template-columns: 1fr 45px;
 }
 
 .popup.params input[type="checkbox"] {
@@ -956,6 +963,7 @@ button#uploadBtn:hover {
 
 .popup form .actions {
   display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 1rem;
   margin-top: 1rem;
 }

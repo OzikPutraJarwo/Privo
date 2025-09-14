@@ -576,11 +576,6 @@ function editLine(id) {
   document.getElementById("dateAdded").value = line.dateAdded;
 
   document.getElementById("saveBtn").textContent = "Save Changes";
-  document.getElementById("cancelBtn").style.display = "inline-block";
-}
-
-function cancelEdit() {
-  resetForm();closePopup();
 }
 
 function resetForm() {
@@ -588,7 +583,6 @@ function resetForm() {
   document.getElementById("lineForm").reset();
   document.getElementById("editId").value = "";
   document.getElementById("saveBtn").textContent = "Add Line";
-  document.getElementById("cancelBtn").style.display = "none";
 }
 
 function deleteLine(id) {
@@ -673,16 +667,30 @@ function saveParam() {
   const paramUnit = document.getElementById("paramUnit").value;
   const paramPhoto = document.getElementById("paramPhoto").checked;
 
+  const paramValue = [];
+  const rows = document.querySelectorAll(`#paramTypeTable [data-value="${paramType}"] .table .tbody .tr`);
+  rows.forEach(row => {
+    if (paramType == "range") {
+      const number = row.querySelector('.number').textContent.trim();
+      const desc = row.querySelector('.desc').textContent.trim();
+      paramValue.push({ number, desc });
+    } else {
+      const name = row.querySelector(`.name`).textContent.trim();
+      paramValue.push({ name });
+    }
+  });
+
   if (id) {
     const idx = paramData.findIndex(l => l.id === id);
     if (idx !== -1) {
-      paramData[idx] = { id, paramName, paramType, paramUnit, paramPhoto };
+      paramData[idx] = { id, paramName, paramType, paramValue, paramUnit, paramPhoto };
     }
   } else {
     paramData.push({
       id: generateId(),
       paramName,
       paramType,
+      paramValue,
       paramUnit,
       paramPhoto
     });
@@ -716,6 +724,9 @@ function controlParamTypeSelect() {
       type.classList.remove('active')
     }
   });
+
+  const tableTr = document.querySelectorAll(`#paramTypeTable .tr`);
+  tableTr.forEach(tr => tr.remove());
 };
 
 controlParamTypeSelect();
@@ -759,12 +770,36 @@ function editParam(id) {
 
   document.getElementById("editId").value = param.id;
   document.getElementById("paramName").value = param.paramName;
-  document.getElementById("paramType").value = param.paramType;
+  const paramType = (document.getElementById("paramType").value = param.paramType);
   document.getElementById("paramUnit").value = param.paramUnit;
   document.getElementById("paramPhoto").checked = param.paramPhoto;
   document.getElementById("saveParamBtn").textContent = "Save Changes";
 
   controlParamTypeSelect();
+  const paramValue = param.paramValue;
+  
+  paramValue.forEach(i => {
+    const tableContainer = document.querySelector(`#paramTypeTable [data-value="${param.paramType}"] .table .tbody`);
+    const tr = document.createElement('div');
+    tr.classList.add('tr');
+    if (paramType == 'range') {
+      tr.innerHTML = `
+        <div class="td number">${i.number}</div> 
+        <div class="td desc">${i.desc}</div> 
+        <div class="td action">
+          <button id="delete" onclick="event.preventDefault();  deleteRange(this);"> <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6" stroke-width="2" stroke-paramcap="round" stroke-paramjoin="round"></path> </svg> </button> 
+        </div>
+      `;
+    } else {
+      tr.innerHTML = `
+        <div class="td number">${i.name}</div> 
+        <div class="td action">
+          <button id="delete" onclick="event.preventDefault();  deleteRange(this);"> <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6" stroke-width="2" stroke-paramcap="round" stroke-paramjoin="round"></path> </svg> </button> 
+        </div>
+      `;
+    }
+    tableContainer.append(tr);
+  });  
 }
 
 function resetParamForm() {
@@ -811,7 +846,43 @@ async function updateParamJson() {
 }
 
 function addRange() {
-  
+  const tableContainer = document.querySelector(`#paramTypeTable [data-value="range"] .table .tbody`);
+  const numberValue = document.querySelector(`#inputRange`).value;
+  const descValue = document.querySelector(`#inputRangeDesc`).value;
+  const tr = document.createElement('div');
+  tr.classList.add('tr');
+  tr.innerHTML = `
+    <div class="td number">${numberValue}</div> 
+    <div class="td desc">${descValue}</div> 
+    <div class="td action">
+      <button id="delete" onclick="event.preventDefault();  deleteRange(this);"> <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6" stroke-width="2" stroke-paramcap="round" stroke-paramjoin="round"></path> </svg> </button> 
+    </div>
+  `;
+  tableContainer.append(tr);
+  document.querySelector(`#inputRange`).value = ``;
+  document.querySelector(`#inputRangeDesc`).value = ``;
+}
+
+function addParamValue(e) {
+  const type = e.getAttribute(`data-value`);
+  const tableContainer = document.querySelector(`#paramTypeTable [data-value="${type}"] .table .tbody`);
+  const nameValue = document.querySelector(`#input${capitalizeFirstLetter(type)}`).value;
+  const tr = document.createElement('div');
+  tr.classList.add('tr');
+  tr.innerHTML = `
+    <div class="td name">${nameValue}</div> 
+    <div class="td action">
+      <button id="delete" onclick="event.preventDefault();  deleteRange(this);"> <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6" stroke-width="2" stroke-paramcap="round" stroke-paramjoin="round"></path> </svg> </button> 
+    </div>
+  `;
+  tableContainer.append(tr);
+  document.querySelector(`#inputRange`).value = ``;
+  document.querySelector(`#inputRangeDesc`).value = ``;
+}
+
+function deleteRange(btn) { 
+  const tr = btn.closest('.tr');
+  tr.remove();
 }
 
 //////// Additional
@@ -858,4 +929,11 @@ async function renderLineSelect(container) {
     select.innerHTML = line.lineName + " (" + line.qty + ")";
     option.prepend(select);
   });
+}
+
+function capitalizeFirstLetter(str) {
+  if (str === null || str === undefined || str.length === 0) {
+    return ""; // Handle empty or invalid strings
+  }
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
