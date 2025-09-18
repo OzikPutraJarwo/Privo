@@ -678,7 +678,7 @@ main select {
 
 /* ===== TRIAL MANAGER ===== */
 
-#trial-manager .content-container {
+#add-trial .content-container {
   display: grid;
   gap: 1rem;
   grid-template-columns: 1fr 1fr;;
@@ -690,21 +690,18 @@ main select {
   grid-template-columns: 1fr 1fr 1fr 1fr;
 }
 
-.trial-observation .content-container .content-item div {
+.trial-observation .content-container .content-item label {
   display: flex;
   gap: .75rem;
   align-items: center;
   line-height: 0;
   user-select: none;
+  cursor: pointer;
 }
 
-.trial-observation .content-container .content-item div input {
+.trial-observation .content-container .content-item label input {
   width: 1.3rem;
   height: 1.3rem;
-}
-
-.trial-observation .content-container .content-item div input, .trial-observation .content-container .content-item div label {
-  cursor: pointer;
 }
 
 .trial-option .set-location {

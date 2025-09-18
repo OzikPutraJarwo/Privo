@@ -903,7 +903,8 @@ async function renderParamSelect(container) {
   const option = document.querySelector(container);
   option.innerHTML = '';
   paramData.forEach(param => {
-    const container = document.createElement("div");
+    const container = document.createElement("label");
+    container.htmlFor = (param.paramName).replace(' ', '_');
 
     const input = document.createElement("input");
     input.type = "checkbox";
@@ -912,10 +913,9 @@ async function renderParamSelect(container) {
     input.id = (param.paramName).replace(' ', '_');
     container.prepend(input);
 
-    const label = document.createElement("label");
-    label.textContent = param.paramName;
-    label.htmlFor = (param.paramName).replace(' ', '_');
-    container.append(label);
+    const span = document.createElement("span");
+    span.textContent = param.paramName;
+    container.append(span);
 
     option.prepend(container);
   });
