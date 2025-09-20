@@ -678,7 +678,7 @@ main select {
 
 /* ===== TRIAL MANAGER ===== */
 
-#add-trial .content-container {
+#add-trial :not(.trial-observation) .content-container {
   display: grid;
   gap: 1rem;
   grid-template-columns: 1fr 1fr;;
