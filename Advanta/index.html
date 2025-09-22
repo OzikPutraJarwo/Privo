@@ -56,7 +56,7 @@
 
       <nav>
         <div class="item">
-          <div class="item-main active" data-toggle="dashboard">
+          <div class="item-main" data-toggle="dashboard">
             <div class="icon">
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M13 12C13 11.4477 13.4477 11 14 11H19C19.5523 11 20 11.4477 20 12V19C20 19.5523 19.5523 20 19 20H14C13.4477 20 13 19.5523 13 19V12Z" stroke="#000000" stroke-width="1.5" stroke-linecap="round"/> <path d="M4 5C4 4.44772 4.44772 4 5 4H9C9.55228 4 10 4.44772 10 5V12C10 12.5523 9.55228 13 9 13H5C4.44772 13 4 12.5523 4 12V5Z" stroke="#000000" stroke-width="1.5" stroke-linecap="round"/> <path d="M4 17C4 16.4477 4.44772 16 5 16H9C9.55228 16 10 16.4477 10 17V19C10 19.5523 9.55228 20 9 20H5C4.44772 20 4 19.5523 4 19V17Z" stroke="#000000" stroke-width="1.5" stroke-linecap="round"/> <path d="M13 5C13 4.44772 13.4477 4 14 4H19C19.5523 4 20 4.44772 20 5V7C20 7.55228 19.5523 8 19 8H14C13.4477 8 13 7.55228 13 7V5Z" stroke="#000000" stroke-width="1.5" stroke-linecap="round"/> </svg>
             </div>
@@ -93,6 +93,7 @@
             <div class="item-sub-item" data-toggle="crops">Crops</div>
             <div class="item-sub-item" data-toggle="lines">Lines</div>
             <div class="item-sub-item" data-toggle="observation-parameters">Observation Parameters</div>
+            <div class="item-sub-item" data-toggle="locations">Locations</div>
           </div>
         </div>
         <div class="item">
@@ -191,7 +192,7 @@
 
       </div>
 
-      <div id="add-trial" class="item-container active">
+      <div id="add-trial" class="item-container">
 
         <div class="type-trial item">
           <div class="title">
@@ -358,6 +359,31 @@
                   <div class="th">Type</div>
                   <div class="th">Unit</div>
                   <div class="th">Use photo?</div>
+                  <div class="th">Action</div>
+                </div>
+              </div>
+              <div class="tbody"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div id="locations" class="item-container active single-inventory">
+
+        <div class="item">
+          <div class="title">
+            <h2>Locations</h2>
+            <div class="actions">
+              <button onclick="openPopup('.locations')"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M12 8V16M16 12H8M6 20H18C19.1046 20 20 19.1046 20 18V6C20 4.89543 19.1046 4 18 4H6C4.89543 4 4 4.89543 4 6V18C4 19.1046 4.89543 20 6 20Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> </svg></button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="table">
+              <div class="thead">
+                <div class="tr">
+                  <div class="th center">No</div>
+                  <div class="th">Name</div>
                   <div class="th">Action</div>
                 </div>
               </div>
@@ -583,6 +609,32 @@
               <input type="text" id="inputCheckbox" placeholder="Name" required>
               <button type="submit">Add</button>
             </form>
+          </div>
+        </div>
+
+        <div class="popup single-popup locations none">
+          <div class="container">
+            <div class="head">
+              <h2>Locations</h2>
+              <button class="close" onclick="closePopup();resetLocationForm();">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M6 6L18 18M18 6L6 18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/> </svg>
+              </button>
+            </div>
+            <div class="body">
+              <form id="locationForm" onsubmit="event.preventDefault(); saveLocation();">
+                <div>
+                  <input type="hidden" id="editLocationId">
+                </div>
+                <div>
+                  <label for="locationName">Location Name</label>
+                  <input id="locationName" placeholder="Location Name" required>
+                </div>
+                <div class="actions">
+                  <button type="submit" id="saveLocationBtn">Add Location</button>
+                  <button type="button" id="cancelBtn" onclick="closePopup();resetLocationForm();">Cancel</button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
     
