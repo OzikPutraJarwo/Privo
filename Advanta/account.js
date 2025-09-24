@@ -35,11 +35,17 @@ async function initializeGapiClient() {
     await showUserInfo();
     await ensureFolders();
     await ensureInventoryFiles();
+
     await loadCropData();
     await loadLineData(); 
     await loadParamData(); 
-    await renderParamSelect(".trial-observation .content-item");
-    await renderLineSelect(".trial-option #option-line");
+    await loadLocationData();
+
+    await renderLocationCheckbox('.locationCheckbox');
+    await renderCropSelect('.cropSelect');
+    await renderLineSelect('.lineSelect');
+    
+    await renderParamCheckbox(".paramCheckbox");
     await listLibraryFilesUI();
     notification("success", "All data loaded");
 
@@ -321,6 +327,82 @@ uploadBtn.onclick = async () => {
     uploadBtn.disabled = false;
   }
 };
+
+
+//////// Trial
+
+function saveTrial() {
+  const id = document.getElementById("addTrial-id").value;
+  const name = document.getElementById("addTrial-name").value;
+
+  const locationCheck = document.querySelectorAll('.locationCheckbox input[type="checkbox"]:checked');
+  const location = Array.from(locationCheck).map(checkbox => checkbox.value);
+
+  const windowStart = document.getElementById("addTrial-windowStart").value;
+  const windowEnd = document.getElementById("addTrial-windowEnd").value;
+  const trialPlanted = document.getElementById("addTrial-trialPlanted").value;
+  const trialHarvested = document.getElementById("addTrial-trialHarvested").value;
+  const stage = document.getElementById("addTrial-stage").value;
+  const plantingProgress = document.getElementById("addTrial-plantingProgress").value;
+  const harvestedProgress = document.getElementById("addTrial-harvestedProgress").value;
+  const remark = document.getElementById("addTrial-remark").value;
+
+  const paramCheck = document.querySelectorAll('.paramCheckbox input[type="checkbox"]:checked');
+  const param = Array.from(paramCheck).map(checkbox => checkbox.value);
+
+  const crop = document.getElementById("addTrial-crop").value;
+  const line = document.getElementById("addTrial-line").value;
+  const quantityLine = document.getElementById("addTrial-quantityLine").value;
+  const noReplication = document.getElementById("addTrial-noReplication").value;
+  const noEntry = document.getElementById("addTrial-noEntry").value;
+  const season = document.getElementById("addTrial-season").value;
+  // const  = document.getElementById("addTrial-").value;
+
+  console.log("ID:", id);
+  console.log("Name:", name);
+  console.log("Location:", location);
+  console.log("Window Start:", windowStart);
+  console.log("Window End:", windowEnd);
+  console.log("Trial Planted:", trialPlanted);
+  console.log("Trial Harvested:", trialHarvested);
+  console.log("Stage:", stage);
+  console.log("Planting Progress:", plantingProgress);
+  console.log("Harvested Progress:", harvestedProgress);
+  console.log("Remark:", remark);
+  console.log("Param:", param);
+  console.log("Crop:", crop);
+  console.log("Line:", line);
+  console.log("Quantity Line:", quantityLine);
+  console.log("No Replication:", noReplication);
+  console.log("No Entry:", noEntry);
+  console.log("Season:", season);
+
+  // if (id) {
+  //   const idx = lineData.findIndex(l => l.id === id);
+  //   if (idx !== -1) {
+  //     lineData[idx] = { id, lineName, cropSelect, hybridCode, sprCode, year, stages, qty, dateAdded };
+  //   }
+  // } else {
+  //   lineData.push({
+  //     id: generateId(),
+  //     lineName,
+  //     cropSelect,
+  //     hybridCode,
+  //     sprCode,
+  //     year,
+  //     stages,
+  //     qty,
+  //     dateAdded
+  //   });
+  // }
+
+  // notification("loading", "Saving line...");
+  // updateLineJson();
+  // renderLineTable();
+  // resetForm();
+  // closePopup();
+  notification("success", "Console success");
+}
 
 
 //////// Crops
@@ -994,7 +1076,7 @@ async function deleteLocation(id) {
   notification('success', 'Location deleted');
 }
 
-async function updateLocationJson() {
+async function updateLocationJsonrenderParamSelectparam () {
   await ensureToken();
   const accessToken = gapi.client.getToken().access_token;
 
@@ -1024,7 +1106,7 @@ function renderCropSelect(container) {
   });
 }
 
-async function renderParamSelect(container) {
+async function renderParamCheckbox(container) {
   const option = document.querySelector(container);
   option.innerHTML = '';
   paramData.forEach(param => {
@@ -1033,13 +1115,35 @@ async function renderParamSelect(container) {
 
     const input = document.createElement("input");
     input.type = "checkbox";
-    input.name = "observationParams";
     input.value = param.paramName;
     input.id = (param.paramName).replace(' ', '_');
+    input.name = "addTrial-param";
     container.prepend(input);
 
     const span = document.createElement("span");
     span.textContent = param.paramName;
+    container.append(span);
+
+    option.prepend(container);
+  });
+}
+
+async function renderLocationCheckbox(container) {
+  const option = document.querySelector(container);
+  option.innerHTML = '';
+  locationData.forEach(location => {
+    const container = document.createElement("label");
+    container.htmlFor = (location.locationName).replace(' ', '_');
+
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = location.locationName;
+    input.id = (location.locationName).replace(' ', '_');
+    input.name = "addTrial-location";
+    container.prepend(input);
+
+    const span = document.createElement("span");
+    span.textContent = location.locationName;
     container.append(span);
 
     option.prepend(container);

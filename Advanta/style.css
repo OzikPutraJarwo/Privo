@@ -678,30 +678,10 @@ main select {
 
 /* ===== TRIAL MANAGER ===== */
 
-#add-trial :not(.trial-observation) .content-container {
+#add-trial .content-container {
   display: grid;
   gap: 1rem;
   grid-template-columns: 1fr 1fr;;
-}
-
-.trial-observation .content-container .content-item {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
-}
-
-.trial-observation .content-container .content-item label {
-  display: flex;
-  gap: .75rem;
-  align-items: center;
-  line-height: 0;
-  user-select: none;
-  cursor: pointer;
-}
-
-.trial-observation .content-container .content-item label input {
-  width: 1.3rem;
-  height: 1.3rem;
 }
 
 .trial-option .set-location {
