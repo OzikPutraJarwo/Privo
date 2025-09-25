@@ -210,17 +210,17 @@
             </div>
 
             <div class="content-item">
-              <label for="addTrial-location">Location</label>
-              <div class="content-input locationCheckbox"></div>
-            </div>
-
-            <div class="content-item">
-              <label for="">Planting Window</label>
+              <label for="addTrial-windowStart">Planting Window</label>
               <div class="content-input plantingWindow">
                 <input type="month" id="addTrial-windowStart">
                 <span>-</span>
                 <input type="month" id="addTrial-windowEnd">
               </div>
+            </div>
+
+            <div class="content-item">
+              <label for="addTrial-location">Location</label>
+              <div class="content-input locationCheckbox"></div>
             </div>
 
             <div class="content-item">
@@ -240,12 +240,12 @@
 
             <div class="content-item">
               <label for="addTrial-plantingProgress">Planting Progress</label>
-              <input type="number" min="0" max="0" value="0" id="addTrial-plantingProgress">
+              <input type="number" min="0" max="100" value="0" id="addTrial-plantingProgress">
             </div>
 
             <div class="content-item">
               <label for="addTrial-harvestedProgress">Harvested Progress</label>
-              <input type="number" min="0" max="0" value="0" id="addTrial-harvestedProgress">
+              <input type="number" min="0" max="100" value="0" id="addTrial-harvestedProgress">
             </div>
 
             <div class="content-item">
@@ -297,7 +297,7 @@
               </select>
             </div>
 
-            <div class="content-item actions">
+            <div class="content-item actions" style="grid-column: span 2;">
               <button type="submit">Save</button>
             </div>
 

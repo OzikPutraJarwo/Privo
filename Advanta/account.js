@@ -41,6 +41,9 @@ async function initializeGapiClient() {
     await loadParamData(); 
     await loadLocationData();
 
+    await loadTrialData();
+    await renderTrialTable();
+
     await renderLocationCheckbox('.locationCheckbox');
     await renderCropSelect('.cropSelect');
     await renderLineSelect('.lineSelect');
@@ -109,6 +112,25 @@ async function ensureToken() {
 function generateId() {
   if (crypto.randomUUID) return crypto.randomUUID();
   return 'id-' + Date.now() + '-' + Math.floor(Math.random() * 100000);
+}
+
+function formatDateRange(windowStart, windowEnd) {
+    const [startYear, startMonth] = windowStart.split('-');
+    const [endYear, endMonth] = windowEnd.split('-');
+
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+
+    const startMonthName = monthNames[parseInt(startMonth, 10) - 1];
+    const endMonthName = monthNames[parseInt(endMonth, 10) - 1];
+
+    if (startYear === endYear) {
+        return `${startYear},<br> ${startMonthName} - ${endMonthName}`;
+    } else {
+        return `${startMonthName} ${startYear} - ${endMonthName} ${endYear}`;
+    }
 }
 
 
@@ -331,6 +353,40 @@ uploadBtn.onclick = async () => {
 
 //////// Trial
 
+let trialFileId = null;
+let trialData = [];
+
+async function loadTrialData() {
+  await ensureToken();
+  if (!trialFileId) {
+    const q = `name='trial.json' and '${subFolders.inventory}' in parents and trashed=false`;
+    const res = await gapi.client.drive.files.list({ q, fields: 'files(id, name)' });
+    if (res.result.files && res.result.files.length) {
+      trialFileId = res.result.files[0].id;
+    } else {
+      trialFileId = await createOrGetFile('trial.json', subFolders.inventory, { trials: [] });
+    }
+  }
+
+  const accessToken = gapi.client.getToken().access_token;
+  const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${trialFileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+
+  if (!resp.ok) {
+    console.error('Gagal memuat trial.json:', await resp.text());
+    trialData = [];
+    return;
+  }
+
+  const json = await resp.json();
+  trialData = Array.isArray(json.trials) ? json.trials : [];
+
+  if (typeof renderTrialTable === 'function') {
+    renderTrialTable();
+  }
+}
+
 function saveTrial() {
   const id = document.getElementById("addTrial-id").value;
   const name = document.getElementById("addTrial-name").value;
@@ -377,31 +433,125 @@ function saveTrial() {
   console.log("No Entry:", noEntry);
   console.log("Season:", season);
 
-  // if (id) {
-  //   const idx = lineData.findIndex(l => l.id === id);
-  //   if (idx !== -1) {
-  //     lineData[idx] = { id, lineName, cropSelect, hybridCode, sprCode, year, stages, qty, dateAdded };
-  //   }
-  // } else {
-  //   lineData.push({
-  //     id: generateId(),
-  //     lineName,
-  //     cropSelect,
-  //     hybridCode,
-  //     sprCode,
-  //     year,
-  //     stages,
-  //     qty,
-  //     dateAdded
-  //   });
-  // }
+  if (id) {
+    const idx = trialData.findIndex(l => l.id === id);
+    if (idx !== -1) {
+      trialData[idx] = {
+        id,
+        name,
+        location,
+        windowStart,
+        windowEnd,
+        trialPlanted,
+        trialHarvested,
+        stage,
+        plantingProgress,
+        harvestedProgress,
+        remark,
+        param,
+        crop,
+        line,
+        quantityLine,
+        noReplication,
+        noEntry,
+        season
+      };
+    }
+  } else {
+    trialData.push({
+      id: generateId(),
+      name,
+      location,
+      windowStart,
+      windowEnd,
+      trialPlanted,
+      trialHarvested,
+      stage,
+      plantingProgress,
+      harvestedProgress,
+      remark,
+      param,
+      crop,
+      line,
+      quantityLine,
+      noReplication,
+      noEntry,
+      season
+    });
+  }
 
-  // notification("loading", "Saving line...");
-  // updateLineJson();
-  // renderLineTable();
+  notification("loading", "Saving trial...");
+  updateTrialJson();
+  renderTrialTable();
   // resetForm();
   // closePopup();
-  notification("success", "Console success");
+  notification("success", "Saving success");
+}
+
+async function renderTrialTable() {
+  const tbody = document.querySelector("#dashboard .table .tbody");
+  tbody.innerHTML = "";
+  trialData.forEach(trial => {
+    const tr = document.createElement("div");
+    tr.classList.add('tr');
+    tr.innerHTML = `
+      <div class="td no center"></div>
+      <div class="td">${trial.name}</div>
+      <div class="td">${formatDateRange(trial.windowStart, trial.windowEnd)}</div>
+      <div class="td" data-progress-value="location-target"><span>${trial.location.length}</span></div>
+      <div class="td" data-progress-value="trials-planted"><span>${trial.trialPlanted}</span></div>
+      <div class="td" data-progress-value="trials-harvested"><span>${trial.trialHarvested}</span></div>
+      <div class="td">${trial.stage}</div>
+      <div class="td progress" data-progress-value="planting"><span>${trial.plantingProgress}</span></div>
+      <div class="td progress" data-progress-value="harvested"><span>${trial.harvestedProgress}</span></div>
+      <div class="td">${trial.remark}</div>
+      <div class="td action">
+        <button id="info">
+          <svg viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg"> <title>info</title> <path d="M16.247 4.733c0 1.684 1.271 2.825 2.84 2.825s2.842-1.142 2.842-2.825c0-1.685-1.272-2.826-2.842-2.826-1.568 0-2.84 1.141-2.84 2.826zM10.096 14.375c0 0.334-0.061 1.163 0.008 1.662l2.479-2.983c0.513-0.562 1.106-0.955 1.409-0.849s0.47 0.463 0.371 0.795l-4.103 13.59c-0.473 1.588 0.421 3.148 2.599 3.504 3.189 0 5.084-2.158 6.948-4.955 0-0.334 0.111-1.213 0.044-1.713l-2.479 2.982c-0.514 0.562-1.151 0.955-1.455 0.85-0.28-0.098-0.444-0.41-0.389-0.721l4.132-13.653c0.344-1.734-0.59-3.312-2.564-3.514-2.076 0.001-5.136 2.209-7 5.005z"></path> </svg>
+        </button>
+        <button id="run">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <g id="Media / Play"> <path id="Vector" d="M5 17.3336V6.66698C5 5.78742 5 5.34715 5.18509 5.08691C5.34664 4.85977 5.59564 4.71064 5.87207 4.67499C6.18868 4.63415 6.57701 4.84126 7.35254 5.25487L17.3525 10.5882L17.3562 10.5898C18.2132 11.0469 18.642 11.2756 18.7826 11.5803C18.9053 11.8462 18.9053 12.1531 18.7826 12.4189C18.6418 12.7241 18.212 12.9537 17.3525 13.4121L7.35254 18.7454C6.57645 19.1593 6.1888 19.3657 5.87207 19.3248C5.59564 19.2891 5.34664 19.1401 5.18509 18.9129C5 18.6527 5 18.2132 5 17.3336Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> </g> </svg>
+        </button>
+        <button id="edit" onclick="editTrial('${trial.id}')">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <g> <g id="edit"> <path id="vector" d="M18.4101 3.6512L20.5315 5.77252C21.4101 6.6512 21.4101 8.07582 20.5315 8.9545L9.54019 19.9458C9.17774 20.3082 8.70239 20.536 8.19281 20.5915L4.57509 20.9856C3.78097 21.072 3.11061 20.4017 3.1971 19.6076L3.59111 15.9898C3.64661 15.4803 3.87444 15.0049 4.23689 14.6425L3.70656 14.1121L4.23689 14.6425L15.2282 3.6512C16.1068 2.77252 17.5315 2.77252 18.4101 3.6512Z" stroke-width="2"/> <path id="vector_2" d="M15.2282 3.6512C16.1068 2.77252 17.5315 2.77252 18.4101 3.6512L20.5315 5.77252C21.4101 6.6512 21.4101 8.07582 20.5315 8.9545L18.7283 10.7576L13.425 5.45432L15.2282 3.6512Z" stroke-width="2"/> </g> </g> </svg>
+        </button>
+        <button id="delete" onclick="deleteTrial('${trial.id}')">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6" stroke-width="2" stroke-cropcap="round" stroke-cropjoin="round"/> </svg>
+        </button>
+      </div>
+    `;
+    tbody.prepend(tr);
+  });
+  setupProgressUpdater();
+}
+
+async function updateTrialJson() {
+  await ensureToken();
+  const accessToken = gapi.client.getToken().access_token;
+  const metadata = { name: "trial.json" };
+
+  const boundary = '-------314159265358979323846';
+  const delimiter = "\r\n--" + boundary + "\r\n";
+  const close_delim = "\r\n--" + boundary + "--";
+
+  const content = JSON.stringify({ trials: trialData }, null, 2);
+
+  const multipartRequestBody =
+    delimiter +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delimiter +
+    'Content-Type: application/json\r\n\r\n' +
+    content +
+    close_delim;
+
+  await gapi.client.request({
+    path: `/upload/drive/v3/files/${trialFileId}`,
+    method: 'PATCH',
+    params: { uploadType: 'multipart' },
+    headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
+    body: multipartRequestBody
+  });
 }
 
 
@@ -1167,3 +1317,82 @@ function capitalizeFirstLetter(str) {
   }
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
+
+
+// ETC
+
+
+// PROGRESS COLOR
+
+
+// PROGRESS AVERAGE
+
+const setupProgressUpdater = () => {
+
+  const colors = [
+    [244, 67, 54],
+    [255, 111, 0],
+    [255, 179, 0],
+    [104, 159, 56],
+    [56, 142, 60]
+  ];
+
+  function applyColors() {
+    function getColor(value) {
+      value = Math.max(0, Math.min(100, value));
+      const step = 100 / (colors.length - 1);
+      const idx = Math.floor(value / step);
+      const t = (value % step) / step;
+      if (idx >= colors.length - 1) return `rgb(${colors[colors.length - 1].join(",")})`;
+      const c1 = colors[idx];
+      const c2 = colors[idx + 1];
+      return `rgb(${Math.round(c1[0] + (c2[0] - c1[0]) * t)},${Math.round(c1[1] + (c2[1] - c1[1]) * t)},${Math.round(c1[2] + (c2[2] - c1[2]) * t)})`;
+    }
+
+    function updateColors() {
+      document.querySelectorAll('.progress span').forEach(span => {
+        span.style.backgroundColor = getColor(parseInt(span.textContent.trim()));
+      });
+    }
+
+    const observer = new MutationObserver(updateColors);
+    document.querySelectorAll('.progress span').forEach(span => observer.observe(span, { childList: true }));
+    updateColors();
+  }
+
+  applyColors();
+
+  const valueContainers = Array.from(document.querySelectorAll('[data-progress-value]'));
+  const targetContainers = Array.from(document.querySelectorAll('[data-progress][data-progress-type]'));
+
+  const updateProgress = () => {
+    const valuesMap = {};
+    valueContainers.forEach(el => {
+      const type = el.dataset.progressValue;
+      const val = parseFloat(el.querySelector('span').textContent) || 0;
+      if (!valuesMap[type]) valuesMap[type] = [];
+      valuesMap[type].push(val);
+    });
+
+    targetContainers.forEach(target => {
+      const type = target.dataset.progress;
+      const calcType = target.dataset.progressType;
+      const span = target.querySelector('span');
+      const values = valuesMap[type] || [];
+      let result = 0;
+
+      if (calcType === 'average') {
+        result = values.length ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(0) : 0;
+      } else if (calcType === 'sum') {
+        result = values.length ? values.reduce((a, b) => a + b, 0) : 0;
+      }
+
+      span.textContent = result;
+    });
+  };
+
+  const observer = new MutationObserver(updateProgress);
+  const config = { childList: true, subtree: true };
+  valueContainers.forEach(el => observer.observe(el, config));
+  updateProgress();
+};
