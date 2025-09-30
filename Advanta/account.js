@@ -47,6 +47,8 @@ async function initializeGapiClient() {
     await renderLocationCheckbox('.locationCheckbox');
     await renderCropSelect('.cropSelect');
     await renderLineSelect('.lineSelect');
+
+    await loadRunningData();
     
     await renderParamCheckbox(".paramCheckbox");
     await listLibraryFilesUI();
@@ -133,9 +135,75 @@ function formatDateRange(windowStart, windowEnd) {
     }
 }
 
-async function runtrial(name) {
-  // await createOrGetFile('running.json', subFolders.inventory, { running: [ name ] });
-  notification("success", "All data loaded");
+
+//////// Running Trial
+
+
+let runningData = [];
+
+async function loadRunningData() {
+  await ensureToken();
+  if (!runningFileId) {
+    const q = `name='running.json' and '${subFolders.inventory}' in parents and trashed=false`;
+    const res = await gapi.client.drive.files.list({ q, fields: 'files(id, name)' });
+    if (res.result.files && res.result.files.length) {
+      runningFileId = res.result.files[0].id;
+    } else {
+      runningFileId = await createOrGetFile('running.json', subFolders.inventory, { runnings: [] });
+    }
+  }
+
+  const accessToken = gapi.client.getToken().access_token;
+  const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${runningFileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+
+  if (!resp.ok) {
+    console.error('Gagal memuat running.json:', await resp.text());
+    runningData = [];
+    return;
+  }
+
+  const json = await resp.json();
+  runningData = Array.isArray(json.runnings) ? json.runnings : [];
+}
+
+function runTrial(id, runningName) {
+  // const id = document.getElementById("addTrial-id").value;
+  // const runningName = document.getElementById("addTrial-name").value;
+
+  if (id) {
+    const idx = runningData.findIndex(l => l.id === id);
+    if (idx !== -1) {
+      runningData[idx] = { id, runningName };
+    }
+  } else {
+    runningData.push({
+      id: generateId(),
+      runningName
+    });
+  }
+
+  notification("loading", "Saving running...");
+  updateRunningJson();
+  notification("success", "Running saved");
+}
+
+async function updateRunningJson() {
+  await ensureToken();
+  const accessToken = gapi.client.getToken().access_token;
+
+  const content = JSON.stringify({ runnings: runningData }, null, 2);
+
+  await gapi.client.request({
+    path: `/upload/drive/v3/files/${runningFileId}?uploadType=media`,
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: content
+  });
 }
 
 
@@ -419,26 +487,6 @@ function saveTrial() {
   const noReplication = document.getElementById("addTrial-noReplication").value;
   const noEntry = document.getElementById("addTrial-noEntry").value;
   const season = document.getElementById("addTrial-season").value;
-  // const  = document.getElementById("addTrial-").value;
-
-  console.log("ID:", id);
-  console.log("Name:", name);
-  console.log("Location:", location);
-  console.log("Window Start:", windowStart);
-  console.log("Window End:", windowEnd);
-  console.log("Trial Planted:", trialPlanted);
-  console.log("Trial Harvested:", trialHarvested);
-  console.log("Stage:", stage);
-  console.log("Planting Progress:", plantingProgress);
-  console.log("Harvested Progress:", harvestedProgress);
-  console.log("Remark:", remark);
-  console.log("Param:", param);
-  console.log("Crop:", crop);
-  console.log("Line:", line);
-  console.log("Quantity Line:", quantityLine);
-  console.log("No Replication:", noReplication);
-  console.log("No Entry:", noEntry);
-  console.log("Season:", season);
 
   if (id) {
     const idx = trialData.findIndex(l => l.id === id);
@@ -516,7 +564,7 @@ async function renderTrialTable() {
         <!--<button id="info">
           <svg viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg"> <title>info</title> <path d="M16.247 4.733c0 1.684 1.271 2.825 2.84 2.825s2.842-1.142 2.842-2.825c0-1.685-1.272-2.826-2.842-2.826-1.568 0-2.84 1.141-2.84 2.826zM10.096 14.375c0 0.334-0.061 1.163 0.008 1.662l2.479-2.983c0.513-0.562 1.106-0.955 1.409-0.849s0.47 0.463 0.371 0.795l-4.103 13.59c-0.473 1.588 0.421 3.148 2.599 3.504 3.189 0 5.084-2.158 6.948-4.955 0-0.334 0.111-1.213 0.044-1.713l-2.479 2.982c-0.514 0.562-1.151 0.955-1.455 0.85-0.28-0.098-0.444-0.41-0.389-0.721l4.132-13.653c0.344-1.734-0.59-3.312-2.564-3.514-2.076 0.001-5.136 2.209-7 5.005z"></path> </svg>
         </button>-->
-        <button id="run" onclick="runtrial('${trial.name}')">
+        <button id="run" onclick="runTrial('${trial.id}', '${trial.name}')">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <g id="Media / Play"> <path id="Vector" d="M5 17.3336V6.66698C5 5.78742 5 5.34715 5.18509 5.08691C5.34664 4.85977 5.59564 4.71064 5.87207 4.67499C6.18868 4.63415 6.57701 4.84126 7.35254 5.25487L17.3525 10.5882L17.3562 10.5898C18.2132 11.0469 18.642 11.2756 18.7826 11.5803C18.9053 11.8462 18.9053 12.1531 18.7826 12.4189C18.6418 12.7241 18.212 12.9537 17.3525 13.4121L7.35254 18.7454C6.57645 19.1593 6.1888 19.3657 5.87207 19.3248C5.59564 19.2891 5.34664 19.1401 5.18509 18.9129C5 18.6527 5 18.2132 5 17.3336Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> </g> </svg>
         </button>
         <button id="edit" onclick="editTrial('${trial.id}')">
