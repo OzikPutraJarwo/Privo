@@ -520,12 +520,16 @@ nav .item .item-sub .item-sub-item.active {
   border-color: #6867e8;
 }
 
+.running .running {
+  display: -webkit-box;
+}
+
 span.running {
   font-size: 0.8rem;
   color: #00997d;
   position: relative;
   overflow: hidden;
-  display: -webkit-box;
+  display: none;
   -webkit-line-clamp: 1;
   line-clamp: 1;
   -webkit-box-orient: vertical;

@@ -168,15 +168,15 @@ async function loadRunningData() {
   runningData = Array.isArray(json.runnings) ? json.runnings : [];
 }
 
-function runTrial(id, runningName) {
-  // const id = document.getElementById("addTrial-id").value;
-  // const runningName = document.getElementById("addTrial-name").value;
+async function runTrial(id, runningName) {
+
+  runningData = [];
 
   if (id) {
-    const idx = runningData.findIndex(l => l.id === id);
-    if (idx !== -1) {
-      runningData[idx] = { id, runningName };
-    }
+    runningData.push({
+      id: id,
+      runningName
+    });
   } else {
     runningData.push({
       id: generateId(),
@@ -185,25 +185,44 @@ function runTrial(id, runningName) {
   }
 
   notification("loading", "Saving running...");
-  updateRunningJson();
+  await updateRunningJson();
+  await editRunningDOM(runningName);
   notification("success", "Running saved");
 }
 
 async function updateRunningJson() {
   await ensureToken();
   const accessToken = gapi.client.getToken().access_token;
+  const metadata = { name: "running.json" };
+
+  const boundary = '314159265358979323846';
+  const delimiter = "\r\n--" + boundary + "\r\n";
+  const close_delim = "\r\n--" + boundary + "--";
 
   const content = JSON.stringify({ runnings: runningData }, null, 2);
 
+  const multipartRequestBody =
+    delimiter +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delimiter +
+    'Content-Type: application/json\r\n\r\n' +
+    content +
+    close_delim;
+
   await gapi.client.request({
-    path: `/upload/drive/v3/files/${runningFileId}?uploadType=media`,
+    path: `/upload/drive/v3/files/${runningFileId}?uploadType=multipart`,
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`
-    },
-    body: content
+    headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
+    body: multipartRequestBody
   });
+}
+
+async function editRunningDOM(runningName) {
+  const p = document.querySelector('[data-toggle="input-data"] .text');
+  const e = document.querySelector('span.running');
+  p.classList.add('running');
+  e.innerText = runningName;
 }
 
 
