@@ -628,6 +628,14 @@ async function updateTrialJson() {
   });
 }
 
+async function deleteTrial(id) {
+  notification('loading', 'Deleting trial...');
+  trialData = trialData.filter(l => l.id !== id);
+  await updateTrialJson();
+  renderTrialTable();
+  notification('success', 'Trial deleted');
+}
+
 
 //////// Crops
 

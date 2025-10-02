@@ -1043,7 +1043,7 @@ button#uploadBtn:hover {
   grid-template-columns: 1fr 1fr;
 }
 
-.popup form button {
+.popup form button, .btn {
   background: var(--green);
   color: white;
   width: 100%;
@@ -1061,7 +1061,7 @@ button#uploadBtn:hover {
   background: var(--red);
 }
 
-.popup form button:hover {
+.popup form button:hover, .btn:hover {
   filter: brightness(.8);
 }
 
