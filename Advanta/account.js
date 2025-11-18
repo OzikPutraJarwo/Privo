@@ -167,6 +167,10 @@ async function loadRunningData() {
 
   const json = await resp.json();
   runningData = Array.isArray(json.runnings) ? json.runnings : [];
+
+  const targetId = runningData[0].id;
+  const container = document.querySelector('#input-data .content');
+  displayTrialDetails(trialData, targetId, container);
 }
 
 async function runTrial(id, runningName) {
@@ -226,6 +230,16 @@ async function editRunningDOM(runningName) {
   e.innerText = runningName;
 }
 
+function displayTrialDetails(dataArray, idToFind, targetElement) {
+  const trial = dataArray.find(item => item.id === idToFind);
+  if (trial) {
+    targetElement.innerHTML = `
+      <h3>Trial Name: ${trial.name}</h3>
+    `;
+  } else {
+    targetElement.innerHTML = `<p>Trial not found.</p>`;
+  }
+}
 
 //////// User Info and File / Folder Setup
 
@@ -499,7 +513,12 @@ function saveTrial() {
   const remark = document.getElementById("addTrial-remark").value;
 
   const paramCheck = document.querySelectorAll('.paramCheckbox input[type="checkbox"]:checked');
-  const param = Array.from(paramCheck).map(checkbox => checkbox.value);
+  const param = Array.from(paramCheck).map(checkbox => {
+    return {
+      id: checkbox.dataset.id,
+      name: checkbox.value
+    };
+  });
 
   const crop = document.getElementById("addTrial-crop").value;
   const line = document.getElementById("addTrial-line").value;
@@ -1349,6 +1368,7 @@ async function renderParamCheckbox(container) {
     const input = document.createElement("input");
     input.type = "checkbox";
     input.value = param.paramName;
+    input.setAttribute('data-id', param.id);
     input.id = (param.paramName).replace(' ', '_');
     input.name = "addTrial-param";
     container.prepend(input);
