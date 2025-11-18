@@ -48,10 +48,11 @@ async function initializeGapiClient() {
     await renderCropSelect('.cropSelect');
     await renderLineSelect('.lineSelect');
 
-    await loadRunningData();
-    
     await renderParamCheckbox(".paramCheckbox");
     await listLibraryFilesUI();
+
+    await loadRunningData();
+    await editRunningDOM(runningData[0].runningName);
     notification("success", "All data loaded");
 
   }
