@@ -169,7 +169,7 @@ async function loadRunningData() {
   runningData = Array.isArray(json.runnings) ? json.runnings : [];
 
   const targetId = runningData[0].id;
-  const container = document.querySelector('#input-data .content');
+  const container = document.querySelector('#input-data');
   displayTrialDetails(trialData, targetId, container);
 }
 
@@ -233,11 +233,11 @@ async function editRunningDOM(runningName) {
 function displayTrialDetails(dataArray, idToFind, targetElement) {
   const trial = dataArray.find(item => item.id === idToFind);
   if (trial) {
-    targetElement.innerHTML = `
-      <h3>Trial Name: ${trial.name}</h3>
-    `;
+    // targetElement.innerHTML = `
+    //   <h3>Trial Name: ${trial.name}</h3>
+    // `;
   } else {
-    targetElement.innerHTML = `<p>Trial not found.</p>`;
+    // targetElement.innerHTML = `<p>Trial not found.</p>`;
   }
 }
 
