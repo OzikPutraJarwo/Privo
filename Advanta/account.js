@@ -10,8 +10,8 @@ let gapiInited = false;
 let rootFolderId = null;
 let subFolders = {};
 
-function gapiLoaded() { 
-  gapi.load('client', initializeGapiClient); 
+function gapiLoaded() {
+  gapi.load('client', initializeGapiClient);
 }
 
 async function initializeGapiClient() {
@@ -37,8 +37,8 @@ async function initializeGapiClient() {
     await ensureInventoryFiles();
 
     await loadCropData();
-    await loadLineData(); 
-    await loadParamData(); 
+    await loadLineData();
+    await loadParamData();
     await loadLocationData();
 
     await loadTrialData();
@@ -118,22 +118,22 @@ function generateId() {
 }
 
 function formatDateRange(windowStart, windowEnd) {
-    const [startYear, startMonth] = windowStart.split('-');
-    const [endYear, endMonth] = windowEnd.split('-');
+  const [startYear, startMonth] = windowStart.split('-');
+  const [endYear, endMonth] = windowEnd.split('-');
 
-    const monthNames = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-    ];
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
 
-    const startMonthName = monthNames[parseInt(startMonth, 10) - 1];
-    const endMonthName = monthNames[parseInt(endMonth, 10) - 1];
+  const startMonthName = monthNames[parseInt(startMonth, 10) - 1];
+  const endMonthName = monthNames[parseInt(endMonth, 10) - 1];
 
-    if (startYear === endYear) {
-        return `${startYear},<br> ${startMonthName} - ${endMonthName}`;
-    } else {
-        return `${startMonthName} ${startYear} - ${endMonthName} ${endYear}`;
-    }
+  if (startYear === endYear) {
+    return `${startYear},<br> ${startMonthName} - ${endMonthName}`;
+  } else {
+    return `${startMonthName} ${startYear} - ${endMonthName} ${endYear}`;
+  }
 }
 
 
@@ -169,8 +169,7 @@ async function loadRunningData() {
   runningData = Array.isArray(json.runnings) ? json.runnings : [];
 
   const targetId = runningData[0].id;
-  const container = document.querySelector('#input-data');
-  displayTrialDetails(trialData, targetId, container);
+  displayTrialDetails(trialData, targetId, document.querySelector('#form-detail'));
 }
 
 async function runTrial(id, runningName) {
@@ -232,14 +231,117 @@ async function editRunningDOM(runningName) {
 
 function displayTrialDetails(dataArray, idToFind, targetElement) {
   const trial = dataArray.find(item => item.id === idToFind);
+  const param = paramData.filter(pd => trialData.find(t => t.id === idToFind).param.some(p => p.id === pd.id));
+  console.log(param);
   if (trial) {
-    // targetElement.innerHTML = `
-    //   <h3>Trial Name: ${trial.name}</h3>
-    // `;
+
+    // 1. Ambil elemen target
+    const container = document.getElementById('form-container');
+    // 2. Panggil fungsi generator tadi
+    const dynamicHTML = generateParamHTML(param);
+    // 3. Masukkan ke innerHTML
+    container.insertAdjacentHTML('afterbegin', dynamicHTML);
+
+    targetElement.innerHTML = `
+        <div class="item">
+          <div class="title">
+            <h2>${trial.name}</h2>
+          </div>
+          <div class="content">
+            <p><b>Trial ID:</b> ${trial.id}</p>
+            <p><b>Remark:</b> ${trial.remark}</p>
+          </div>
+        </div>
+    `;
+
   } else {
     // targetElement.innerHTML = `<p>Trial not found.</p>`;
   }
 }
+
+function generateParamHTML(dataArray) {
+  // Kita map setiap item menjadi string HTML
+  const htmlContent = dataArray.map(item => {
+
+    let inputHtml = '';
+
+    // --- LOGIKA 1: Menangani Tipe Input (Range vs Radio) ---
+
+    if (item.paramType === 'range') {
+      const values = item.paramValue.map(v => parseInt(v.number));
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+
+      // [BARU] Tentukan nilai awal (Default Value).
+      // Anda bisa set ke 'min', atau hitung nilai tengah, atau ambil dari data jika ada.
+      // Contoh di sini saya set default-nya ke nilai Minimum.
+      const defaultValue = min;
+
+      const legendHtml = item.paramValue.map(val =>
+        `<small>${val.number}: ${val.desc}</small>`
+      ).join(' | ');
+
+      // [PERHATIKAN PERUBAHAN DI BAWAH]
+      // 1. Tambahkan atribut value="${defaultValue}" di input
+      // 2. Isi konten <output>${defaultValue}</output>
+      inputHtml = `
+        <div class="input-group range-group">
+          <input 
+            type="range" 
+            id="${item.id}" 
+            name="${item.paramName}" 
+            min="${min}" 
+            max="${max}" 
+            step="1" 
+            value="${defaultValue}" 
+            oninput="this.nextElementSibling.value = this.value"
+          >
+          <output>${defaultValue}</output>
+          <div class="range-legend" style="margin-top: 5px; color: #666;">${legendHtml}</div>
+        </div>
+      `;
+
+    } else if (item.paramType === 'radio') {
+      // Buat pilihan Radio Button
+      const radioOptions = item.paramValue.map(val => `
+        <label style="margin-right: 10px;">
+          <input type="radio" name="${item.id}" value="${val.name}"> 
+          ${val.name}
+        </label>
+      `).join('');
+
+      inputHtml = `
+        <div class="input-group radio-group">
+          ${radioOptions}
+        </div>
+      `;
+    }
+
+    // --- LOGIKA 2: Menangani Foto ---
+    let photoHtml = '';
+    if (item.paramPhoto) {
+      photoHtml = `
+        <div class="photo-upload" style="margin-top: 10px;">
+          <label>Photo upload:</label><br>
+          <input type="file" accept="image/*">
+        </div>
+      `;
+    }
+
+    // --- MENYUSUN KARTU HTML UTAMA ---
+    return `
+      <div class="param-card" style="border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 8px;">
+        <h4 style="margin-top: 0;">${item.paramName} <span style="font-weight:normal; font-size: 0.8em;">(${item.paramUnit})</span></h4>
+        
+        ${inputHtml}
+        ${photoHtml}
+      </div>
+    `;
+  }).join(''); // Gabungkan semua array string menjadi satu teks panjang
+
+  return htmlContent;
+}
+
 
 //////// User Info and File / Folder Setup
 
@@ -814,7 +916,7 @@ async function loadLineData() {
   lineData = Array.isArray(json.lines) ? json.lines : [];
 
   if (typeof renderLineTable === 'function') {
-    renderLineTable(); 
+    renderLineTable();
   }
 }
 
@@ -859,10 +961,10 @@ function saveLine() {
 function formatDate(dateStr) {
   if (!dateStr) return "";
   const date = new Date(dateStr);
-  return date.toLocaleDateString("en-US", { 
-    year: "numeric", 
-    month: "long", 
-    day: "numeric" 
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric"
   });
 }
 
@@ -1113,7 +1215,7 @@ function editParam(id) {
 
   controlParamTypeSelect();
   const paramValue = param.paramValue;
-  
+
   paramValue.forEach(i => {
     const tableContainer = document.querySelector(`#paramTypeTable [data-value="${param.paramType}"] .table .tbody`);
     const tr = document.createElement('div');
@@ -1135,7 +1237,7 @@ function editParam(id) {
       `;
     }
     tableContainer.append(tr);
-  });  
+  });
 }
 
 function resetParamForm() {
@@ -1216,7 +1318,7 @@ function addParamValue(e) {
   document.querySelector(`#inputRangeDesc`).value = ``;
 }
 
-function deleteRange(btn) { 
+function deleteRange(btn) {
   const tr = btn.closest('.tr');
   tr.remove();
 }
@@ -1328,7 +1430,7 @@ async function deleteLocation(id) {
   notification('success', 'Location deleted');
 }
 
-async function updateLocationJson () {
+async function updateLocationJson() {
   await ensureToken();
   const accessToken = gapi.client.getToken().access_token;
 

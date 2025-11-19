@@ -234,7 +234,8 @@ body {
   background: #ff414b;
 }
 
-.table .action button#edit, .table .action button#info {
+.table .action button#edit,
+.table .action button#info {
   background: #5555d74f;
   padding: 0;
 }
@@ -247,19 +248,23 @@ body {
   fill: #5555d7;
 }
 
-.table .action button#edit:hover, .table .action button#info:hover {
+.table .action button#edit:hover,
+.table .action button#info:hover {
   background: #5555d7;
 }
 
-.table .action button#download, .table .action button#run {
+.table .action button#download,
+.table .action button#run {
   background: #00997d4f;
 }
 
-.table .action button#download svg, .table .action button#run svg {
+.table .action button#download svg,
+.table .action button#run svg {
   stroke: #00997d;
 }
 
-.table .action button#download:hover, .table .action button#run:hover {
+.table .action button#download:hover,
+.table .action button#run:hover {
   background: #00997d;
 }
 
@@ -546,20 +551,26 @@ span.running:before {
 }
 
 @keyframes blink {
+
   0%,
   100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.3;
   }
 }
 
-nav .item .item-main:hover .running, nav .item .item-main.active .running, nav .item:has(.active) .item-main .running {
+nav .item .item-main:hover .running,
+nav .item .item-main.active .running,
+nav .item:has(.active) .item-main .running {
   color: white;
 }
 
-nav .item .item-main:hover .running:before, nav .item .item-main.active .running:before, nav .item:has(.active) .item-main .running:before {
+nav .item .item-main:hover .running:before,
+nav .item .item-main.active .running:before,
+nav .item:has(.active) .item-main .running:before {
   filter: brightness(0) invert(1);
 }
 
@@ -625,7 +636,8 @@ main .content-item {
   gap: .5rem
 }
 
-main input, main select {
+main input,
+main select {
   border: none;
   background: #eee;
   padding: .75rem;
@@ -685,11 +697,35 @@ main select {
 #add-trial .content-container {
   display: grid;
   gap: 1rem;
-  grid-template-columns: 1fr 1fr;;
+  grid-template-columns: 1fr 1fr;
+  ;
 }
 
 .trial-option .set-location {
   grid-column: span 2;
+}
+
+/* ===== ADD TRIAL ===== */
+
+.content-input[class*="Checkbox"] {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.content-input[class*="Checkbox"] label span {
+  margin-left: .5rem;
+}
+
+.content-input[class*="Checkbox"] label input {
+  width: 15px;
+  height: 15px;
+}
+
+.content-input[class*="Checkbox"] label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
 }
 
 /* ===== LINES ===== */
@@ -716,13 +752,13 @@ main select {
   margin-left: calc(100px + 1.5rem)
 }
 
-#paramTypeTable > .type {
+#paramTypeTable>.type {
   max-height: 0;
   transition: .2s all;
   overflow: auto;
 }
 
-#paramTypeTable > .type.active {
+#paramTypeTable>.type.active {
   max-height: 221px;
 }
 
@@ -1007,7 +1043,7 @@ button#uploadBtn:hover {
   gap: 1rem;
 }
 
-.popup form > div:not(.actions) {
+.popup form>div:not(.actions) {
   display: grid;
   grid-template-columns: 100px 1fr;
   gap: 1.5rem;
@@ -1018,7 +1054,8 @@ button#uploadBtn:hover {
   align-items: center;
 }
 
-.popup form input, .popup form select {
+.popup form input,
+.popup form select {
   background: var(--body);
   border: none;
   outline: none;
@@ -1043,7 +1080,8 @@ button#uploadBtn:hover {
   grid-template-columns: 1fr 1fr;
 }
 
-.popup form button, .btn {
+.popup form button,
+.btn {
   background: var(--green);
   color: white;
   width: 100%;
@@ -1061,7 +1099,8 @@ button#uploadBtn:hover {
   background: var(--red);
 }
 
-.popup form button:hover, .btn:hover {
+.popup form button:hover,
+.btn:hover {
   filter: brightness(.8);
 }
 
