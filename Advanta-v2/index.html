@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanta</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Rounded" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js" async defer></script>
+  
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  </head>
+
+  <body>
+
+    <div id="auth-view" class="view-container">
+      <div class="login-card">
+        <div class="logo-large">
+          <span class="material-symbols-rounded"> grass </span>
+          <h1>Advanta</h1>
+        </div>
+        <p>Agricultural Statistics & Data Collection</p>
+        <button id="btn-login" class="btn btn-google">
+          <span class="material-symbols-rounded"> login </span>
+          Sign in with Google
+        </button>
+        <div id="auth-loading" class="hidden">Initializing...</div>
+      </div>
+    </div>
+
+    <div id="app-view" class="view-container hidden">
+      <header class="app-header">
+        <div class="header-left">
+          <span class="material-symbols-rounded"> grass </span>
+          <span class="brand-name">Advanta</span>
+        </div>
+        <nav class="header-nav">
+          <button class="nav-link active" data-target="dashboard">Dashboard</button>
+          <button class="nav-link" data-target="inventory">Inventory</button>
+        </nav>
+        <div class="header-right">
+          <div id="cloud-status">
+            <div class="cloud-success">
+              <span class="material-symbols-rounded">cloud_done</span>
+            </div>
+            <div class="cloud-syncing hidden">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path stroke-dasharray="2 4" stroke-dashoffset="6" d="M12 21c-4.97 0 -9 -4.03 -9 -9c0 -4.97 4.03 -9 9 -9"><animate attributeName="stroke-dashoffset" dur="0.6s" repeatCount="indefinite" values="6;0"/></path><path stroke-dasharray="32" stroke-dashoffset="32" d="M12 3c4.97 0 9 4.03 9 9c0 4.97 -4.03 9 -9 9"><animate fill="freeze" attributeName="stroke-dashoffset" begin="0.1s" dur="0.4s" values="32;0"/></path><path stroke-dasharray="10" stroke-dashoffset="10" d="M12 16v-7.5"><animate fill="freeze" attributeName="stroke-dashoffset" begin="0.5s" dur="0.2s" values="10;0"/></path><path stroke-dasharray="6" stroke-dashoffset="6" d="M12 8.5l3.5 3.5M12 8.5l-3.5 3.5"><animate fill="freeze" attributeName="stroke-dashoffset" begin="0.7s" dur="0.2s" values="6;0"/></path></g></svg>
+            </div>
+          </div>
+          <div id="user-photo">
+            <img src="" alt="">
+          </div>
+          <span id="user-name">User</span>
+          <button id="btn-logout" class="icon-btn" title="Logout">
+            <span class="material-symbols-rounded"> logout </span>
+          </button>
+        </div>
+      </header>
+
+      <main class="app-content">
+
+        <section id="page-dashboard" class="page active">
+          <div class="page-header">
+            <h2>My Trials</h2>
+            <button id="btn-new-trial" class="btn btn-primary">
+              <span class="material-symbols-rounded"> add_2 </span>
+              New Trial
+            </button>
+          </div>
+
+          <div class="stats-row">
+            <div class="stat-card">
+              <span class="label">Total Trials</span>
+              <span class="value" id="stat-total-trials">0</span>
+            </div>
+            <div class="stat-card">
+              <span class="label">In Progress</span>
+              <span class="value" id="stat-active-trials">0</span>
+            </div>
+            <div class="stat-card">
+              <span class="label">Completed</span>
+              <span class="value" id="stat-completed-trials">0</span>
+            </div>
+          </div>
+
+          <div class="trial-list-container">
+            <div id="trial-list-loading" class="loading-spinner hidden"></div>
+            <div id="trial-list"></div>
+            <div id="empty-state-trials" class="empty-state hidden">
+              <span class="material-symbols-rounded"> folder_open </span>
+              <p>No trials found. Create one to get started.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-inventory" class="page">
+          <div class="page-header">
+            <h2>Inventory Management</h2>
+          </div>
+
+          <div class="inventory-tabs">
+            <button class="tab-btn" data-tab="crops">Crops</button>
+            <button class="tab-btn" data-tab="lines">Lines</button>
+            <button class="tab-btn" data-tab="locations">Locations</button>
+            <button class="tab-btn" data-tab="params">Parameters</button>
+          </div>
+
+          <div class="inventory-content hidden">
+            <div class="inventory-actions">
+              <button id="btn-add-inventory" class="btn btn-secondary btn-sm">
+                <span class="material-symbols-rounded"> add </span>
+                Add Item
+              </button>
+            </div>
+            <div id="inventory-list" class="list-group"></div>
+          </div>
+        </section>
+
+        <section id="page-create-trial" class="page">
+          <div class="page-header">
+            <button class="btn-back" data-target="dashboard">
+              <span class="material-symbols-rounded"> arrow_back </span>
+            </button>
+            <h2 id="trial-form-title">Create New Trial</h2>
+          </div>
+
+          <form id="form-create-trial" class="form-layout">
+            <div class="form-group">
+              <label>Trial Name</label>
+              <input type="text" id="input-trial-name" required placeholder="e.g., Rice Yield Analysis 2025">
+            </div>
+
+            <div class="form-group">
+              <label for="input-trial-description">Description</label>
+              <textarea name="input-trial-description" id="input-trial-description" placeholder="Write your description here..."></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>Planting Window</label>
+              <div class="planting-window">
+                <div>
+                  <span>Start Date</span>
+                  <input type="month" id="input-date" required>
+                </div>
+                <div>
+                  <span>End Date</span>
+                  <input type="month" id="input-ends" required>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section-title">Select Location</div>
+
+            <div class="form-group">
+              <label>Draw Area on Map</label>
+              <div id="map"></div>
+            </div>
+
+            <div class="points-area">
+            
+              <div class="form-group">
+                <label>Location</label>
+                <select id="city-select" required></select>
+              </div>
+            
+              <div class="form-group">
+                <label for="address-input">Detailed Address</label>
+                <input type="text" id="address-input" placeholder="City, street name, village, etc.">
+                <div id="loading-indicator" class="hidden">Searching...</div>
+                <div id="search-result-msg"></div>
+              </div>
+            
+              <div class="form-group points-group">
+                <div>
+                  <label>Points and Area Size</label>
+                  <span id="area-output" class="area-badge">0 m²</span>
+                </div>
+                <ul id="coords-list" class="coords-list">
+                  <li>No points selected yet...</li>
+                </ul>
+                <div onclick="resetMap()" class="btn btn-danger hidden">Reset Map</div>
+                <textarea id="json-output" class="hidden" readonly placeholder="Coordinate results..."></textarea>
+              </div>
+            
+            </div>
+
+            <div class="form-group selected-locations">
+              <label>Selected Locations</label>
+              <div id="selected-locations-list" class="selected-locations-list">
+                <span class="helper-text">No locations selected yet.</span>
+              </div>
+            </div>
+
+            <div class="form-section-title">Analysis</div>
+
+            <div class="form-group">
+              <label>Crop Type</label>
+              <select id="select-crop" required></select>
+            </div>
+
+            <div class="form-group">
+              <label>Select Lines (qty)</label>
+              <div id="checkbox-group-lines" class="checkbox-grid"></div>
+            </div>
+
+            <div class="form-group">
+              <label for="input-trial-type">Trial Type</label>
+              <select name="input-trial-type" id="input-trial-type">
+                <option value="parent-test">Parent Test</option>
+                <option value="micro-trial">Micro Trial</option>
+                <option value="process-research">Process Research</option>
+                <option value="pilot-production">Pilot Production</option>
+                <option value="side-by-side">Side by Side</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="input-trial-replications">Replications</label>
+              <input type="number" id="input-trial-replications" value="1" min="1" required>
+            </div>
+
+            <div class="form-group">
+              <label>Number of Samples per Reps</label>
+              <input type="number" id="input-trial-samples" value="1" min="1" required>
+            </div>
+
+            <div class="form-group">
+              <label>Observation Parameters</label>
+              <div id="checkbox-group-params" class="checkbox-grid"></div>
+            </div>
+
+            <div class="form-actions">
+              <button type="button" class="btn btn-text" data-target="dashboard">Cancel</button>
+              <button type="submit" class="btn btn-primary">Create Trial</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="page-run-trial" class="page">
+          <div class="run-header">
+            <button class="btn-back" data-target="dashboard">
+              <span class="material-symbols-rounded"> close </span>
+            </button>
+            <div class="run-info">
+              <h3 id="run-trial-title">Trial Name</h3>
+              <span id="run-progress-text">1 / 10</span>
+            </div>
+            <!-- <button id="btn-save-run" class="btn btn-primary btn-sm">Save</button> -->
+          </div>
+
+          <div class="progress-bar-container">
+            <div id="run-progress-bar" class="progress-bar"></div>
+          </div>
+
+          <div class="quiz-container">
+            <div class="question-card">
+              <div class="question-meta">
+                <span id="q-line-name" class="badge">Line Name</span>
+                <span id="q-param-type" class="badge-secondary">Numeric</span>
+              </div>
+
+              <h2 id="q-param-name">Parameter Name</h2>
+
+              <div id="input-area" class="run-input-group">
+
+              </div>
+
+              <div class="input-area photo-area">
+                <input type="number" id="input-run-number" class="run-input hidden" placeholder="Enter value...">
+                <input type="text" id="input-run-text" class="run-input hidden" placeholder="Enter observation...">
+
+                <div id="input-run-photo" class="photo-upload-area hidden">
+                  <label for="file-photo" class="photo-label">
+                    <span class="material-symbols-rounded"> add_a_photo </span>
+                    <span>Capture / Upload Photo</span>
+                  </label>
+                  <input type="file" id="file-photo" accept="image/*" capture="environment">
+                  <div id="photo-preview-container" class="hidden">
+                    <img id="photo-preview" src="">
+                    <button id="btn-remove-photo" class="icon-btn-danger">
+                      <span class="material-symbols-rounded"> delete </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="navigation-actions">
+                <button id="btn-prev-q" class="btn btn-outline" disabled>Previous</button>
+                <button id="btn-next-q" class="btn btn-primary">Save & Next</button>
+              </div>
+            </div>
+
+            <div class="overview-panel">
+              <h4>Overview</h4>
+              <div id="run-overview-list" class="overview-grid"></div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <div id="modal-inventory" class="modal hidden">
+      <div class="modal-content">
+        <h3 id="modal-inv-title">Add Item</h3>
+        <form id="form-inventory">
+          <div id="modal-inv-fields">
+          </div>
+
+          <div id="param-options-container" class="form-group hidden">
+            <label id="label-options">Options / Range Config</label>
+            <input type="text" id="inv-param-options" placeholder="e.g. 1-100 or Option A, Option B">
+            <small class="helper-text">For Range: use 'min-max'. For Options: use comma.</small>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" id="btn-close-modal" class="btn btn-text">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save to Drive</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+
+</html>
