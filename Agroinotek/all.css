@@ -1,0 +1,311 @@
+@import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&display=swap');
+
+
+body {
+  background: url(https://www.ub.ac.id/wp-content/uploads/2024/08/pentagon-white-pat.png);
+  background-repeat: repeat;
+  background-color: #ececec;
+}
+
+.pkp_structure_page {
+  max-width: 1100px;
+  margin: auto;
+  box-shadow: 0 0 5px #00000072;
+  background-color: #fff;
+}
+
+.pkp_head_wrapper,
+.pkp_site_name_wrapper,
+.pkp_navigation_primary_wrapper,
+.pkp_navigation_user,
+.pkp_search_mobile,
+.pkp_structure_content,
+.pkp_structure_footer,
+.pkp_structure_main,
+.pkp_structure_sidebar {
+  width: 100% !important;
+}
+
+/* ===== HEADER AND NAV ===== */
+
+.pkp_structure_head,
+.pkp_site_nav_menu {
+  background: #158d3d;
+}
+
+.pkp_navigation_user_wrapper {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100%;
+  padding-right: 1rem;
+}
+
+.has_site_logo .pkp_head_wrapper {
+  padding-top: 0;
+}
+
+.pkp_site_name {
+  padding: 3rem 2rem 2rem;
+}
+
+.pkp_site_name a {
+  display: grid !important;
+  grid-template-columns: 80px 1fr;
+  color: #fff;
+  font-family: "Josefin Sans", sans-serif;
+  text-decoration: unset;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.pkp_site_name a div:nth-child(2) {
+  display: grid;
+  gap: 1rem;
+}
+
+.pkp_site_name a span:nth-child(1) {
+  font-weight: 900;
+}
+
+.pkp_site_name a span:nth-child(2) {
+  font-weight: 400;
+  font-size: 1.5rem;
+}
+
+.pkp_nav_list ul {
+  background-color: #158d3d
+}
+
+.pkp_nav_list a,
+.pkp_navigation_search_wrapper a {
+  color: #fff !important;
+}
+
+.pkp_navigation_primary>li:first-child a {
+  margin: 0 0 0 .5rem;
+}
+
+.pkp_nav_list ul li a {
+  margin: 0 !important
+}
+
+.pkp_nav_list ul a:hover,
+.pkp_nav_list ul a:focus {
+  background-color: #0d6229;
+}
+
+/* ===== MAIN ===== */
+
+.pkp_structure_content {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  padding: 0;
+}
+
+.pkp_structure_content:before, .pkp_structure_main:before, .pkp_structure_main:after {
+  display: none;
+}
+
+.pkp_structure_main {
+  padding: 2rem 2rem 0;
+}
+
+.pkp_structure_main:after {
+  display: none !important;
+}
+
+.obj_article_details .main_entry {
+  width: 100% !important;
+}
+
+.page_index_journal {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.page_index_journal>section {
+  padding: 0 !important;
+}
+
+.pkp_structure_main h1,
+.pkp_structure_main h2,
+.pkp_structure_main h3,
+.pkp_structure_main h4,
+.pkp_page_index .current_issue .current_issue_title,
+.obj_issue_toc .published,
+.obj_issue_toc .sections:not(:first-child) {
+  margin: 0;
+}
+
+.obj_issue_toc .section {
+  margin: 0 -2rem !important;
+}
+
+.cmp_article_list {
+  padding-top: 1.5rem !important;
+}
+
+section.current_issue:before {
+  content: "";
+  border-top: 1px solid #ddd;
+  width: calc(100% + 4rem);
+  display: block;
+  padding-bottom: 2rem;
+  margin: 0 -2rem;
+}
+
+/* ===== SIDEBAR ===== */
+
+.pkp_structure_sidebar {
+  border-left: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 2rem;
+}
+
+.pkp_structure_sidebar .pkp_block {
+  padding: 0;
+}
+
+.pkp_structure_sidebar .tools .content {
+  display: grid;
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.pkp_block .title {
+  background-color: #158d3d;
+  color: white;
+  padding: .75rem 1rem;
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.pkp_block .block li {
+  padding: 0 !important;
+}
+
+.pkp_block .block a {
+  background: linear-gradient(90deg, rgba(21, 141, 61, 1) 0%, rgba(133, 195, 154, 1) 75%, rgba(255, 255, 255, 1) 100%);
+  display: block;
+  color: white;
+  font-weight: bold;
+  margin-bottom: .25rem;
+  padding: .75rem 1rem;
+  transition: .1s all;
+}
+
+.pkp_block .block a:hover {
+  background: transparent;
+  color: #006798;
+}
+
+/* ===== ARTICLE ===== */
+
+.row:before,
+.row:after {
+  display: none;
+}
+
+.obj_article_details .row {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  border-bottom: unset;
+}
+
+/* ===== FOOTER ===== */
+
+.customjarwo_footmenu {
+  padding: 2rem;
+  border-top: 1px solid #ddd;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 2rem;
+}
+
+.customjarwo_footmenu .title {
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+
+.customjarwo_footer {
+  text-align: center;
+  padding: 1rem;
+  color: white;
+  background-color: #1a793a;
+  max-width: 1100px;
+  margin: auto;
+  box-shadow: 0 0 5px #00000072;
+}
+
+/* ===== RESPONSIVE ===== */
+
+@media (max-width: 1100px) {
+
+  .pkp_structure_content,
+  .obj_article_details .row,
+  .customjarwo_footmenu {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 991px) {
+  .pkp_site_name_wrapper {
+    overflow: hidden;
+  }
+
+  .pkp_site_name {
+    display: block;
+    position: relative;
+    padding: 0;
+    width: unset !important;
+  }
+
+  .pkp_site_name a div:nth-child(2) {
+    display: flex;
+    margin-bottom: -5px;
+  }
+
+  .pkp_site_name a {
+    display: flex !important;
+  }
+
+  .pkp_site_name a span:nth-child(2) {
+    display: none;
+  }
+
+  .pkp_site_nav_toggle>span {
+    border-color: #fff;
+  }
+
+  .pkp_site_nav_toggle>span:before,
+  .pkp_site_nav_toggle>span:after {
+    background: #fff;
+  }
+
+  .pkp_navigation_user_wrapper {
+    position: relative;
+  }
+
+  .pkp_navigation_primary>li:first-child a {
+    margin: 0;
+  }
+
+  .obj_issue_toc .section {
+    margin: 2rem 0 0 !important;
+  }
+}
+
+/* ===== TEMP ===== */
+
+/* .dropdown-menu {
+  display: block !important;
+  position: absolute !important;
+  transform: translate3d(7px, 40px, 0px) !important;
+  top: 0 !important;
+  left: 0 !important;
+  will-change: transform !important;
+} */
