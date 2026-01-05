@@ -97,6 +97,7 @@ select {
   border-radius: var(--radius-md);
   font-weight: 500;
   font-size: 0.95rem;
+  cursor: pointer;
 }
 
 .btn-google {
@@ -273,6 +274,7 @@ select {
   margin-top: var(--header-height);
   height: calc(100vh - var(--header-height));
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 2rem;
 }
 
@@ -441,6 +443,12 @@ select {
 }
 
 .form-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.form-area {
   background: var(--white);
   padding: 2rem;
   border-radius: var(--radius-lg);
@@ -452,15 +460,6 @@ select {
   font-weight: bold;
   font-size: 1.3rem;
   position: relative;
-}
-
-.form-section-title:before {
-  content: '';
-  width: calc(100% + 4rem);
-  height: 2px;
-  background: var(--border-color);
-  display: block;
-  margin: 2rem -2rem 1.5rem;
 }
 
 .form-group {
@@ -1229,10 +1228,102 @@ input.leaflet-control-layers-selector {
   font-size: .8rem;
 }
 
-.points-group {
+.save-area {
   margin: 0
 }
 
 .selected-locations {
   margin-top: 1.5rem;
+  margin-bottom: 0;
+}
+
+.location-list-item {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+}
+
+.location-list-map {
+  height: 100%;
+  width: 100%;
+}
+
+.location-list-map>div {
+  width: 100%;
+  height: 250px;
+}
+
+/* --- MAP ON SELECTED LOCATION --- */
+
+
+
+/* --- LAYOUTING ITEMS --- */
+
+.slider-container {
+  position: relative;
+}
+
+.slider-wrapper {
+  display: flex;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+}
+
+.slider-child {
+  flex: 0 0 100%;
+  margin: 0 10px;
+  min-height: 400px;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.slider-child:not(.active) {
+  opacity: 0.4;
+  transform: scale(0.9);
+}
+
+.nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.prev-btn {
+  left: 20px;
+}
+
+.next-btn {
+  right: 20px;
+}
+
+.dots {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  background: #999;
+  border-radius: 50%;
+  opacity: 0.5;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.dot.active {
+  opacity: 1;
+  transform: scale(1.2);
+  background: #333;
 }

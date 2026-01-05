@@ -393,7 +393,9 @@ function populateTrialForm() {
     .map((c) => {
       const val = typeof c === "object" ? c.name : c;
       return ` 
-        <option value="${val}" ${ val === currentSelectedCrop ? "selected" : ""}>${val}</option>
+        <option value="${val}" ${
+        val === currentSelectedCrop ? "selected" : ""
+      }>${val}</option>
       `;
     })
     .join("");
@@ -403,7 +405,7 @@ function populateTrialForm() {
     .map((l) => {
       const val = typeof l === "object" ? l.name : l;
       const coord = typeof l === "object" ? l.coord : "";
-      return `<option value="${coord}">${val}</option>`
+      return `<option value="${coord}">${val}</option>`;
     })
     .join("");
 
@@ -1146,7 +1148,9 @@ function openInventoryModal(tab, index = null) {
             <div class="form-group">
               <label>Location</label>
               <div id="map-single"></div>
-              <input type="text" id="single-coord-output" required disabled value="${locCoord ? locCoord.lat + ", " + locCoord.lng : ""}">
+              <input type="text" id="single-coord-output" required disabled value="${
+                locCoord ? locCoord.lat + ", " + locCoord.lng : ""
+              }">
             </div>
         `;
     // initSingleMap();
@@ -1209,7 +1213,7 @@ async function handleSaveInventory(e) {
   } else if (tab === "locations") {
     newValue = {
       name: document.getElementById("inv-generic-name").value,
-      coord: document.getElementById("single-coord-output").value
+      coord: document.getElementById("single-coord-output").value,
     };
   }
 
@@ -1351,11 +1355,22 @@ function openEditTrial(trialId, event) {
 const getLayers = () => {
   const osm = L.tileLayer(
     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    { maxNativeZoom: 19, maxZoom: 25, attribution: '<a href="https://www.kodejarwo.com" title="Kode Jarwo"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8"><path fill="#ED1C24" d="M0 0h12v4H0z"></path><path fill="#FFFFFF" d="M0 4h12v3H0z"></path><path fill="#e9e9e9ff" d="M0 7h12v1H0z"></path></svg> Ozik Jarwo</a>' }
+    {
+      maxNativeZoom: 19,
+      maxZoom: 25,
+      attribution:
+        '<a href="https://www.kodejarwo.com" title="Kode Jarwo"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8"><path fill="#ED1C24" d="M0 0h12v4H0z"></path><path fill="#FFFFFF" d="M0 4h12v3H0z"></path><path fill="#e9e9e9ff" d="M0 7h12v1H0z"></path></svg> Ozik Jarwo</a>',
+    }
   );
   const satellite = L.tileLayer(
     "https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.{ext}",
-    { maxNativeZoom: 20, maxZoom: 25, ext: 'jpg', attribution: '<a href="https://www.kodejarwo.com" title="Kode Jarwo"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8"><path fill="#ED1C24" d="M0 0h12v4H0z"></path><path fill="#FFFFFF" d="M0 4h12v3H0z"></path><path fill="#e9e9e9ff" d="M0 7h12v1H0z"></path></svg> Ozik Jarwo</a>' }
+    {
+      maxNativeZoom: 20,
+      maxZoom: 25,
+      ext: "jpg",
+      attribution:
+        '<a href="https://www.kodejarwo.com" title="Kode Jarwo"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8"><path fill="#ED1C24" d="M0 0h12v4H0z"></path><path fill="#FFFFFF" d="M0 4h12v3H0z"></path><path fill="#e9e9e9ff" d="M0 7h12v1H0z"></path></svg> Ozik Jarwo</a>',
+    }
   );
   return { osm, satellite };
 };
@@ -1401,11 +1416,7 @@ function initAreaMap(lat, lng) {
   if (map) map.remove();
   const { osm, satellite } = getLayers();
   map = L.map("map", { center: [lat, lng], zoom: 13, layers: [satellite] });
-  L.control
-    .layers(
-      { "Road Map": osm, Satellite: satellite }
-    )
-    .addTo(map);
+  L.control.layers({ "Road Map": osm, Satellite: satellite }).addTo(map);
   map.on("click", (e) => addPoint(e.latlng.lat, e.latlng.lng));
 }
 
@@ -1477,6 +1488,49 @@ function removePoint(idx) {
   updateAreaOutput();
 }
 
+function saveMap() {
+  document.querySelector(".form-layouting").classList.remove("hidden");
+
+  const citySelect = document.getElementById("city-select");
+  const addressInput = document.getElementById("address-input");
+  const coordsOutput = document.getElementById("json-output");
+  const locationList = document.getElementById("sliderWrapper");
+
+  if (points.length < 3) {
+    alert("Please select at least 3 points to form a polygon.");
+    return;
+  } else {
+    const locationData = {
+      city: citySelect.options[citySelect.selectedIndex].text,
+      address: addressInput.value,
+      center: citySelect.value.split(",").map(Number),
+      polygon: points,
+    };
+
+    const listItem = document.createElement("div");
+    listItem.className = "form-area slider-child";
+    listItem.innerHTML = `
+      <div class="location-list-info">
+        <span class="city">${locationData.city}</span>
+        <span class="desc">${locationData.address || ""}</span>
+        <p>${coordsOutput.value}</p>
+        <button onclick="this.parentElement.remove()">
+          <span class="material-symbols-rounded"> delete </span>
+        </button>
+      </div>
+      <div class="location-list-map">
+        <div id="map-number-${locationList.children.length}"></div>
+      </div>
+    `;
+    locationList.appendChild(listItem);
+
+    // Memanggil showMap secara langsung setelah menambahkan lokasi
+    showMap(locationData.polygon, locationList.children.length - 1);
+  }
+  resetMap();
+  sliderController.refresh();
+}
+
 function resetMap() {
   markers.forEach((m) => map.removeLayer(m));
   markers = [];
@@ -1484,6 +1538,29 @@ function resetMap() {
   polygonLayer = null;
   points = [];
   updateAreaOutput();
+}
+
+function showMap(jsonData, number) {
+  const { osm, satellite } = getLayers();
+
+  console.log(`map-number-${number}`);
+
+  const map = L.map(`map-number-${number}`, {
+    layers: [satellite],
+    dragging: false,
+    scrollWheelZoom: false,
+    touchZoom: false,
+    zoomControl: false,
+    attributionControl: false,
+    doubleClickZoom: false,
+  });
+
+  const polygon = L.polygon(jsonData, {
+    color: "#2563eb",
+    fillOpacity: 0.4,
+  }).addTo(map);
+
+  map.fitBounds(polygon.getBounds(), { padding: [20, 20] });
 }
 
 // Listeners for Section 2
@@ -1496,13 +1573,19 @@ function citySelect(a) {
   }, 100);
 }
 
-document.getElementById("city-select").addEventListener("change", function(event) {
-  citySelect(event.target);
-});
+document
+  .getElementById("city-select")
+  .addEventListener("change", function (event) {
+    citySelect(event.target);
+  });
 
 document.getElementById("address-input").addEventListener("input", function () {
+  return;
   clearTimeout(searchTimeout);
-  const query = document.getElementById("city-select").getAttribute("data-city") + " " + this.value;
+  const query =
+    document.getElementById("city-select").getAttribute("data-city") +
+    " " +
+    this.value;
   const msg = document.getElementById("search-result-msg");
   if (query.length < 3) return;
   msg.innerText = "Searching...";
@@ -1590,7 +1673,7 @@ function initSingleMap() {
   const { osm, satellite, labels } = getLayers();
   // Default center to Jakarta
   mapSingle = L.map("map-single", {
-    center: [-2.416426, 116.426164], 
+    center: [-2.416426, 116.426164],
     zoom: 4.5,
     layers: [osm],
   });
@@ -1622,3 +1705,62 @@ function initSingleMap() {
     )}, ${lng.toFixed(6)}`;
   });
 }
+
+// ================= SLIDER =================
+
+const sliderController = (function () {
+  let currentIndex = 0;
+
+  function init() {
+    const container = document.getElementById("mainSliderContainer");
+    const wrapper = document.getElementById("sliderWrapper");
+    const slides = document.querySelectorAll(".slider-child");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const dotsContainer = document.getElementById("dotsContainer");
+
+    dotsContainer.innerHTML = "";
+
+    slides.forEach((_, i) => {
+      const dot = document.createElement("div");
+      dot.classList.add("dot");
+      dot.onclick = () => goToSlide(i);
+      dotsContainer.appendChild(dot);
+    });
+
+    const dots = document.querySelectorAll(".dot");
+
+    function goToSlide(index) {
+      if (index >= slides.length) index = 0;
+      if (index < 0) index = slides.length - 1;
+
+      currentIndex = index;
+
+      const slideWidth = slides[0].offsetWidth;
+      const margin = 10;
+      const containerWidth = container.offsetWidth;
+
+      const centerOffset = (containerWidth - slideWidth) / 2;
+      const xTranslation =
+        -((slideWidth + margin * 2) * index) + centerOffset - margin;
+
+      wrapper.style.transform = `translateX(${xTranslation}px)`;
+
+      slides.forEach((slide, i) => {
+        slide.classList.toggle("active", i === currentIndex);
+      });
+
+      dots.forEach((dot, i) => {
+        dot.classList.toggle("active", i === currentIndex);
+      });
+    }
+
+    nextBtn.onclick = () => goToSlide(currentIndex + 1);
+    prevBtn.onclick = () => goToSlide(currentIndex - 1);
+    window.onresize = () => goToSlide(currentIndex);
+
+    goToSlide(currentIndex);
+  }
+
+  return { refresh: init };
+})();
