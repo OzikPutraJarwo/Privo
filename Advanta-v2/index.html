@@ -164,6 +164,27 @@
                 </div>
               </div>
             
+              <div class="form-group">
+                <label>Crop Type</label>
+                <select id="select-crop" required></select>
+              </div>
+            
+              <div class="form-group">
+                <label for="input-trial-type">Trial Type</label>
+                <select name="input-trial-type" id="input-trial-type">
+                  <option value="parent-test">Parent Test</option>
+                  <option value="micro-trial">Micro Trial</option>
+                  <option value="process-research">Process Research</option>
+                  <option value="pilot-production">Pilot Production</option>
+                  <option value="side-by-side">Side by Side</option>
+                </select>
+              </div>
+            
+              <div class="form-group">
+                <label>Observation Parameters</label>
+                <div id="checkbox-group-params" class="checkbox-grid"></div>
+              </div>
+            
             </div>
 
             <div class="form-area location">
@@ -206,13 +227,6 @@
                 </div>
             
               </div>
-            
-              <div class="form-group selected-locations">
-                <label>Selected Locations</label>
-                <div id="selected-locations-list" class="selected-locations-list">
-                  <span class="helper-text">No locations selected yet.</span>
-                </div>
-              </div>
 
             </div>
 
@@ -236,42 +250,15 @@
 
             </div>
 
-            <div class="form-section-title">Analysis</div>
+            <div class="form-area hidden">
 
-            <div class="form-group">
-              <label>Crop Type</label>
-              <select id="select-crop" required></select>
-            </div>
+              <div class="form-section-title">Assets</div>
+  
+              <div class="form-group">
+                <label>Select Lines (qty)</label>
+                <div id="checkbox-group-lines" class="checkbox-grid"></div>
+              </div>
 
-            <div class="form-group">
-              <label>Select Lines (qty)</label>
-              <div id="checkbox-group-lines" class="checkbox-grid"></div>
-            </div>
-
-            <div class="form-group">
-              <label for="input-trial-type">Trial Type</label>
-              <select name="input-trial-type" id="input-trial-type">
-                <option value="parent-test">Parent Test</option>
-                <option value="micro-trial">Micro Trial</option>
-                <option value="process-research">Process Research</option>
-                <option value="pilot-production">Pilot Production</option>
-                <option value="side-by-side">Side by Side</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="input-trial-replications">Replications</label>
-              <input type="number" id="input-trial-replications" value="1" min="1" required>
-            </div>
-
-            <div class="form-group">
-              <label>Number of Samples per Reps</label>
-              <input type="number" id="input-trial-samples" value="1" min="1" required>
-            </div>
-
-            <div class="form-group">
-              <label>Observation Parameters</label>
-              <div id="checkbox-group-params" class="checkbox-grid"></div>
             </div>
 
             <div class="form-actions">

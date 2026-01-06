@@ -1509,24 +1509,76 @@ function saveMap() {
 
     const listItem = document.createElement("div");
     listItem.className = "form-area slider-child";
+    listItem.classList.add(`map-number-${locationList.children.length}`);
     listItem.innerHTML = `
-      <div class="location-list-info">
-        <span class="city">${locationData.city}</span>
-        <span class="desc">${locationData.address || ""}</span>
-        <p>${coordsOutput.value}</p>
-        <button onclick="this.parentElement.remove()">
-          <span class="material-symbols-rounded"> delete </span>
-        </button>
-      </div>
-      <div class="location-list-map">
+      <div class="form-section-title">Layouting for ${locationData.city}</div>
+
+      <div class="location-list-map form-group">
         <div id="map-number-${locationList.children.length}"></div>
+      </div>
+
+      <div class="location-list-info form-group">
+        <div class="form-group">
+          <label>Detailed Address</label>
+          <div class="input-type-element">${locationData.address || "-"}</div>
+        </div>
+        <div class="form-group">
+          <label>Area Coordinates</label>
+          <div class="input-type-element">${coordsOutput.value || "-"}</div>
+        </div>
+        <!-- <button onclick="this.parentElement.parentElement.remove();sliderController.refresh();">
+          <span class="material-symbols-rounded"> delete </span>
+        </button> -->
+      </div>
+
+      <div class="location-list-details form-group">
+        <div class="form-group">
+          <label>Select Lines (qty)</label>
+          <div class="location-list-lines-${locationList.children.length} checkbox-grid"></div>
+        </div>
+        <div class="form-group">
+          <label>Number of Range</label>
+          <input type="number" min="1" class="location-list-ranges">
+        </div>
+        <div class="form-group">
+          <label>Plot per Range</label>
+          <input type="number" min="1" class="location-list-plot">
+        </div>
+        <div class="form-group">
+          <label>Number of Replication</label>
+          <input type="number" min="1" class="location-list-replication">
+        </div>
+        <div class="form-group">
+          <label>Direction</label>
+          <select class="location-list-direction">
+            <option value="serpentine">Serpentine</option>
+            <option value="straight">Straight</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Randomization</label>
+          <select class="location-list-randomization">
+            <option value="serpentine">Normal</option>
+            <option value="straight">Random</option>
+          </select>
+        </div>
+        <!--<div class="form-group">
+          <label></label>
+          <input type="number" min="1" class="location-list-">
+        </div>-->
       </div>
     `;
     locationList.appendChild(listItem);
+    const lines = document.getElementById("checkbox-group-lines").innerHTML;
+    console.log(lines);
+    const locationLines = document.querySelector(`.location-list-lines-${locationList.children.length - 1}`);
+    console.log(locationLines);
+    locationLines.innerHTML = lines;
 
     // Memanggil showMap secara langsung setelah menambahkan lokasi
     showMap(locationData.polygon, locationList.children.length - 1);
   }
+  addressInput.value = "";
   resetMap();
   sliderController.refresh();
 }

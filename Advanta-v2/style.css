@@ -462,7 +462,7 @@ select {
   position: relative;
 }
 
-.form-group {
+.form-group:not(:last-child) {
   margin-bottom: 1.5rem;
 }
 
@@ -476,7 +476,8 @@ select {
 .form-group input,
 .form-group select,
 .form-control,
-.form-group textarea {
+.form-group textarea,
+.input-type-element {
   width: 100%;
   padding: 0.75rem;
   border: 1px solid var(--border-color);
@@ -528,7 +529,6 @@ select {
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
-  margin-top: 2rem;
 }
 
 .btn-back {
@@ -1158,7 +1158,7 @@ select {
 #map,
 #map-import,
 #map-single {
-  height: 500px;
+  height: 650px;
   width: 100%;
   background-color: #f9fafb;
   border: 1px solid var(--border-color);
@@ -1232,11 +1232,6 @@ input.leaflet-control-layers-selector {
   margin: 0
 }
 
-.selected-locations {
-  margin-top: 1.5rem;
-  margin-bottom: 0;
-}
-
 .location-list-item {
   display: grid;
   grid-template-columns: 1fr 300px;
@@ -1269,6 +1264,7 @@ input.leaflet-control-layers-selector {
 }
 
 .slider-child {
+  height: 100%;
   flex: 0 0 100%;
   margin: 0 10px;
   min-height: 400px;
@@ -1280,10 +1276,13 @@ input.leaflet-control-layers-selector {
   transform: scale(0.9);
 }
 
+.slider-child .form-section-title {
+  text-align: center;
+}
+
 .nav-btn {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 20px;
   background: rgba(0, 0, 0, 0.6);
   color: white;
   border: none;
