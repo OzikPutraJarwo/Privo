@@ -917,7 +917,21 @@ function renderInventoryList(tab) {
     } else if (tab === "lines") {
       displayName =
         typeof item === "object"
-          ? `${item.name}<small>${item.crop} · ${item.quantity} · ${item.stage} · ${item.origin} · ${item.arrivalDate} · ${item.registeredDate} · ${item.parentCode} · ${item.hybridCode} · ${item.sprCode} · ${item.role}</small>`
+          ? `
+          <span>${item.name}</span>
+            <div class="line-desc">
+              <span>Crop: ${item.crop}</span>
+              <span>Quantity: ${item.quantity}</span>
+              <span>Stage: ${item.stage}</span>
+              <span>Origin: ${item.origin}</span>
+              <span>Arrival Date: ${item.arrivalDate}</span>
+              <span>Registered Date: ${item.registeredDate}</span>
+              <span>Parent Code: ${item.parentCode}</span>
+              <span>Hybrid Code: ${item.hybridCode}</span>
+              <span>SPR Code: ${item.sprCode}</span>
+              <span>Role: ${item.role}</span>
+            </div>
+          `
           : item;
     } else if (tab === "locations") {
       displayName = item.name;
@@ -944,7 +958,7 @@ function openInventoryModal(tab, index = null) {
     const item =
       index !== null
         ? inventoryData.params[index]
-        : { name: "", type: "text", unit: "", photo: !1, options: "" };
+        : { name: "", type: "text", unit: "", qty: "", photo: !1, options: "" };
     fieldsContainer.innerHTML = `
             <div class="form-group">
                 <label>Parameter Name</label>
@@ -952,12 +966,10 @@ function openInventoryModal(tab, index = null) {
                   item.name
                 }" required>
             </div>
-<div class="form-group">
-        <label>Parameter Initial (Max 3 Characters)</label>
-        <input type="text" id="input-param-initial" maxlength="3" value="${
-          item.initial || ""
-        }" placeholder="e.g., PH, HGT" required>
-    </div>
+            <div class="form-group">
+                <label>Parameter Initial (Max 3 Characters)</label>
+                <input type="text" id="input-param-initial" maxlength="3" value="${item.initial || ""}" placeholder="e.g., PH, HGT" required>
+            </div>
             <div class="form-group">
                 <label>Type</label>
                 <select id="inv-param-type" onchange="toggleParamOptions(this.value)">
@@ -994,6 +1006,12 @@ function openInventoryModal(tab, index = null) {
                 <input type="text" id="inv-param-unit" value="${
                   item.unit || ""
                 }" placeholder="e.g. cm, kg, score">
+            </div>
+            <div class="form-group">
+                <label>Quantity</label>
+                <input type="number" id="inv-param-qty" value="${
+                  item.qty || "0"
+                }" placeholder="e.g. 1, 50, 100">
             </div>
             <div class="form-group checkbox-item">
                 <input type="checkbox" id="inv-param-photo" ${
@@ -1188,6 +1206,7 @@ async function handleSaveInventory(e) {
         .value.toUpperCase(),
       type: document.getElementById("inv-param-type").value,
       unit: document.getElementById("inv-param-unit").value,
+      qty: parseInt(document.getElementById("inv-param-qty").value),
       photo: document.getElementById("inv-param-photo").checked,
       options: document.getElementById("inv-param-options").value,
     };
@@ -1507,6 +1526,7 @@ function saveMap() {
       polygon: points,
     };
 
+    const length = locationList.children.length;
     const listItem = document.createElement("div");
     listItem.className = "form-area slider-child";
     listItem.classList.add(`map-number-${locationList.children.length}`);
@@ -1524,59 +1544,69 @@ function saveMap() {
         </div>
         <div class="form-group">
           <label>Area Coordinates</label>
-          <div class="input-type-element">${coordsOutput.value || "-"}</div>
+          <div class="input-type-element location-list-coord">${coordsOutput.value || "-"}</div>
         </div>
         <!-- <button onclick="this.parentElement.parentElement.remove();sliderController.refresh();">
           <span class="material-symbols-rounded"> delete </span>
         </button> -->
       </div>
 
+      <div class="form-group">
+          <label>Select Lines (qty)</label>
+          <label class="small">Checkbox</label>
+          <div class="location-list-lines-${locationList.children.length} checkbox-grid"></div>
+          <label class="small">Number</label>
+          <input type="number" min="1" id="location-list-lines-${length}" value="10">
+        </div>
+
       <div class="location-list-details form-group">
         <div class="form-group">
-          <label>Select Lines (qty)</label>
-          <div class="location-list-lines-${locationList.children.length} checkbox-grid"></div>
-        </div>
-        <div class="form-group">
           <label>Number of Range</label>
-          <input type="number" min="1" class="location-list-ranges">
-        </div>
-        <div class="form-group">
-          <label>Plot per Range</label>
-          <input type="number" min="1" class="location-list-plot">
+          <input type="number" min="1" id="location-list-ranges-${length}" value="1">
         </div>
         <div class="form-group">
           <label>Number of Replication</label>
-          <input type="number" min="1" class="location-list-replication">
+          <input type="number" min="1" id="location-list-replication-${length}" value="1">
         </div>
         <div class="form-group">
           <label>Direction</label>
-          <select class="location-list-direction">
+          <select id="location-list-direction-${length}">
             <option value="serpentine">Serpentine</option>
             <option value="straight">Straight</option>
           </select>
         </div>
         <div class="form-group">
           <label>Randomization</label>
-          <select class="location-list-randomization">
+          <select id="location-list-randomization-${length}">
             <option value="serpentine">Normal</option>
             <option value="straight">Random</option>
           </select>
         </div>
-        <!--<div class="form-group">
-          <label></label>
-          <input type="number" min="1" class="location-list-">
-        </div>-->
+      </div>
+
+      <div class="form-group">
+        <label>Layout</label>
+        <div id="location-list-layout-${length}"></div>
       </div>
     `;
+
+    const lengthEnd = locationList.children.length;
     locationList.appendChild(listItem);
+
     const lines = document.getElementById("checkbox-group-lines").innerHTML;
-    console.log(lines);
-    const locationLines = document.querySelector(`.location-list-lines-${locationList.children.length - 1}`);
-    console.log(locationLines);
+    const locationLines = document.querySelector(`.location-list-lines-${lengthEnd}`);
     locationLines.innerHTML = lines;
 
+    const trial1 = new PlotManager({
+      linesId: `location-list-lines-${lengthEnd}`,
+      rowsId: `location-list-ranges-${lengthEnd}`,
+      repsId: `location-list-replication-${lengthEnd}`,
+      directionId: `location-list-direction-${lengthEnd}`,
+      outputId: `location-list-layout-${lengthEnd}`,
+    });
+
     // Memanggil showMap secara langsung setelah menambahkan lokasi
-    showMap(locationData.polygon, locationList.children.length - 1);
+    showMap(locationData.polygon, length);
   }
   addressInput.value = "";
   resetMap();
@@ -1613,6 +1643,101 @@ function showMap(jsonData, number) {
   }).addTo(map);
 
   map.fitBounds(polygon.getBounds(), { padding: [20, 20] });
+}
+
+class PlotManager {
+  constructor(config) {
+    // Mengambil elemen berdasarkan ID yang diberikan di config
+    this.linesEl = document.getElementById(config.linesId);
+    this.rowsEl = document.getElementById(config.rowsId);
+    this.repsEl = document.getElementById(config.repsId);
+    this.dirEl = document.getElementById(config.directionId);
+    this.outputEl = document.getElementById(config.outputId);
+
+    // Validasi sederhana agar tidak error jika ID salah
+    if (!this.linesEl || !this.outputEl) {
+      console.error(
+        "PlotManager: Elemen input atau output tidak ditemukan. Pastikan ID sudah benar."
+      );
+      return;
+    }
+
+    this.init();
+  }
+
+  // Fungsi untuk memasang event listener (pendengar perubahan)
+  init() {
+    const updateTrigger = () => this.render();
+    const inputElements = [this.linesEl, this.rowsEl, this.repsEl, this.dirEl];
+
+    inputElements.forEach((el) => {
+      if (el) el.addEventListener("input", updateTrigger);
+    });
+
+    // Jalankan render pertama kali agar tabel langsung muncul
+    this.render();
+  }
+
+  // Fungsi utama untuk menghitung angka dan membuat tabel
+  render() {
+    const lines = parseInt(this.linesEl.value) || 0;
+    const rows = parseInt(this.rowsEl.value) || 1;
+    const reps = parseInt(this.repsEl.value) || 0;
+    const direction = this.dirEl.value;
+
+    // Bersihkan area output sebelum menggambar ulang
+    this.outputEl.innerHTML = "";
+
+    if (lines <= 0 || reps <= 0) return;
+
+    const cols = Math.ceil(lines / rows);
+
+    for (let r = 1; r <= reps; r++) {
+      const section = document.createElement("div");
+      section.className = "rep-section";
+
+      const title = document.createElement("h4");
+      title.innerText = `Replication #${r}`;
+      section.appendChild(title);
+
+      const table = document.createElement("table");
+
+      // Membuat grid kosong (Array 2 Dimensi)
+      let grid = Array.from({ length: rows }, () => Array(cols).fill(""));
+
+      for (let c = 0; c < cols; c++) {
+        const isReversed = direction === "serpentine" && c % 2 !== 0;
+        for (let rowIdx = 0; rowIdx < rows; rowIdx++) {
+          let currentNum;
+          if (isReversed) {
+            // Logika arah ular (bawah ke atas untuk kolom ganjil)
+            currentNum = c * rows + (rows - rowIdx);
+          } else {
+            // Logika arah lurus (atas ke bawah)
+            currentNum = c * rows + (rowIdx + 1);
+          }
+
+          if (currentNum <= lines) {
+            grid[rowIdx][c] = currentNum;
+          }
+        }
+      }
+
+      // Mengubah data grid menjadi elemen tabel HTML
+      for (let i = 0; i < rows; i++) {
+        const tr = document.createElement("tr");
+        for (let j = 0; j < cols; j++) {
+          const td = document.createElement("td");
+          td.innerText = grid[i][j];
+          tr.appendChild(td);
+        }
+        table.appendChild(tr);
+      }
+
+      section.appendChild(table);
+      this.outputEl.appendChild(section);
+    }
+  }
 }
 
 // Listeners for Section 2

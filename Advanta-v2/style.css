@@ -473,6 +473,11 @@ select {
   color: var(--text-main);
 }
 
+.form-group label.small {
+  font-size: .9rem;
+  font-weight: 400;
+}
+
 .form-group input,
 .form-group select,
 .form-control,
@@ -501,10 +506,6 @@ select {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
-}
-
-.planting-window span {
-  font-size: 0.9rem;
 }
 
 .checkbox-grid {
@@ -1247,11 +1248,7 @@ input.leaflet-control-layers-selector {
   height: 250px;
 }
 
-/* --- MAP ON SELECTED LOCATION --- */
-
-
-
-/* --- LAYOUTING ITEMS --- */
+/* --- LAYOUTING ITEMS SLIDER --- */
 
 .slider-container {
   position: relative;
@@ -1325,4 +1322,52 @@ input.leaflet-control-layers-selector {
   opacity: 1;
   transform: scale(1.2);
   background: #333;
+}
+
+/* --- LAYOUTING ITEMS LAYOUT --- */
+
+.location-list-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 1.5rem;
+  margin-bottom: 0 !important;
+}
+
+.location-list-coord {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+[id^="location-list-layout"] {
+  background: var(--secondary-color);
+  padding: 1.5rem;
+  border-radius: .5rem;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr 1fr;
+}
+
+[id^="location-list-layout"] .rep-section {
+  border: 1px solid var(--border-color);
+  padding: 1rem;
+  border-radius: .5rem;
+}
+
+[id^="location-list-layout"] h4 {
+  text-align: center;
+  margin-bottom: 0.5rem;
+  font-weight: normal;
+  font-size: .9rem;
+}
+
+[id^="location-list-layout"] table {
+  width: 100%;
+  text-align: center;
+  border-collapse: collapse;
+}
+
+[id^="location-list-layout"] td {
+  border: 1px solid;
+  font-size: 0.6rem;
+  padding: 0.2rem;
 }
