@@ -1578,8 +1578,8 @@ function saveMap() {
         <div class="form-group">
           <label>Randomization</label>
           <select id="location-list-randomization-${length}">
-            <option value="serpentine">Normal</option>
-            <option value="straight">Random</option>
+            <option value="normal">Normal</option>
+            <option value="random">Random</option>
           </select>
         </div>
       </div>
@@ -1602,6 +1602,7 @@ function saveMap() {
       rowsId: `location-list-ranges-${lengthEnd}`,
       repsId: `location-list-replication-${lengthEnd}`,
       directionId: `location-list-direction-${lengthEnd}`,
+      randomId: `location-list-randomization-${lengthEnd}`,
       outputId: `location-list-layout-${lengthEnd}`,
     });
 
@@ -1647,45 +1648,56 @@ function showMap(jsonData, number) {
 
 class PlotManager {
   constructor(config) {
-    // Mengambil elemen berdasarkan ID yang diberikan di config
     this.linesEl = document.getElementById(config.linesId);
     this.rowsEl = document.getElementById(config.rowsId);
     this.repsEl = document.getElementById(config.repsId);
     this.dirEl = document.getElementById(config.directionId);
+    this.randEl = document.getElementById(config.randomId);
     this.outputEl = document.getElementById(config.outputId);
 
-    // Validasi sederhana agar tidak error jika ID salah
     if (!this.linesEl || !this.outputEl) {
-      console.error(
-        "PlotManager: Elemen input atau output tidak ditemukan. Pastikan ID sudah benar."
-      );
+      console.error("PlotManager: Elemen input atau output tidak ditemukan.");
       return;
     }
 
     this.init();
   }
 
-  // Fungsi untuk memasang event listener (pendengar perubahan)
   init() {
     const updateTrigger = () => this.render();
-    const inputElements = [this.linesEl, this.rowsEl, this.repsEl, this.dirEl];
+    const inputs = [
+      this.linesEl,
+      this.rowsEl,
+      this.repsEl,
+      this.dirEl,
+      this.randEl,
+    ];
 
-    inputElements.forEach((el) => {
+    inputs.forEach((el) => {
       if (el) el.addEventListener("input", updateTrigger);
     });
 
-    // Jalankan render pertama kali agar tabel langsung muncul
     this.render();
   }
 
-  // Fungsi utama untuk menghitung angka dan membuat tabel
+  /**
+   * Fungsi pembantu untuk mengacak array (Fisher-Yates Shuffle)
+   */
+  shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  }
+
   render() {
     const lines = parseInt(this.linesEl.value) || 0;
     const rows = parseInt(this.rowsEl.value) || 1;
     const reps = parseInt(this.repsEl.value) || 0;
     const direction = this.dirEl.value;
+    const randMode = this.randEl.value;
 
-    // Bersihkan area output sebelum menggambar ulang
     this.outputEl.innerHTML = "";
 
     if (lines <= 0 || reps <= 0) return;
@@ -1693,37 +1705,50 @@ class PlotManager {
     const cols = Math.ceil(lines / rows);
 
     for (let r = 1; r <= reps; r++) {
-      const section = document.createElement("div");
-      section.className = "rep-section";
+      // 1. Siapkan urutan angka awal (1 sampai lines)
+      let numbers = Array.from({ length: lines }, (_, i) => i + 1);
 
-      const title = document.createElement("h4");
-      title.innerText = `Replication #${r}`;
-      section.appendChild(title);
+      // 2. Logika Randomization
+      if (randMode === "random") {
+        // Semua replikasi dirandom
+        numbers = this.shuffleArray(numbers);
+      } else if (randMode === "normal" && r > 1) {
+        // Normal mode: Replikasi 1 urut, Replikasi 2+ dirandom
+        numbers = this.shuffleArray(numbers);
+      }
 
-      const table = document.createElement("table");
-
-      // Membuat grid kosong (Array 2 Dimensi)
+      // 3. Masukkan angka ke grid virtual berdasarkan direction
       let grid = Array.from({ length: rows }, () => Array(cols).fill(""));
+      let currentIdx = 0;
 
       for (let c = 0; c < cols; c++) {
         const isReversed = direction === "serpentine" && c % 2 !== 0;
-        for (let rowIdx = 0; rowIdx < rows; rowIdx++) {
-          let currentNum;
-          if (isReversed) {
-            // Logika arah ular (bawah ke atas untuk kolom ganjil)
-            currentNum = c * rows + (rows - rowIdx);
-          } else {
-            // Logika arah lurus (atas ke bawah)
-            currentNum = c * rows + (rowIdx + 1);
-          }
 
-          if (currentNum <= lines) {
-            grid[rowIdx][c] = currentNum;
+        // Tentukan urutan pengisian baris dalam kolom ini
+        let rowIndices = Array.from({ length: rows }, (_, i) => i);
+        if (isReversed) rowIndices.reverse();
+
+        for (let rowIdx of rowIndices) {
+          if (currentIdx < numbers.length) {
+            grid[rowIdx][c] = numbers[currentIdx];
+            currentIdx++;
           }
         }
       }
 
-      // Mengubah data grid menjadi elemen tabel HTML
+      // 4. Render ke Tabel HTML
+      const section = document.createElement("div");
+      section.className = "rep-section";
+
+      const title = document.createElement("h4");
+      title.innerText = `Replication #${r} ${
+        randMode === "random" || (randMode === "normal" && r > 1)
+          ? "(Randomized)"
+          : "(Normal)"
+      }`;
+      section.appendChild(title);
+
+      const table = document.createElement("table");
       for (let i = 0; i < rows; i++) {
         const tr = document.createElement("tr");
         for (let j = 0; j < cols; j++) {
