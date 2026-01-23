@@ -34,6 +34,53 @@ body {
   word-break: break-word;
 }
 
+/* ===== CUSTOM SIDEBAR ===== */
+
+.kjindexed {
+  background-size: cover;
+  width: 80%;
+  margin: auto;
+}
+
+.kjindexed.scholar {
+  background-image: url(https://bjurology.org/public/site/images/ariyanto/google-scholar.png);
+  aspect-ratio: 577/433;
+}
+
+.kjindexed.garuda {
+  background-image: url(https://bjurology.org/public/site/images/ariyanto/garuda2.png);
+  aspect-ratio: 250/177;
+}
+
+.kjindexed.crossref {
+  background-image: url(https://bjurology.org/public/site/images/editor_bjurology/crossref.png);
+  aspect-ratio: 600/300;
+}
+
+.kjindexed.dimension {
+  background-image: url(https://bjurology.org/public/site/images/editor_bjurology/dimension.png);
+  aspect-ratio: 1000/293;
+}
+
+.kjtools {
+  background-size: cover;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+.kjtools.grammarly {
+  background-image: url(https://bjurology.org/public/site/images/bjurologyorg/bj-grammarly.png);
+  aspect-ratio: 499/118;
+}
+
+.kjtools.mendeley {
+  background-image: url(https://bjurology.org/public/site/images/bjurologyorg/bj-mendeley.png);
+  aspect-ratio: 510/80;
+}
+
+.kjtools.turnitin {
+  background-image: url(https://bjurology.org/public/site/images/bjurologyorg/bj-turnitin.png);
+  aspect-ratio: 501/138;
+}
 /* ===== HEADER AND NAV ===== */
 
 .pkp_structure_head,
@@ -247,6 +294,8 @@ section.current_issue:before {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 2rem;
+  margin: -2.143rem;
+  background: white;
 }
 
 .customjarwo_footmenu .title {
@@ -325,6 +374,12 @@ section.current_issue:before {
 
   .obj_issue_toc .section {
     margin: 2rem 0 0 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .customjarwo_footmenu {
+    margin: -2.143rem calc(-2.143rem + -.714rem);
   }
 }
 
