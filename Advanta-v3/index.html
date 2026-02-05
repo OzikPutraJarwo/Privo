@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanta v3</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Rounded" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <link rel="stylesheet" href="assets/css/styles.css">
+  </head>
+
+  <body>
+    <!-- Login View -->
+    <div id="loginView" class="view active">
+      <div class="login-container">
+        <div class="login-content">
+          <div class="login-header">
+            <div class="logo-icon">
+              <span class="material-symbols-rounded">agriculture</span>
+            </div>
+            <h1>Advanta v3</h1>
+            <p>Agricultural Management System</p>
+          </div>
+          <div class="login-body">
+            <p>Sign in with your Google account to get started</p>
+            <button id="googleLoginBtn" class="btn btn-primary btn-large">
+              <span class="material-symbols-rounded">login</span>
+              <span>Sign in with Google</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main App View -->
+    <div id="appView" class="view">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="logo-container">
+            <span class="material-symbols-rounded">agriculture</span>
+            <span class="logo-text">Advanta</span>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <a href="#" class="nav-item active" data-view="dashboard">
+            <span class="material-symbols-rounded">dashboard</span>
+            <span>Dashboard</span>
+          </a>
+          <div class="nav-group" data-view="inventory">
+            <a href="#" class="nav-item nav-parent" data-view="inventory">
+              <span class="material-symbols-rounded">inventory_2</span>
+              <span>Inventory</span>
+            </a>
+            <div class="nav-submenu">
+              <a href="#" class="nav-subitem" data-parent="inventory" data-category="crops">
+                <span class="material-symbols-rounded">agriculture</span>
+                <span>Crops</span>
+              </a>
+              <a href="#" class="nav-subitem" data-parent="inventory" data-category="locations">
+                <span class="material-symbols-rounded">location_on</span>
+                <span>Locations</span>
+              </a>
+              <a href="#" class="nav-subitem" data-parent="inventory" data-category="parameters">
+                <span class="material-symbols-rounded">tune</span>
+                <span>Parameters</span>
+              </a>
+            </div>
+          </div>
+          <div class="nav-group" data-view="trial">
+            <a href="#" class="nav-item nav-parent" data-view="trial">
+              <span class="material-symbols-rounded">science</span>
+              <span>Trial</span>
+            </a>
+            <div class="nav-submenu">
+              <a href="#" class="nav-subitem" data-parent="trial" data-trial-tab="management">
+                <span class="material-symbols-rounded">assignment</span>
+                <span>Trial Management</span>
+              </a>
+              <a href="#" class="nav-subitem" data-parent="trial" data-trial-tab="run">
+                <span class="material-symbols-rounded">play_circle</span>
+                <span>Run Trial</span>
+              </a>
+            </div>
+          </div>
+          <a href="#" class="nav-item" data-view="library">
+            <span class="material-symbols-rounded">folder_open</span>
+            <span>Library</span>
+          </a>
+        </nav>
+
+      </aside>
+
+      <!-- Sidebar Overlay for Mobile -->
+      <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- Top Bar -->
+        <div class="topbar">
+          <div class="topbar-left">
+            <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">
+              <span class="material-symbols-rounded">menu</span>
+            </button>
+            <h2 id="pageTitle">Dashboard</h2>
+          </div>
+          <div class="topbar-right">
+            <button id="syncStatusBtn" class="sync-status" aria-label="Sync status" title="Synced">
+              <span class="material-symbols-rounded">sync</span>
+              <span id="syncQueueCount" class="sync-badge">0</span>
+            </button>
+            <div class="user-menu" id="userMenu">
+              <button class="user-menu-trigger" id="userMenuTrigger">
+                <div id="userAvatar" class="user-avatar"></div>
+                <span id="userName" class="user-name"></span>
+                <span class="material-symbols-rounded">expand_more</span>
+              </button>
+              <div class="user-dropdown" id="userDropdown">
+                <div class="user-dropdown-header">
+                  <div id="userDropdownName" class="user-name"></div>
+                  <div id="userDropdownEmail" class="user-email"></div>
+                </div>
+                <div class="user-dropdown-menu">
+                  <!-- <button class="user-dropdown-item" id="userSettingsBtn">
+                                    <span class="material-symbols-rounded">settings</span>
+                                    <span>Settings</span>
+                                </button>
+                                <button class="user-dropdown-item" id="userHelpBtn">
+                                    <span class="material-symbols-rounded">help</span>
+                                    <span>Help & Support</span>
+                                </button> -->
+                  <button class="user-dropdown-item danger" id="userLogoutBtn">
+                    <span class="material-symbols-rounded">logout</span>
+                    <span>Logout</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="content">
+          <!-- Dashboard View -->
+          <div id="dashboardContent" class="page-content active">
+            <div class="dashboard-grid">
+              <div class="dashboard-card">
+                <div class="card-icon crops">
+                  <span class="material-symbols-rounded">agriculture</span>
+                </div>
+                <div class="card-content">
+                  <h3>Crops</h3>
+                  <p id="cropsCount" class="card-count">0 items</p>
+                </div>
+              </div>
+              <div class="dashboard-card">
+                <div class="card-icon lines">
+                  <span class="material-symbols-rounded">timeline</span>
+                </div>
+                <div class="card-content">
+                  <h3>Lines</h3>
+                  <p id="linesCount" class="card-count">0 items</p>
+                </div>
+              </div>
+              <div class="dashboard-card">
+                <div class="card-icon locations">
+                  <span class="material-symbols-rounded">location_on</span>
+                </div>
+                <div class="card-content">
+                  <h3>Locations</h3>
+                  <p id="locationsCount" class="card-count">0 items</p>
+                </div>
+              </div>
+              <div class="dashboard-card">
+                <div class="card-icon parameters">
+                  <span class="material-symbols-rounded">tune</span>
+                </div>
+                <div class="card-content">
+                  <h3>Parameters</h3>
+                  <p id="parametersCount" class="card-count">0 items</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Trial Progress Section -->
+            <div class="dashboard-section">
+              <div class="dashboard-section-header">
+                <h3>
+                  <span class="material-symbols-rounded">science</span>
+                  Trial Progress
+                </h3>
+              </div>
+              <div id="dashboardTrialProgress" class="dashboard-trial-progress">
+                <!-- Trial progress items will be rendered here -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Inventory View -->
+          <div id="inventoryContent" class="page-content">
+            <!-- Sub-menu Navigation -->
+            <div class="submenu-nav">
+              <button class="submenu-item active" data-category="crops">
+                <span class="material-symbols-rounded">agriculture</span>
+                <span>Crops</span>
+              </button>
+              <button class="submenu-item" data-category="locations">
+                <span class="material-symbols-rounded">location_on</span>
+                <span>Locations</span>
+              </button>
+              <button class="submenu-item" data-category="parameters">
+                <span class="material-symbols-rounded">tune</span>
+                <span>Parameters</span>
+              </button>
+            </div>
+
+            <!-- Inventory Content -->
+            <div class="inventory-container">
+              <div class="inventory-header">
+                <h3 id="categoryTitle">Crops</h3>
+                <button id="addItemBtn" class="btn btn-primary">
+                  <span class="material-symbols-rounded">add</span>
+                  <span>Add New Item</span>
+                </button>
+              </div>
+
+              <div class="inventory-list" id="inventoryList">
+                <!-- Items will be populated here -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Trial View -->
+          <div id="trialContent" class="page-content">
+            <div class="submenu-nav" id="trialSubmenu">
+              <button class="trial-submenu-item active" data-trial-tab="management">
+                <span class="material-symbols-rounded">science</span>
+                <span>Trial Management</span>
+              </button>
+              <button class="trial-submenu-item" data-trial-tab="run">
+                <span class="material-symbols-rounded">play_arrow</span>
+                <span>Run Trial</span>
+              </button>
+            </div>
+
+            <div id="trialManagementContent" class="trial-tab-content active">
+              <div class="inventory-container" id="trialManagementPanel">
+                <div class="inventory-header">
+                  <h3>Trials</h3>
+                  <button id="addTrialBtn" class="btn btn-primary">
+                    <span class="material-symbols-rounded">add</span>
+                    <span>Create New Trial</span>
+                  </button>
+                </div>
+
+                <div class="inventory-list" id="trialList">
+                  <!-- Trials will be populated here -->
+                </div>
+              </div>
+
+              <div id="trialEditor" class="trial-editor">
+                <div class="modal-content trial-editor-content">
+                  <div class="modal-header">
+                    <h3 id="trialModalTitle">Create New Trial</h3>
+                    <button class="modal-close" id="trialModalClose">&times;</button>
+                  </div>
+
+                  <div class="trial-section-nav">
+                    <div class="section-nav-item active" data-section="general">
+                      <div class="section-nav-number">1</div>
+                      <div class="section-nav-text">General</div>
+                    </div>
+                    <div class="section-nav-item" data-section="location">
+                      <div class="section-nav-number">2</div>
+                      <div class="section-nav-text">Location</div>
+                    </div>
+                    <div class="section-nav-item" data-section="layouting">
+                      <div class="section-nav-number">3</div>
+                      <div class="section-nav-text">Layouting</div>
+                    </div>
+                  </div>
+
+                  <div class="modal-body modal-body-scrollable">
+                    <form id="trialForm">
+                      <div class="trial-section active" id="trialSectionGeneral">
+                        <h4 style="margin-bottom: 1rem; color: var(--text-primary);">General Information</h4>
+                        <div class="form-group">
+                          <label for="trialName">Trial Name</label>
+                          <input type="text" id="trialName" placeholder="Enter trial name" required>
+                        </div>
+                        <div class="form-group">
+                          <label for="trialDescription">Description</label>
+                          <textarea id="trialDescription" placeholder="Enter trial description" rows="3"
+                            style="width: 100%; padding: 0.625rem 0.875rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.95rem; font-family: inherit; resize: vertical;"></textarea>
+                        </div>
+                        <div class="form-group">
+                          <label>Planting Window</label>
+                          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                            <div>
+                              <input type="month" id="trialPlantingStart" placeholder="Start date" required>
+                              <small style="color: var(--text-tertiary); font-size: 0.875rem;">Start month</small>
+                            </div>
+                            <div>
+                              <input type="month" id="trialPlantingEnd" placeholder="End date" required>
+                              <small style="color: var(--text-tertiary); font-size: 0.875rem;">End month</small>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="form-group">
+                          <label for="trialCrops">Crops</label>
+                          <select id="trialCrops" required>
+                            <option value="">Select crop</option>
+                          </select>
+                        </div>
+                        <div class="form-group">
+                          <label for="trialType">Trial Type</label>
+                          <select id="trialType" required>
+                            <option value="">Select trial type</option>
+                            <option value="Parent Test">Parent Test</option>
+                          </select>
+                        </div>
+                        <div class="form-group">
+                          <label for="parameterSearch">Observation Parameters</label>
+                          <input type="text" id="parameterSearch" placeholder="Search parameters..."
+                            style="margin-bottom: 0.75rem;">
+                          <div id="parameterList"
+                            style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem;">
+                            <!-- Parameter checkboxes will be populated here -->
+                          </div>
+                          <small
+                            style="color: var(--text-tertiary); font-size: 0.875rem; display: block; margin-top: 0.5rem;">
+                            <span id="selectedParamCount">0</span> parameter(s) selected
+                          </small>
+                        </div>
+                      </div>
+
+                      <div class="trial-section" id="trialSectionLocation">
+                        <h4 style="margin-bottom: 1rem; color: var(--text-primary);">Location & Area Drawing</h4>
+                        <div class="form-group">
+                          <label for="trialLocation">Location</label>
+                          <select id="trialLocation" required>
+                            <option value="">Select location for drawing area</option>
+                          </select>
+                        </div>
+                        <div class="form-group">
+                          <label>Draw Trial Areas</label>
+                          <div id="trialMap"
+                            style="height: 550px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 0.75rem;">
+                          </div>
+                          <div style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem;">
+                            <button type="button" class="btn btn-secondary" id="startDrawingBtn">
+                              <span class="material-symbols-rounded">draw</span>
+                              <span>Start Drawing Area</span>
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="saveAreaBtn" disabled>
+                              <span class="material-symbols-rounded">save</span>
+                              <span>Save Area</span>
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="clearDrawingBtn">
+                              <span class="material-symbols-rounded">delete</span>
+                              <span>Clear Points</span>
+                            </button>
+                          </div>
+
+                          <div id="areaNameDialog"
+                            style="display: none; background: var(--bg-tertiary); padding: 1rem; border-radius: var(--radius); margin-bottom: 0.75rem;">
+                            <label for="areaNameInput"
+                              style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Enter Area Name:</label>
+                            <div style="display: flex; gap: 0.75rem;">
+                              <input type="text" id="areaNameInput" placeholder="e.g., Area 1" style="flex: 1;">
+                              <button type="button" class="btn btn-primary" id="confirmAreaNameBtn">Confirm</button>
+                              <button type="button" class="btn btn-secondary" id="cancelAreaNameBtn">Cancel</button>
+                            </div>
+                          </div>
+
+                          <div id="areasList" style="display: none;">
+                            <strong style="font-size: 0.95rem; color: var(--text-primary);">Saved Areas:</strong>
+                            <div id="areasListContainer" style="margin-top: 0.5rem;">
+                              <!-- Saved areas will be listed here -->
+                            </div>
+                          </div>
+                          <small
+                            style="color: var(--text-tertiary); font-size: 0.875rem; display: block; margin-top: 0.5rem;">
+                            Click on map to draw polygon (minimum 3 points).
+                          </small>
+                        </div>
+                      </div>
+
+                      <div class="trial-section" id="trialSectionLayouting">
+                        <h4 class="trial-section-title">Trial Layouting</h4>
+                        <div id="layoutingAreasContainer" class="layouting-areas">
+                          <!-- Areas will be rendered here -->
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+
+                  <div class="modal-footer" style="justify-content: space-between;">
+                    <button class="btn btn-secondary" id="trialModalCancelBtn">Cancel</button>
+                    <div style="display: flex; gap: 0.75rem;">
+                      <button class="btn btn-secondary" id="trialPrevBtn" style="display: none;">Previous</button>
+                      <button class="btn btn-primary" id="trialNextBtn">Next</button>
+                      <button class="btn btn-primary" id="trialModalSaveBtn" style="display: none;">Save Trial</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="trialRunContent" class="trial-tab-content">
+              <!-- Trial Selection -->
+              <div id="runTrialSelection" class="run-trial-section">
+                <div class="run-trial-header">
+                  <h3>Select Trial to Run</h3>
+                  <p>Choose a trial from your saved trials to start data collection</p>
+                </div>
+                <div id="runTrialList" class="run-trial-list">
+                  <!-- Trial cards will be populated here -->
+                </div>
+              </div>
+
+              <!-- Run Trial Interface -->
+              <div id="runTrialInterface" class="run-trial-section" style="display: none;">
+                <div class="run-trial-topbar">
+                  <button class="btn btn-secondary btn-icon" id="runTrialBackBtn">
+                    <span class="material-symbols-rounded">arrow_back</span>
+                  </button>
+                  <div class="run-trial-info">
+                    <h3 id="runTrialName">Trial Name</h3>
+                    <span id="runTrialProgress" class="run-trial-progress">0 / 0 completed</span>
+                  </div>
+                  <div class="run-trial-actions">
+                    <button class="btn btn-secondary" onclick="showViewProgress()">
+                      <span class="material-symbols-rounded">analytics</span>
+                      <span class="btn-text">View Progress</span>
+                    </button>
+                    <button class="btn btn-primary" id="runTrialSaveBtn">
+                      <span class="material-symbols-rounded">save</span>
+                      <span class="btn-text">Save Progress</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="run-trial-container">
+                  <!-- Mobile Nav Toggle -->
+                  <button class="mobile-nav-toggle" onclick="openMobileNav()">
+                    <span class="material-symbols-rounded">menu</span>
+                    <span>Navigation</span>
+                  </button>
+
+                  <!-- Mobile Nav Overlay -->
+                  <div id="mobileNavOverlay" class="mobile-nav-overlay" onclick="closeMobileNav()"></div>
+
+                  <!-- Navigation Sidebar -->
+                  <div class="run-trial-nav">
+                    <div class="mobile-nav-header">
+                      <span>Navigation</span>
+                      <button class="btn-icon-close" onclick="closeMobileNav()">
+                        <span class="material-symbols-rounded">close</span>
+                      </button>
+                    </div>
+                    <div id="runTrialNavTree" class="run-nav-tree">
+                      <!-- Navigation tree will be generated here -->
+                    </div>
+                  </div>
+
+                  <!-- Question/Answer Area -->
+                  <div class="run-trial-content">
+                    <div id="runTrialQuestion" class="run-question-card">
+                      <!-- Question content will be rendered here -->
+                      <div class="run-empty-state">
+                        <span class="material-symbols-rounded">touch_app</span>
+                        <p>Select a line from the navigation to start recording data</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- View Progress Modal -->
+              <div id="viewProgressModal" class="view-progress-modal">
+                <div class="view-progress-container">
+                  <div class="view-progress-header">
+                    <h3>View Progress</h3>
+                    <button class="btn-icon-close" onclick="closeViewProgress()">
+                      <span class="material-symbols-rounded">close</span>
+                    </button>
+                  </div>
+                  <div class="view-progress-body">
+                    <div id="viewProgressContent" class="view-progress-content">
+                      <!-- Progress layout will be rendered here -->
+                    </div>
+                    <div id="lineProgressDetail" class="line-progress-detail">
+                      <!-- Line detail will be shown here -->
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="libraryContent" class="page-content">
+            <div class="inventory-container">
+              <div class="inventory-header">
+                <h3>Library</h3>
+                <div class="library-toolbar">
+                  <div class="library-search">
+                    <span class="material-symbols-rounded">search</span>
+                    <input type="text" id="librarySearchInput" placeholder="Search files...">
+                  </div>
+                  <div class="library-filter">
+                    <button class="library-filter-btn active" data-filter="all">All</button>
+                    <button class="library-filter-btn" data-filter="pdf">PDF</button>
+                    <button class="library-filter-btn" data-filter="image">Images</button>
+                    <button class="library-filter-btn" data-filter="video">Videos</button>
+                    <button class="library-filter-btn" data-filter="other">Other</button>
+                  </div>
+                  <input type="file" id="libraryUploadInput" multiple style="display: none;">
+                  <button id="uploadLibraryBtn" class="btn btn-primary">
+                    <span class="material-symbols-rounded">upload</span>
+                    <span>Upload</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="inventory-list" id="libraryList">
+                <!-- Library items will be populated here -->
+              </div>
+            </div>
+
+            <div id="libraryDetail" class="library-detail hidden">
+              <div class="library-detail-header">
+                <div class="library-detail-info">
+                  <h3 id="libraryDetailTitle">File Details</h3>
+                  <p id="libraryDetailMeta" class="library-detail-meta"></p>
+                </div>
+                <div class="library-detail-actions">
+                  <button class="btn btn-secondary" id="libraryDownloadBtn">
+                    <span class="material-symbols-rounded">download</span>
+                    <span>Download</span>
+                  </button>
+                  <button class="btn btn-secondary" id="libraryRenameBtn">
+                    <span class="material-symbols-rounded">edit</span>
+                    <span>Rename</span>
+                  </button>
+                  <button class="btn btn-danger" id="libraryDeleteBtn">
+                    <span class="material-symbols-rounded">delete</span>
+                    <span>Delete</span>
+                  </button>
+                  <button class="btn btn-secondary" id="libraryCloseBtn">
+                    <span class="material-symbols-rounded">close</span>
+                  </button>
+                </div>
+              </div>
+              <div id="libraryPreview" class="library-preview">
+                <!-- Preview will be rendered here -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Modal for Add/Edit Item -->
+    <div id="itemModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modalTitle">Add New Item</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body modal-body-scrollable">
+          <form id="itemForm">
+            <div class="form-group">
+              <label for="itemName">Item Name</label>
+              <input type="text" id="itemName" placeholder="Enter item name" required>
+            </div>
+            <div class="form-group" id="cropTypeGroup">
+              <label for="cropType">Crop Type</label>
+              <input type="text" id="cropType" placeholder="Enter or select crop type" list="cropTypeList">
+              <datalist id="cropTypeList"></datalist>
+            </div>
+            <div class="form-group hidden" id="lineCropGroup">
+              <label for="lineCrop">Crop</label>
+              <select id="lineCrop"></select>
+            </div>
+            <div class="form-group hidden" id="lineQuantityGroup">
+              <label for="lineQuantity">Quantity</label>
+              <input type="number" id="lineQuantity" placeholder="Enter quantity" min="0" step="1">
+            </div>
+            <div class="form-group hidden" id="lineStageGroup">
+              <label for="lineStage">Stage</label>
+              <select id="lineStage">
+                <option value="">Select stage</option>
+                <option value="Breeder Seed">Breeder Seed</option>
+                <option value="Pre Basic 1">Pre Basic 1</option>
+                <option value="Pre Basic 2">Pre Basic 2</option>
+                <option value="Basic Seed">Basic Seed</option>
+                <option value="Parent Seed">Parent Seed</option>
+                <option value="Commercial">Commercial</option>
+              </select>
+            </div>
+            <div class="form-group hidden" id="lineSeedOriginGroup">
+              <label for="lineSeedOrigin">Seed Origin</label>
+              <input type="text" id="lineSeedOrigin" placeholder="Enter seed origin">
+            </div>
+            <div class="form-group hidden" id="lineArrivalDateGroup">
+              <label for="lineArrivalDate">Arrival Date</label>
+              <input type="date" id="lineArrivalDate">
+            </div>
+            <div class="form-group hidden" id="lineRegisteredDateGroup">
+              <label for="lineRegisteredDate">Registered Date</label>
+              <input type="date" id="lineRegisteredDate">
+            </div>
+            <div class="form-group hidden" id="lineParentCodeGroup">
+              <label for="lineParentCode">Parent Code</label>
+              <input type="text" id="lineParentCode" placeholder="Enter parent code">
+            </div>
+            <div class="form-group hidden" id="lineHybridCodeGroup">
+              <label for="lineHybridCode">Hybrid Code</label>
+              <input type="text" id="lineHybridCode" placeholder="Enter hybrid code">
+            </div>
+            <div class="form-group hidden" id="lineSprCodeGroup">
+              <label for="lineSprCode">SPR Code</label>
+              <input type="text" id="lineSprCode" placeholder="Enter SPR code">
+            </div>
+            <div class="form-group hidden" id="lineRoleGroup">
+              <label for="lineRole">Role</label>
+              <select id="lineRole">
+                <option value="">Select role</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Both">Both</option>
+              </select>
+            </div>
+            <div class="form-group hidden" id="locationCoordGroup">
+              <label for="locationCoord">Location Coordinates</label>
+              <div id="locationMap"
+                style="height: 250px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 0.75rem;">
+              </div>
+              <div class="coord-display">
+                <input type="text" id="locationCoord" placeholder="Click on map to select location" readonly>
+                <button type="button" class="btn btn-secondary" id="clearMapBtn" title="Clear location">Clear</button>
+              </div>
+            </div>
+            <div class="form-group hidden" id="paramInitialGroup">
+              <label for="paramInitial">Parameter Initial</label>
+              <input type="text" id="paramInitial" placeholder="Enter parameter initial">
+            </div>
+            <div class="form-group hidden" id="paramTypeGroup">
+              <label for="paramType">Type</label>
+              <select id="paramType">
+                <option value="">Select type</option>
+                <option value="text">Text/Number</option>
+                <option value="range">Range</option>
+                <option value="radio">Radio</option>
+                <option value="checkbox">Checkbox</option>
+                <option value="date">Date</option>
+              </select>
+            </div>
+            <div class="form-group hidden" id="paramRangeGroup">
+              <label for="paramRange">Range Definition</label>
+              <input type="text" id="paramRange" placeholder="e.g., 1-100 or 1-10">
+              <small style="color: var(--text-tertiary); font-size: 0.875rem;">Format: min-max (e.g., 1-100)</small>
+            </div>
+            <div class="form-group hidden" id="paramRadioGroup">
+              <label for="paramRadio">Radio Options</label>
+              <input type="text" id="paramRadio" placeholder="e.g., Yes,No,Maybe">
+              <small style="color: var(--text-tertiary); font-size: 0.875rem;">Separate options with commas</small>
+            </div>
+            <div class="form-group hidden" id="paramCheckboxGroup">
+              <label for="paramCheckbox">Checkbox Options</label>
+              <input type="text" id="paramCheckbox" placeholder="e.g., Option1,Option2,Option3">
+              <small style="color: var(--text-tertiary); font-size: 0.875rem;">Separate options with commas</small>
+            </div>
+            <div class="form-group hidden" id="paramUnitGroup">
+              <label for="paramUnit">Unit</label>
+              <input type="text" id="paramUnit" placeholder="Enter unit (e.g., kg, cm, °C)">
+            </div>
+            <div class="form-group hidden" id="paramQuantityGroup">
+              <label for="paramQuantity">Quantity</label>
+              <input type="number" id="paramQuantity" placeholder="Enter quantity" min="0" step="1">
+            </div>
+            <div class="form-group hidden" id="paramPhotoGroup">
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="paramPhoto" style="width: auto; cursor: pointer;">
+                <span>Require Photo Upload</span>
+              </label>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
+          <button class="btn btn-primary" id="modalSaveBtn">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sync Queue Panel -->
+    <div id="syncPanel" class="sync-panel">
+      <div class="sync-panel-header">
+        <div class="sync-panel-title">
+          <span class="material-symbols-rounded">sync</span>
+          <span>Sync Queue</span>
+        </div>
+        <button id="syncPanelClose" class="sync-panel-close" aria-label="Close">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+      <div id="syncQueueList" class="sync-panel-body"></div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="loading-spinner">
+      <div class="spinner"></div>
+      <p>Loading...</p>
+    </div>
+
+    <!-- Google API -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+
+    <!-- Leaflet Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+    <!-- App Scripts -->
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/drive.js"></script>
+    <script src="assets/js/inventory.js"></script>
+    <script src="assets/js/locations.js"></script>
+    <script src="assets/js/trial.js"></script>
+    <script src="assets/js/library.js"></script>
+    <script src="assets/js/app.js"></script>
+  </body>
+
+</html>
