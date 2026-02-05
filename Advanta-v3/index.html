@@ -53,6 +53,7 @@
             <a href="#" class="nav-item nav-parent" data-view="inventory">
               <span class="material-symbols-rounded">inventory_2</span>
               <span>Inventory</span>
+              <span class="material-symbols-rounded nav-caret">expand_more</span>
             </a>
             <div class="nav-submenu">
               <a href="#" class="nav-subitem" data-parent="inventory" data-category="crops">
@@ -73,6 +74,7 @@
             <a href="#" class="nav-item nav-parent" data-view="trial">
               <span class="material-symbols-rounded">science</span>
               <span>Trial</span>
+              <span class="material-symbols-rounded nav-caret">expand_more</span>
             </a>
             <div class="nav-submenu">
               <a href="#" class="nav-subitem" data-parent="trial" data-trial-tab="management">
@@ -114,7 +116,10 @@
             <div class="user-menu" id="userMenu">
               <button class="user-menu-trigger" id="userMenuTrigger">
                 <div id="userAvatar" class="user-avatar"></div>
-                <span id="userName" class="user-name"></span>
+                <div class="user-menu-text">
+                  <span id="userName" class="user-name"></span>
+                  <span id="userEmail" class="user-email"></span>
+                </div>
                 <span class="material-symbols-rounded">expand_more</span>
               </button>
               <div class="user-dropdown" id="userDropdown">
@@ -423,56 +428,62 @@
 
               <!-- Run Trial Interface -->
               <div id="runTrialInterface" class="run-trial-section" style="display: none;">
-                <div class="run-trial-topbar">
-                  <button class="btn btn-secondary btn-icon" id="runTrialBackBtn">
-                    <span class="material-symbols-rounded">arrow_back</span>
-                  </button>
-                  <div class="run-trial-info">
-                    <h3 id="runTrialName">Trial Name</h3>
-                    <span id="runTrialProgress" class="run-trial-progress">0 / 0 completed</span>
-                  </div>
-                  <div class="run-trial-actions">
-                    <button class="btn btn-secondary" onclick="showViewProgress()">
-                      <span class="material-symbols-rounded">analytics</span>
-                      <span class="btn-text">View Progress</span>
+                <div id="runTrialShell" class="run-trial-shell">
+                  <div class="run-trial-topbar">
+                    <button class="btn btn-secondary btn-icon" id="runTrialBackBtn">
+                      <span class="material-symbols-rounded">arrow_back</span>
                     </button>
-                    <button class="btn btn-primary" id="runTrialSaveBtn">
-                      <span class="material-symbols-rounded">save</span>
-                      <span class="btn-text">Save Progress</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="run-trial-container">
-                  <!-- Mobile Nav Toggle -->
-                  <button class="mobile-nav-toggle" onclick="openMobileNav()">
-                    <span class="material-symbols-rounded">menu</span>
-                    <span>Navigation</span>
-                  </button>
-
-                  <!-- Mobile Nav Overlay -->
-                  <div id="mobileNavOverlay" class="mobile-nav-overlay" onclick="closeMobileNav()"></div>
-
-                  <!-- Navigation Sidebar -->
-                  <div class="run-trial-nav">
-                    <div class="mobile-nav-header">
-                      <span>Navigation</span>
-                      <button class="btn-icon-close" onclick="closeMobileNav()">
-                        <span class="material-symbols-rounded">close</span>
+                    <div class="run-trial-info">
+                      <h3 id="runTrialName">Trial Name</h3>
+                      <span id="runTrialProgress" class="run-trial-progress">0 / 0 completed</span>
+                    </div>
+                    <div class="run-trial-actions">
+                      <button class="btn btn-secondary" id="runTrialFullscreenBtn">
+                        <span class="material-symbols-rounded">fullscreen</span>
+                        <span class="btn-text">Fullscreen</span>
+                      </button>
+                      <button class="btn btn-secondary" onclick="showViewProgress()">
+                        <span class="material-symbols-rounded">analytics</span>
+                        <span class="btn-text">View Progress</span>
+                      </button>
+                      <button class="btn btn-primary" id="runTrialSaveBtn">
+                        <span class="material-symbols-rounded">save</span>
+                        <span class="btn-text">Save Progress</span>
                       </button>
                     </div>
-                    <div id="runTrialNavTree" class="run-nav-tree">
-                      <!-- Navigation tree will be generated here -->
-                    </div>
                   </div>
 
-                  <!-- Question/Answer Area -->
-                  <div class="run-trial-content">
-                    <div id="runTrialQuestion" class="run-question-card">
-                      <!-- Question content will be rendered here -->
-                      <div class="run-empty-state">
-                        <span class="material-symbols-rounded">touch_app</span>
-                        <p>Select a line from the navigation to start recording data</p>
+                  <div class="run-trial-container">
+                    <!-- Mobile Nav Toggle -->
+                    <button class="mobile-nav-toggle" onclick="openMobileNav()">
+                      <span class="material-symbols-rounded">menu</span>
+                      <span>Navigation</span>
+                    </button>
+
+                    <!-- Mobile Nav Overlay -->
+                    <div id="mobileNavOverlay" class="mobile-nav-overlay" onclick="closeMobileNav()"></div>
+
+                    <!-- Navigation Sidebar -->
+                    <div class="run-trial-nav">
+                      <div class="mobile-nav-header">
+                        <span>Navigation</span>
+                        <button class="btn-icon-close" onclick="closeMobileNav()">
+                          <span class="material-symbols-rounded">close</span>
+                        </button>
+                      </div>
+                      <div id="runTrialNavTree" class="run-nav-tree">
+                        <!-- Navigation tree will be generated here -->
+                      </div>
+                    </div>
+
+                    <!-- Question/Answer Area -->
+                    <div class="run-trial-content">
+                      <div id="runTrialQuestion" class="run-question-card">
+                        <!-- Question content will be rendered here -->
+                        <div class="run-empty-state">
+                          <span class="material-symbols-rounded">touch_app</span>
+                          <p>Select a line from the navigation to start recording data</p>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -517,6 +528,18 @@
                     <button class="library-filter-btn" data-filter="video">Videos</button>
                     <button class="library-filter-btn" data-filter="other">Other</button>
                   </div>
+                  <div class="library-sort">
+                    <select id="librarySortBy" class="library-sort-select">
+                      <option value="modifiedTime">Sort by Date</option>
+                      <option value="name">Sort by Name</option>
+                      <option value="size">Sort by Size</option>
+                      <option value="type">Sort by Type</option>
+                    </select>
+                    <select id="librarySortDir" class="library-sort-select">
+                      <option value="desc">Descending</option>
+                      <option value="asc">Ascending</option>
+                    </select>
+                  </div>
                   <input type="file" id="libraryUploadInput" multiple style="display: none;">
                   <button id="uploadLibraryBtn" class="btn btn-primary">
                     <span class="material-symbols-rounded">upload</span>
@@ -530,32 +553,36 @@
               </div>
             </div>
 
-            <div id="libraryDetail" class="library-detail hidden">
-              <div class="library-detail-header">
-                <div class="library-detail-info">
-                  <h3 id="libraryDetailTitle">File Details</h3>
-                  <p id="libraryDetailMeta" class="library-detail-meta"></p>
+            <div id="libraryPreviewModal" class="library-preview-modal">
+              <div class="library-preview-modal-content">
+                <div id="libraryDetail" class="library-detail">
+                  <div class="library-detail-header">
+                    <div class="library-detail-info">
+                      <h3 id="libraryDetailTitle">File Details</h3>
+                      <p id="libraryDetailMeta" class="library-detail-meta"></p>
+                    </div>
+                    <div class="library-detail-actions">
+                      <button class="btn btn-secondary" id="libraryDownloadBtn">
+                        <span class="material-symbols-rounded">download</span>
+                        <span>Download</span>
+                      </button>
+                      <button class="btn btn-secondary" id="libraryRenameBtn">
+                        <span class="material-symbols-rounded">edit</span>
+                        <span>Rename</span>
+                      </button>
+                      <button class="btn btn-danger" id="libraryDeleteBtn">
+                        <span class="material-symbols-rounded">delete</span>
+                        <span>Delete</span>
+                      </button>
+                      <button class="btn btn-secondary" id="libraryCloseBtn">
+                        <span class="material-symbols-rounded">close</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div id="libraryPreview" class="library-preview">
+                    <!-- Preview will be rendered here -->
+                  </div>
                 </div>
-                <div class="library-detail-actions">
-                  <button class="btn btn-secondary" id="libraryDownloadBtn">
-                    <span class="material-symbols-rounded">download</span>
-                    <span>Download</span>
-                  </button>
-                  <button class="btn btn-secondary" id="libraryRenameBtn">
-                    <span class="material-symbols-rounded">edit</span>
-                    <span>Rename</span>
-                  </button>
-                  <button class="btn btn-danger" id="libraryDeleteBtn">
-                    <span class="material-symbols-rounded">delete</span>
-                    <span>Delete</span>
-                  </button>
-                  <button class="btn btn-secondary" id="libraryCloseBtn">
-                    <span class="material-symbols-rounded">close</span>
-                  </button>
-                </div>
-              </div>
-              <div id="libraryPreview" class="library-preview">
-                <!-- Preview will be rendered here -->
               </div>
             </div>
           </div>

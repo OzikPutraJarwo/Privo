@@ -326,9 +326,21 @@ async function initializeApp() {
 
       // Update topbar user
       const userNameEl = document.getElementById("userName");
+      const userEmailEl = document.getElementById("userEmail");
       const userAvatar = document.getElementById("userAvatar");
       if (userNameEl) userNameEl.textContent = user.name;
-      if (userAvatar) userAvatar.textContent = initials;
+      if (userEmailEl) userEmailEl.textContent = user.email || "";
+      if (userAvatar) {
+        if (user.picture) {
+          userAvatar.style.backgroundImage = `url('${user.picture}')`;
+          userAvatar.textContent = "";
+          userAvatar.classList.add("has-image");
+        } else {
+          userAvatar.style.backgroundImage = "";
+          userAvatar.textContent = initials;
+          userAvatar.classList.remove("has-image");
+        }
+      }
 
       // Update user dropdown in topbar
       const userDropdownName = document.getElementById("userDropdownName");
@@ -435,6 +447,12 @@ function setupEventListeners() {
       e.preventDefault();
       const view = item.dataset.view;
 
+      if (item.classList.contains("nav-parent")) {
+        const group = item.closest(".nav-group");
+        if (group) group.classList.remove("collapsed");
+        item.setAttribute("aria-expanded", "true");
+      }
+
       // Remove active from all nav items
       document
         .querySelectorAll(".nav-item")
@@ -479,6 +497,9 @@ function setupEventListeners() {
       e.preventDefault();
       const parent = item.dataset.parent;
 
+      const group = item.closest(".nav-group");
+      if (group) group.classList.remove("collapsed");
+
       // Remove active from all subitems of same parent
       document
         .querySelectorAll(`.nav-subitem[data-parent="${parent}"]`)
@@ -502,6 +523,23 @@ function setupEventListeners() {
       if (isMobile && sidebar && sidebarOverlay) {
         sidebar.classList.remove("open");
         sidebarOverlay.classList.remove("active");
+      }
+    });
+  });
+
+  document.querySelectorAll(".nav-caret").forEach((caret) => {
+    caret.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const group = caret.closest(".nav-group");
+      if (!group) return;
+      group.classList.toggle("collapsed");
+      const parent = group.querySelector(".nav-parent");
+      if (parent) {
+        parent.setAttribute(
+          "aria-expanded",
+          String(!group.classList.contains("collapsed")),
+        );
       }
     });
   });
@@ -542,14 +580,17 @@ function setupEventListeners() {
   document
     .getElementById("modalCancelBtn")
     .addEventListener("click", closeModal);
-  document.querySelector(".modal-close").addEventListener("click", closeModal);
   document.getElementById("modalSaveBtn").addEventListener("click", saveItem);
 
+  document.querySelectorAll(".modal-close").forEach((btn) => {
+    if (btn.id === "trialModalClose") {
+      btn.addEventListener("click", closeTrialModal);
+    } else {
+      btn.addEventListener("click", closeModal);
+    }
+  });
+
   // Trial modal controls
-  const trialModalClose = document.getElementById("trialModalClose");
-  if (trialModalClose) {
-    trialModalClose.addEventListener("click", closeTrialModal);
-  }
   const trialModalCancelBtn = document.getElementById("trialModalCancelBtn");
   if (trialModalCancelBtn) {
     trialModalCancelBtn.addEventListener("click", closeTrialModal);

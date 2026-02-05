@@ -6,6 +6,8 @@ let libraryState = {
   previewUrl: null,
   searchQuery: "",
   activeFilter: "all",
+  sortBy: "modifiedTime",
+  sortDir: "desc",
 };
 
 async function initializeLibrary() {
@@ -30,6 +32,8 @@ function setupLibraryEvents() {
   const closeBtn = document.getElementById("libraryCloseBtn");
   const searchInput = document.getElementById("librarySearchInput");
   const filterBtns = document.querySelectorAll(".library-filter-btn");
+  const sortBySelect = document.getElementById("librarySortBy");
+  const sortDirSelect = document.getElementById("librarySortDir");
 
   if (uploadBtn && uploadInput) {
     uploadBtn.addEventListener("click", () => uploadInput.click());
@@ -74,6 +78,22 @@ function setupLibraryEvents() {
       renderLibraryList();
     });
   });
+
+  if (sortBySelect) {
+    sortBySelect.value = libraryState.sortBy;
+    sortBySelect.addEventListener("change", (e) => {
+      libraryState.sortBy = e.target.value;
+      renderLibraryList();
+    });
+  }
+
+  if (sortDirSelect) {
+    sortDirSelect.value = libraryState.sortDir;
+    sortDirSelect.addEventListener("change", (e) => {
+      libraryState.sortDir = e.target.value;
+      renderLibraryList();
+    });
+  }
 }
 
 async function loadLibraryItems() {
@@ -148,6 +168,32 @@ function renderLibraryList() {
     }
 
     return true;
+  });
+
+  const sortDir = libraryState.sortDir === "asc" ? 1 : -1;
+  filteredItems = filteredItems.sort((a, b) => {
+    let aVal;
+    let bVal;
+
+    switch (libraryState.sortBy) {
+      case "name":
+        aVal = (a.name || "").toLowerCase();
+        bVal = (b.name || "").toLowerCase();
+        return aVal.localeCompare(bVal) * sortDir;
+      case "size":
+        aVal = Number(a.size || 0);
+        bVal = Number(b.size || 0);
+        return (aVal - bVal) * sortDir;
+      case "type":
+        aVal = getFileCategory(a.mimeType || "");
+        bVal = getFileCategory(b.mimeType || "");
+        return aVal.localeCompare(bVal) * sortDir;
+      case "modifiedTime":
+      default:
+        aVal = new Date(a.modifiedTime || 0).getTime();
+        bVal = new Date(b.modifiedTime || 0).getTime();
+        return (aVal - bVal) * sortDir;
+    }
   });
 
   if (filteredItems.length === 0) {
@@ -362,9 +408,9 @@ function updateLibraryDetailMeta(file) {
 }
 
 function setLibraryDetailVisible(show) {
-  const detail = document.getElementById("libraryDetail");
-  if (!detail) return;
-  detail.classList.toggle("hidden", !show);
+  const modal = document.getElementById("libraryPreviewModal");
+  if (!modal) return;
+  modal.classList.toggle("active", show);
 }
 
 async function renameLibraryItem(fileId = null) {

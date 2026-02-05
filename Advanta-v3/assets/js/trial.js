@@ -1645,6 +1645,8 @@ function calculateLayout(
           if (lineIndex < repLines.length) {
             grid[row][col] = repLines[lineIndex];
             lineIndex++;
+          } else {
+            grid[row][col] = null;
           }
         }
       }
@@ -1736,6 +1738,7 @@ function initializeRunTrial() {
 // Render list of trials that can be run
 function renderRunTrialList() {
   const container = document.getElementById("runTrialList");
+  const header = document.querySelector("#runTrialSelection .run-trial-header");
   if (!container) return;
 
   const runnableTrials = trialState.trials.filter(
@@ -1743,6 +1746,7 @@ function renderRunTrialList() {
   );
 
   if (runnableTrials.length === 0) {
+    if (header) header.classList.remove("hidden");
     container.innerHTML = `
       <div class="empty-state" style="grid-column: 1 / -1;">
         <span class="material-symbols-rounded">science</span>
@@ -1751,6 +1755,8 @@ function renderRunTrialList() {
     `;
     return;
   }
+
+  if (header) header.classList.add("hidden");
 
   container.innerHTML = runnableTrials
     .map((trial) => {
@@ -1801,8 +1807,11 @@ function renderRunTrialList() {
 
 // Setup event listeners for Run Trial
 function setupRunTrialEventListeners() {
+  if (setupRunTrialEventListeners.initialized) return;
+  setupRunTrialEventListeners.initialized = true;
   const backBtn = document.getElementById("runTrialBackBtn");
   const saveBtn = document.getElementById("runTrialSaveBtn");
+  const fullscreenBtn = document.getElementById("runTrialFullscreenBtn");
 
   if (backBtn) {
     backBtn.addEventListener("click", exitRunTrial);
@@ -1811,6 +1820,12 @@ function setupRunTrialEventListeners() {
   if (saveBtn) {
     saveBtn.addEventListener("click", saveRunTrialProgress);
   }
+
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener("click", toggleRunTrialFullscreen);
+  }
+
+  document.addEventListener("fullscreenchange", handleRunTrialFullscreenChange);
 }
 
 // Start running a trial
@@ -1824,11 +1839,14 @@ function startRunTrial(trialId) {
   runTrialState.currentAreaIndex = null;
   runTrialState.currentParamId = null;
   runTrialState.currentLineId = null;
+  runTrialState.currentRepIndex = null;
 
   // Show run interface
   document.getElementById("runTrialSelection").style.display = "none";
   document.getElementById("runTrialInterface").style.display = "block";
   document.getElementById("runTrialName").textContent = trial.name;
+
+  document.body.classList.add("run-trial-active", "sidebar-collapsed");
 
   // Render navigation tree
   renderRunTrialNavTree();
@@ -1843,9 +1861,20 @@ function exitRunTrial() {
   runTrialState.currentTrialId = null;
   runTrialState.currentTrial = null;
   runTrialState.responses = {};
+  runTrialState.currentAreaIndex = null;
+  runTrialState.currentParamId = null;
+  runTrialState.currentLineId = null;
+  runTrialState.currentRepIndex = null;
+
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+  setRunTrialFullscreenUI(false);
 
   document.getElementById("runTrialSelection").style.display = "block";
   document.getElementById("runTrialInterface").style.display = "none";
+
+  document.body.classList.remove("run-trial-active", "sidebar-collapsed");
 
   renderRunTrialList();
 }
@@ -1866,8 +1895,11 @@ function renderRunTrialNavTree() {
   trial.areas.forEach((area, areaIndex) => {
     if (!area.layout?.result) return;
 
+    const isAreaOpen = areaIndex === runTrialState.currentAreaIndex;
+    const areaClass = isAreaOpen ? "" : "collapsed";
+
     html += `
-      <div class="run-nav-area" data-area-index="${areaIndex}">
+      <div class="run-nav-area ${areaClass}" data-area-index="${areaIndex}">
         <div class="run-nav-area-header" onclick="toggleNavArea(${areaIndex})">
           <span class="material-symbols-rounded expand-icon">expand_more</span>
           <span class="material-symbols-rounded">location_on</span>
@@ -1877,8 +1909,12 @@ function renderRunTrialNavTree() {
     `;
 
     parameters.forEach((param) => {
+      const isParamOpen =
+        isAreaOpen && runTrialState.currentParamId === param.id;
+      const paramClass = isParamOpen ? "" : "collapsed";
+
       html += `
-        <div class="run-nav-param" data-area-index="${areaIndex}" data-param-id="${param.id}">
+        <div class="run-nav-param ${paramClass}" data-area-index="${areaIndex}" data-param-id="${param.id}">
           <div class="run-nav-param-header" onclick="toggleNavParam(${areaIndex}, '${param.id}')">
             <span class="material-symbols-rounded expand-icon">expand_more</span>
             <span>${escapeHtml(param.name)}</span>
@@ -1890,6 +1926,9 @@ function renderRunTrialNavTree() {
       // Render replications from layout
       const layout = area.layout;
       layout.result.forEach((rep, repIndex) => {
+        const isRepOpen =
+          isParamOpen && runTrialState.currentRepIndex === repIndex;
+        const repClass = isRepOpen ? "" : "collapsed";
         // Count lines in this replication
         let linesInRep = [];
         rep.forEach((row) => {
@@ -1909,7 +1948,7 @@ function renderRunTrialNavTree() {
         });
 
         html += `
-          <div class="run-nav-rep ${allCompleted ? 'completed' : someCompleted ? 'partial' : ''}" data-area-index="${areaIndex}" data-param-id="${param.id}" data-rep-index="${repIndex}">
+          <div class="run-nav-rep ${repClass} ${allCompleted ? 'completed' : someCompleted ? 'partial' : ''}" data-area-index="${areaIndex}" data-param-id="${param.id}" data-rep-index="${repIndex}">
             <div class="run-nav-rep-header" onclick="toggleNavRep(${areaIndex}, '${param.id}', ${repIndex})">
               <span class="material-symbols-rounded expand-icon">expand_more</span>
               <span>Replication ${repIndex + 1}</span>
@@ -1986,10 +2025,18 @@ function toggleNavRep(areaIndex, paramId, repIndex) {
 
 // Check if response exists
 function hasResponse(areaIndex, paramId, lineKey) {
-  return (
-    runTrialState.responses[areaIndex]?.[paramId]?.[lineKey]?.value !== undefined ||
-    (runTrialState.responses[areaIndex]?.[paramId]?.[lineKey]?.photos?.length > 0)
-  );
+  const response = runTrialState.responses[areaIndex]?.[paramId]?.[lineKey];
+  if (!response) return false;
+
+  const param = inventoryState.items.parameters.find((p) => p.id === paramId);
+  const hasValue = response.value !== undefined && response.value !== "";
+  const hasPhotos = response.photos?.length > 0;
+
+  if (param?.requirePhoto) {
+    return hasPhotos;
+  }
+
+  return hasValue || hasPhotos;
 }
 
 // Select a line to answer
@@ -2269,6 +2316,35 @@ function closeMobileNav() {
   document.body.style.overflow = '';
 }
 
+// Fullscreen handling for Run Trial
+function toggleRunTrialFullscreen() {
+  const target = document.getElementById("trialRunContent");
+  if (!target) return;
+
+  if (!document.fullscreenElement) {
+    target.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen().catch(() => {});
+  }
+}
+
+function handleRunTrialFullscreenChange() {
+  const isActive = !!document.fullscreenElement;
+  setRunTrialFullscreenUI(isActive);
+}
+
+function setRunTrialFullscreenUI(isActive) {
+  document.body.classList.toggle("run-trial-fullscreen", isActive);
+
+  const btn = document.getElementById("runTrialFullscreenBtn");
+  if (btn) {
+    const icon = btn.querySelector(".material-symbols-rounded");
+    const text = btn.querySelector(".btn-text");
+    if (icon) icon.textContent = isActive ? "fullscreen_exit" : "fullscreen";
+    if (text) text.textContent = isActive ? "Exit Fullscreen" : "Fullscreen";
+  }
+}
+
 // Handle photo upload
 function handlePhotoUpload(event) {
   const file = event.target.files[0];
@@ -2514,6 +2590,7 @@ function closeViewProgress() {
   if (modal) {
     modal.classList.remove('active');
   }
+  closeLineProgressDetail();
 }
 
 function renderViewProgress() {
@@ -2540,6 +2617,11 @@ function renderViewProgress() {
 
     // For each replication
     area.layout.result.forEach((rep, repIndex) => {
+      const maxCols = rep.reduce((max, row) => {
+        if (!row) return max;
+        return Math.max(max, row.length);
+      }, 0);
+
       html += `
         <div class="progress-rep">
           <div class="progress-rep-header">Replication ${repIndex + 1}</div>
@@ -2547,11 +2629,11 @@ function renderViewProgress() {
       `;
 
       // Render grid
-      rep.forEach((row, rowIdx) => {
+      rep.forEach((row) => {
         html += `<div class="progress-layout-row">`;
         // Iterate through row by index to ensure we handle sparse arrays properly
-        for (let colIdx = 0; colIdx < row.length; colIdx++) {
-          const cell = row[colIdx];
+        for (let colIdx = 0; colIdx < maxCols; colIdx++) {
+          const cell = row?.[colIdx];
           if (!cell) {
             html += `<div class="progress-layout-cell empty"></div>`;
             continue;
@@ -2608,8 +2690,13 @@ function showLineProgress(areaIndex, lineId, repIndex) {
 
   let html = `
     <div class="line-progress-header">
-      <h4>${escapeHtml(line?.name || 'Line')}</h4>
-      <span>Rep ${repIndex + 1} · ${escapeHtml(area.name || `Area ${areaIndex + 1}`)}</span>
+      <div>
+        <h4>${escapeHtml(line?.name || 'Line')}</h4>
+        <span>Rep ${repIndex + 1} · ${escapeHtml(area.name || `Area ${areaIndex + 1}`)}</span>
+      </div>
+      <button class="btn-icon-close line-progress-close" onclick="closeLineProgressDetail()">
+        <span class="material-symbols-rounded">close</span>
+      </button>
     </div>
     <div class="line-progress-params">
   `;
@@ -2617,7 +2704,7 @@ function showLineProgress(areaIndex, lineId, repIndex) {
   parameters.forEach((param) => {
     const lineKey = `${lineId}_${repIndex}`;
     const response = runTrialState.responses[areaIndex]?.[param.id]?.[lineKey];
-    const isAnswered = response?.value !== undefined || (response?.photos?.length > 0);
+    const isAnswered = hasResponse(areaIndex, param.id, lineKey);
 
     html += `
       <div class="line-progress-param ${isAnswered ? 'answered' : ''}">
@@ -2648,6 +2735,13 @@ function showLineProgress(areaIndex, lineId, repIndex) {
   if (detail) {
     detail.innerHTML = html;
     detail.classList.add('active');
+  }
+}
+
+function closeLineProgressDetail() {
+  const detail = document.getElementById('lineProgressDetail');
+  if (detail) {
+    detail.classList.remove('active');
   }
 }
 
@@ -2683,8 +2777,14 @@ function calculateTrialProgress(trial) {
           parameters.forEach((paramId) => {
             total++;
             const lineKey = `${cell.id}_${repIndex}`;
-            if (responses[areaIndex]?.[paramId]?.[lineKey]?.value !== undefined ||
-                (responses[areaIndex]?.[paramId]?.[lineKey]?.photos?.length > 0)) {
+            const response = responses[areaIndex]?.[paramId]?.[lineKey];
+            const param = inventoryState.items.parameters.find((p) => p.id === paramId);
+            const hasValue = response?.value !== undefined && response?.value !== "";
+            const hasPhotos = response?.photos?.length > 0;
+
+            if (param?.requirePhoto) {
+              if (hasPhotos) completed++;
+            } else if (hasValue || hasPhotos) {
               completed++;
             }
           });
