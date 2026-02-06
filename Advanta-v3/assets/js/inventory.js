@@ -152,12 +152,74 @@ function updateCropTypeSuggestions() {
 }
 
 // Initialize inventory
-async function initializeInventory() {
+async function initializeInventory(options = {}) {
+  const onProgress = options.onProgress;
+  let hasCache = false;
+
   try {
-    // Load items for all categories
+    const cached = typeof loadLocalCache === "function"
+      ? loadLocalCache("inventory")
+      : null;
+
+    if (cached?.items) {
+      inventoryState.items = cached.items;
+      hasCache = true;
+
+      // Migrate lines - ensure cropId is set from crop field if missing
+      if (inventoryState.items.lines && inventoryState.items.crops) {
+        inventoryState.items.lines.forEach((line) => {
+          if (!line.cropId && line.crop) {
+            line.cropId = line.crop;
+          }
+        });
+      }
+
+      updateDashboardCounts();
+      inventoryState.currentCategory = inventoryState.currentCategory || "crops";
+      switchCategory(inventoryState.currentCategory);
+      updateCropTypeSuggestions();
+
+      if (onProgress) {
+        onProgress(0.15, "Loaded inventory from device");
+      }
+    }
+
+    // Load items for all categories from Drive
+    const total = CATEGORIES.length;
+    let done = 0;
     for (const category of CATEGORIES) {
       const key = category.toLowerCase();
-      inventoryState.items[key] = await loadItemsFromGoogleDrive(category);
+      
+      // Add to sync queue for visibility
+      if (typeof enqueueSync === 'function') {
+        enqueueSync({
+          label: `Load ${category}`,
+          run: async () => {
+            inventoryState.items[key] = await loadItemsFromGoogleDrive(category);
+            done += 1;
+            if (onProgress) {
+              onProgress(done / total, `Syncing ${category}...`);
+            }
+            
+            // Update UI after each category
+            updateDashboardCounts();
+            if (inventoryState.currentCategory === key) {
+              switchCategory(inventoryState.currentCategory);
+            }
+            updateCropTypeSuggestions();
+            
+            if (typeof saveLocalCache === 'function') {
+              saveLocalCache('inventory', { items: inventoryState.items });
+            }
+          }
+        });
+      } else {
+        inventoryState.items[key] = await loadItemsFromGoogleDrive(category);
+        done += 1;
+        if (onProgress) {
+          onProgress(done / total, `Syncing ${category}...`);
+        }
+      }
     }
 
     // Migrate lines - ensure cropId is set from crop field if missing
@@ -169,17 +231,23 @@ async function initializeInventory() {
       });
     }
 
-    // Update dashboard counts
     updateDashboardCounts();
-
-    // Load initial category
-    switchCategory("crops");
-
-    // Prepare crop type suggestions
+    inventoryState.currentCategory = inventoryState.currentCategory || "crops";
+    switchCategory(inventoryState.currentCategory);
     updateCropTypeSuggestions();
+
+    if (typeof saveLocalCache === "function") {
+      saveLocalCache("inventory", { items: inventoryState.items });
+    }
+
+    if (onProgress) {
+      onProgress(1, "Inventory synced");
+    }
   } catch (error) {
     console.error("Error initializing inventory:", error);
-    alert("Error loading inventory data. Please refresh the page.");
+    if (!hasCache) {
+      alert("Error loading inventory data. Please refresh the page.");
+    }
   }
 }
 
@@ -271,7 +339,7 @@ function renderInventoryItems() {
                         </div>
                         <div class="item-actions">
                             <button class="expand-crop-btn" data-crop-id="${crop.id}" title="View Lines">
-                                <span class="material-symbols-rounded">expand_more</span>
+                                <span class="material-symbols-rounded">visibility</span>
                             </button>
                             <button class="edit-btn" data-id="${crop.id}" title="Edit">
                                 <span class="material-symbols-rounded">edit</span>
@@ -280,42 +348,6 @@ function renderInventoryItems() {
                                 <span class="material-symbols-rounded">delete</span>
                             </button>
                         </div>
-                    </div>
-                    <div class="crop-lines-container" id="lines-${crop.id}" style="display: none; padding-left: 2rem; margin-top: 0.5rem;">
-                        ${
-                          relatedLines.length === 0
-                            ? `
-                            <div style="color: var(--text-secondary); padding: 1rem; text-align: center;">
-                                No lines yet. <button class="add-line-for-crop-btn" data-crop-id="${crop.id}" style="background: none; border: none; color: var(--primary); cursor: pointer; text-decoration: underline;">Add one</button>
-                            </div>
-                        `
-                            : `
-                            ${relatedLines
-                              .map(
-                                (line) => `
-                                <div class="inventory-item" style="margin-bottom: 0.5rem;">
-                                    <div class="item-meta">
-                                        <div class="item-name" style="font-size: 0.95rem;">${escapeHtml(line.name)}</div>
-                                        <div class="item-subtext">Stage: ${escapeHtml(line.stage || "-")} · Qty: ${line.quantity ?? "-"}</div>
-                                    </div>
-                                    <div class="item-actions">
-                                        <button class="edit-btn" data-id="${line.id}" title="Edit" data-category="lines">
-                                            <span class="material-symbols-rounded">edit</span>
-                                        </button>
-                                        <button class="delete-btn" data-id="${line.id}" title="Delete" data-category="lines">
-                                            <span class="material-symbols-rounded">delete</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            `,
-                              )
-                              .join("")}
-                            <button class="add-line-for-crop-btn" data-crop-id="${crop.id}" style="width: 100%; padding: 0.75rem; margin-top: 0.5rem; background-color: var(--bg-tertiary); border: 1px dashed var(--border-color); color: var(--primary); cursor: pointer; border-radius: 0.25rem; font-weight: 500;">
-                                <span class="material-symbols-rounded" style="font-size: 1.2rem; vertical-align: middle; margin-right: 0.5rem;">add</span>
-                                Add Line to ${escapeHtml(crop.name)}
-                            </button>
-                        `
-                        }
                     </div>
                 </div>
             `;
@@ -327,11 +359,7 @@ function renderInventoryItems() {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const cropId = btn.dataset.cropId;
-        const container = document.getElementById(`lines-${cropId}`);
-        const isVisible = container.style.display !== "none";
-        container.style.display = isVisible ? "none" : "block";
-        btn.style.transform = isVisible ? "rotate(0deg)" : "rotate(180deg)";
-        btn.style.transition = "transform 0.3s ease";
+        showCropLinesPopup(cropId);
       });
     });
 
@@ -360,17 +388,6 @@ function renderInventoryItems() {
         inventoryState.currentCategory = prevCategory;
       });
     });
-
-    container.querySelectorAll(".add-line-for-crop-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const cropId = btn.dataset.cropId;
-        const crop = inventoryState.items.crops.find((c) => c.id === cropId);
-        if (crop) {
-          openAddLineForCropModal(crop);
-        }
-      });
-    });
   } else {
     // Standard rendering for Locations and Parameters
     container.innerHTML = items
@@ -388,13 +405,19 @@ function renderInventoryItems() {
             `
           : "";
 
+        // Add map preview for locations
+        const mapPreview = isLocations
+          ? `<div id="locationPreviewMap${item.id}" style="width: 100px; height: 100px; border-radius: var(--radius) 0 0 var(--radius); flex-shrink: 0; background: var(--bg-secondary);"></div>`
+          : "";
+
         return `
-                <div class="inventory-item">
-                    <div class="item-meta">
+                <div class="inventory-item" style="${isLocations ? 'display: grid; grid-template-columns: 100px 1fr auto; min-height: 100px; padding: 0; overflow: hidden;' : ''}">
+                    ${mapPreview}
+                    <div class="item-meta" style="${isLocations ? 'display: flex; flex-direction: column; justify-content: center; padding: 0.75rem 1rem;' : ''}">
                         <div class="item-name">${escapeHtml(item.name)}</div>
                         ${locationMeta || paramMeta}
                     </div>
-                    <div class="item-actions">
+                    <div class="item-actions" style="${isLocations ? 'display: flex; flex-direction: column; justify-content: center; padding-right: 0.75rem; gap: 0.25rem;' : ''}">
                         <button class="edit-btn" data-id="${item.id}" title="Edit">
                             <span class="material-symbols-rounded">edit</span>
                         </button>
@@ -406,6 +429,13 @@ function renderInventoryItems() {
             `;
       })
       .join("");
+
+    // Initialize location preview maps
+    if (isLocations) {
+      items.forEach((location) => {
+        renderLocationPreviewMap(location);
+      });
+    }
 
     // Add event listeners
     container.querySelectorAll(".edit-btn").forEach((btn) => {
@@ -481,6 +511,116 @@ function openAddModal() {
   }
   document.getElementById("itemModal").classList.add("active");
   document.getElementById("itemName").focus();
+}
+
+// Show crop lines popup (library-preview-modal style)
+function showCropLinesPopup(cropId) {
+  const crop = inventoryState.items.crops.find((c) => c.id === cropId);
+  if (!crop) return;
+
+  const relatedLines = inventoryState.items.lines.filter((line) => {
+    return line.cropId === crop.id || line.crop === crop.id;
+  });
+
+  // Remove existing popup if any
+  const existing = document.getElementById("cropLinesPopup");
+  if (existing) existing.remove();
+
+  const popup = document.createElement("div");
+  popup.id = "cropLinesPopup";
+  popup.className = "library-preview-modal active";
+  popup.style.zIndex = "1004";
+  popup.innerHTML = `
+    <div class="library-preview-modal-content" style="max-width: 700px; height: auto; max-height: 80vh;">
+      <div class="library-detail-header">
+        <div class="library-detail-info">
+          <h3>${escapeHtml(crop.name)} — Lines</h3>
+          <p class="library-detail-meta">${crop.cropType ? escapeHtml(crop.cropType) + ' · ' : ''}${relatedLines.length} line(s)</p>
+        </div>
+        <div class="library-detail-actions">
+          <button class="btn btn-primary" id="cropLinesAddBtn">
+            <span class="material-symbols-rounded">add</span>
+            <span>Add Line</span>
+          </button>
+          <button class="btn btn-secondary" id="cropLinesCloseBtn">
+            <span class="material-symbols-rounded">close</span>
+          </button>
+        </div>
+      </div>
+      <div class="library-preview" style="padding: 1rem;">
+        ${relatedLines.length === 0
+          ? `<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+              <span class="material-symbols-rounded" style="font-size: 2.5rem; display: block; margin-bottom: 0.5rem; opacity: 0.4;">eco</span>
+              <p>No lines yet for this crop.</p>
+            </div>`
+          : `<div style="display: flex; flex-direction: column; gap: 0.5rem;">
+              ${relatedLines.map((line) => `
+                <div class="inventory-item" style="margin: 0;">
+                  <div class="item-meta">
+                    <div class="item-name" style="font-size: 0.95rem;">${escapeHtml(line.name)}</div>
+                    <div class="item-subtext">Stage: ${escapeHtml(line.stage || "-")} · Qty: ${line.quantity ?? "-"}</div>
+                  </div>
+                  <div class="item-actions">
+                    <button class="popup-line-edit-btn" data-id="${line.id}" title="Edit">
+                      <span class="material-symbols-rounded">edit</span>
+                    </button>
+                    <button class="popup-line-delete-btn" data-id="${line.id}" title="Delete">
+                      <span class="material-symbols-rounded">delete</span>
+                    </button>
+                  </div>
+                </div>
+              `).join("")}
+            </div>`
+        }
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(popup);
+
+  // Close button
+  popup.querySelector("#cropLinesCloseBtn").addEventListener("click", () => {
+    popup.remove();
+  });
+
+  // Click backdrop to close
+  popup.addEventListener("click", (e) => {
+    if (e.target === popup) popup.remove();
+  });
+
+  // Add line button
+  popup.querySelector("#cropLinesAddBtn").addEventListener("click", () => {
+    popup.remove();
+    openAddLineForCropModal(crop);
+  });
+
+  // Edit line buttons
+  popup.querySelectorAll(".popup-line-edit-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const lineId = btn.dataset.id;
+      popup.remove();
+      const prevCategory = inventoryState.currentCategory;
+      inventoryState.currentCategory = "lines";
+      openEditModal(lineId);
+      setTimeout(() => {
+        inventoryState.currentCategory = prevCategory;
+      }, 0);
+    });
+  });
+
+  // Delete line buttons
+  popup.querySelectorAll(".popup-line-delete-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const lineId = btn.dataset.id;
+      const prevCategory = inventoryState.currentCategory;
+      inventoryState.currentCategory = "lines";
+      deleteItem(lineId);
+      inventoryState.currentCategory = prevCategory;
+      popup.remove();
+    });
+  });
 }
 
 // Open add line for crop modal
@@ -870,6 +1010,10 @@ async function saveItem() {
     // Render items
     renderInventoryItems();
 
+    if (typeof saveLocalCache === "function") {
+      saveLocalCache("inventory", { items: inventoryState.items });
+    }
+
     // Close modal
     closeModal();
 
@@ -918,6 +1062,10 @@ async function deleteItem(itemId) {
 
     // Render items
     renderInventoryItems();
+
+    if (typeof saveLocalCache === "function") {
+      saveLocalCache("inventory", { items: inventoryState.items });
+    }
   } catch (error) {
     console.error("Error deleting item:", error);
     alert("Error deleting item. Please try again.");
@@ -944,6 +1092,87 @@ async function updateDashboardCounts() {
   } catch (error) {
     console.error("Error updating dashboard counts:", error);
   }
+}
+
+// Render location preview map
+function renderLocationPreviewMap(location) {
+  const mapContainer = document.getElementById(`locationPreviewMap${location.id}`);
+  if (!mapContainer) return;
+
+  // Remove old map if exists
+  if (window[`locationMap${location.id}`]) {
+    window[`locationMap${location.id}`].remove();
+  }
+
+  // Parse coordinates
+  let center = [-6.2, 106.8];
+  if (location.coordinates) {
+    try {
+      // Try parsing as JSON object first
+      let coords = location.coordinates;
+      if (typeof coords === 'string') {
+        coords = JSON.parse(coords);
+      }
+      if (coords && coords.lat && coords.lng) {
+        center = [coords.lat, coords.lng];
+      }
+    } catch (e) {
+      // Try parsing as "lat,lng" string format
+      try {
+        const parts = location.coordinates.split(',').map(p => parseFloat(p.trim()));
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          center = [parts[0], parts[1]];
+        }
+      } catch (e2) {
+        console.log('Could not parse coordinates:', location.coordinates);
+      }
+    }
+  }
+
+  // Create map (with no zoom control)
+  const map = L.map(mapContainer, {
+    zoomControl: false,
+    attributionControl: false
+  }).setView(center, 13);
+
+  // Add satellite layer
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '',
+    maxNativeZoom: 19,
+    maxZoom: 25
+  }).addTo(map);
+
+  // Add labels layer
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png', {
+    attribution: '',
+    maxNativeZoom: 19,
+    maxZoom: 25,
+    pane: 'shadowPane'
+  }).addTo(map);
+
+  // Add marker
+  L.marker(center, {
+    icon: L.icon({
+      iconUrl: 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41]
+    })
+  }).addTo(map);
+
+  // Disable all interactions
+  map.dragging.disable();
+  map.touchZoom.disable();
+  map.doubleClickZoom.disable();
+  map.scrollWheelZoom.disable();
+  map.boxZoom.disable();
+  map.keyboard.disable();
+  if (map.tap) map.tap.disable();
+
+  // Store map instance
+  window[`locationMap${location.id}`] = map;
+
+  // Fix map size
+  setTimeout(() => map.invalidateSize(), 100);
 }
 
 // Escape HTML to prevent XSS

@@ -263,6 +263,34 @@
                 <div class="inventory-list" id="trialList">
                   <!-- Trials will be populated here -->
                 </div>
+
+                <!-- Trial Detail Modal -->
+                <div id="trialDetailModal" class="library-preview-modal">
+                  <div class="library-preview-modal-content">
+                    <div class="library-detail-header">
+                      <div class="library-detail-info">
+                        <h3 id="trialDetailTitle">Trial Details</h3>
+                        <p id="trialDetailMeta" class="library-detail-meta"></p>
+                      </div>
+                      <div class="library-detail-actions">
+                        <button class="btn btn-secondary" id="trialDetailEditBtn" onclick="editTrialFromDetail()">
+                          <span class="material-symbols-rounded">edit</span>
+                          <span>Edit</span>
+                        </button>
+                        <button class="btn btn-secondary" id="trialDetailDeleteBtn" onclick="deleteTrialFromDetail()" style="color: var(--danger);">
+                          <span class="material-symbols-rounded">delete</span>
+                          <span>Delete</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="closeTrialDetailModal()">
+                          <span class="material-symbols-rounded">close</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div id="trialDetailBody" class="library-preview" style="padding: 1.5rem;">
+                      <!-- Content dynamically populated by showTrialDetail() -->
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div id="trialEditor" class="trial-editor">
@@ -344,15 +372,9 @@
                       <div class="trial-section" id="trialSectionLocation">
                         <h4 style="margin-bottom: 1rem; color: var(--text-primary);">Location & Area Drawing</h4>
                         <div class="form-group">
-                          <label for="trialLocation">Location</label>
-                          <select id="trialLocation" required>
-                            <option value="">Select location for drawing area</option>
-                          </select>
-                        </div>
-                        <div class="form-group">
                           <label>Draw Trial Areas</label>
                           <div id="trialMap"
-                            style="height: 550px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 0.75rem;">
+                            style="aspect-ratio: 2/1; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 0.75rem;">
                           </div>
                           <div style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem;">
                             <button type="button" class="btn btn-secondary" id="startDrawingBtn">
@@ -366,6 +388,24 @@
                             <button type="button" class="btn btn-secondary" id="clearDrawingBtn">
                               <span class="material-symbols-rounded">delete</span>
                               <span>Clear Points</span>
+                            </button>
+                          </div>
+
+                          <!-- Zone Information Panel -->
+                          <div id="zoneInfoPanel" style="display: none; background: var(--bg-tertiary); padding: 0.75rem; border-radius: var(--radius); margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+                            <div style="display: flex; gap: 1.5rem; font-size: 0.9rem;">
+                              <div>
+                                <span style="color: var(--text-secondary);">Points:</span>
+                                <span id="pointCount" style="font-weight: 600; color: var(--text-primary); margin-left: 0.25rem;">0</span>
+                              </div>
+                              <div>
+                                <span style="color: var(--text-secondary);">Area:</span>
+                                <span id="zoneArea" style="font-weight: 600; color: var(--text-primary); margin-left: 0.25rem;">0</span> ha
+                              </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-secondary" id="undoPointBtn">
+                              <span class="material-symbols-rounded">undo</span>
+                              <span>Undo</span>
                             </button>
                           </div>
 
@@ -438,9 +478,9 @@
                       <span id="runTrialProgress" class="run-trial-progress">0 / 0 completed</span>
                     </div>
                     <div class="run-trial-actions">
-                      <button class="btn btn-secondary" id="runTrialFullscreenBtn">
-                        <span class="material-symbols-rounded">fullscreen</span>
-                        <span class="btn-text">Fullscreen</span>
+                      <button class="btn btn-secondary mobile-nav-toggle" onclick="openMobileNav()">
+                        <span class="material-symbols-rounded">menu</span>
+                        <span class="btn-text">Navigation</span>
                       </button>
                       <button class="btn btn-secondary" onclick="showViewProgress()">
                         <span class="material-symbols-rounded">analytics</span>
@@ -454,12 +494,6 @@
                   </div>
 
                   <div class="run-trial-container">
-                    <!-- Mobile Nav Toggle -->
-                    <button class="mobile-nav-toggle" onclick="openMobileNav()">
-                      <span class="material-symbols-rounded">menu</span>
-                      <span>Navigation</span>
-                    </button>
-
                     <!-- Mobile Nav Overlay -->
                     <div id="mobileNavOverlay" class="mobile-nav-overlay" onclick="closeMobileNav()"></div>
 
@@ -667,7 +701,7 @@
                 style="height: 250px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 0.75rem;">
               </div>
               <div class="coord-display">
-                <input type="text" id="locationCoord" placeholder="Click on map to select location" readonly>
+                <input type="text" id="locationCoord" placeholder="Click on map to select location" readonly style="margin-bottom:.5rem">
                 <button type="button" class="btn btn-secondary" id="clearMapBtn" title="Clear location">Clear</button>
               </div>
             </div>
@@ -738,10 +772,47 @@
       <div id="syncQueueList" class="sync-panel-body"></div>
     </div>
 
+    <!-- Exit Run Trial Confirmation Modal -->
+    <div id="exitRunTrialModal" class="confirm-modal">
+      <div class="confirm-modal-content">
+        <div class="confirm-modal-header">
+          <span class="material-symbols-rounded">warning</span>
+          <h3>Exit Run Trial?</h3>
+        </div>
+        <div class="confirm-modal-body">
+          <p>You are about to leave the run trial mode. Your progress will be automatically saved before exiting.</p>
+        </div>
+        <div class="confirm-modal-footer">
+          <button class="btn btn-secondary" id="exitRunTrialCancelBtn">Cancel</button>
+          <button class="btn btn-primary" id="exitRunTrialConfirmBtn">Save & Exit</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Generic Alert/Validation Modal -->
+    <div id="alertModal" class="confirm-modal">
+      <div class="confirm-modal-content">
+        <div class="confirm-modal-header" id="alertModalHeader">
+          <span class="material-symbols-rounded" id="alertModalIcon">info</span>
+          <h3 id="alertModalTitle">Message</h3>
+        </div>
+        <div class="confirm-modal-body">
+          <p id="alertModalMessage">Message content goes here</p>
+        </div>
+        <div class="confirm-modal-footer">
+          <button class="btn btn-primary" id="alertModalBtn">OK</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Loading Spinner -->
     <div id="loadingSpinner" class="loading-spinner">
       <div class="spinner"></div>
-      <p>Loading...</p>
+      <p id="loadingProgressText">Loading...</p>
+      <div class="loading-progress">
+        <div id="loadingProgressBar" class="loading-progress-bar"></div>
+      </div>
+      <div id="loadingProgressPercent" class="loading-progress-percent">0%</div>
     </div>
 
     <!-- Google API -->
@@ -750,6 +821,8 @@
 
     <!-- Leaflet Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-draw/1.0.4/leaflet.draw.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-draw/1.0.4/leaflet.draw.min.js"></script>
 
     <!-- App Scripts -->
     <script src="assets/js/auth.js"></script>

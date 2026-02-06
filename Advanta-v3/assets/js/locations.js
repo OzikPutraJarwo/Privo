@@ -30,11 +30,19 @@ function initializeLocationMap(coordString = null) {
   // Create map
   locationMapInstance = L.map(mapContainer).setView(center, zoom);
 
-  // Add tile layer
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap contributors",
-    maxZoom: 19,
-    maxNativeZoom: 18,
+  // Add satellite tile layer
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    attribution: "© Esri",
+    maxNativeZoom: 19,
+    maxZoom: 25,
+  }).addTo(locationMapInstance);
+
+  // Add labels layer on top
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap contributors, © CartoDB",
+    maxNativeZoom: 19,
+    maxZoom: 25,
+    pane: "shadowPane",
   }).addTo(locationMapInstance);
 
   // Add marker if coordinates exist

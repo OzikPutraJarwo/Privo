@@ -10,16 +10,36 @@ let libraryState = {
   sortDir: "desc",
 };
 
-async function initializeLibrary() {
+async function initializeLibrary(options = {}) {
+  const onProgress = options.onProgress;
+  let hasCache = false;
+
   try {
+    const cached = typeof loadLocalCache === "function"
+      ? loadLocalCache("library")
+      : null;
+
+    if (cached?.items) {
+      libraryState.items = cached.items;
+      renderLibraryList();
+      hasCache = true;
+      if (onProgress) {
+        onProgress(0.2, "Loaded library from device");
+      }
+    }
+
     libraryState.folderId = await getOrCreateFolder(
       "Library",
       driveState.advantaFolderId,
     );
     setupLibraryEvents();
-    await loadLibraryItems();
+    
+    // Load library items in background via sync queue\n    if (typeof enqueueSync === 'function') {\n      enqueueSync({\n        label: 'Load Library',\n        run: async () => {\n          await loadLibraryItems();\n          if (typeof saveLocalCache === \"function\") {\n            saveLocalCache(\"library\", { items: libraryState.items });\n          }\n          if (onProgress) {\n            onProgress(1, \"Library synced\");\n          }\n        }\n      });\n    } else {\n      await loadLibraryItems();\n      if (typeof saveLocalCache === \"function\") {\n        saveLocalCache(\"library\", { items: libraryState.items });\n      }\n      if (onProgress) {\n        onProgress(1, \"Library synced\");\n      }\n    }
   } catch (error) {
     console.error("Error initializing library:", error);
+    if (!hasCache) {
+      alert("Error loading library data. Please refresh the page.");
+    }
   }
 }
 
@@ -108,6 +128,10 @@ async function loadLibraryItems() {
 
   libraryState.items = response.result.files || [];
   renderLibraryList();
+
+  if (typeof saveLocalCache === "function") {
+    saveLocalCache("library", { items: libraryState.items });
+  }
 }
 
 function getFileCategory(mimeType) {
@@ -202,6 +226,7 @@ function renderLibraryList() {
         ? "No files yet. Upload your first document to the library."
         : "No files match your search or filter.";
 
+    container.style.gridTemplateColumns = '1fr';
     container.innerHTML = `
             <div class="empty-state">
                 <span class="material-symbols-rounded">folder_open</span>
@@ -211,6 +236,9 @@ function renderLibraryList() {
     setLibraryDetailVisible(false);
     return;
   }
+
+  // Reset grid to normal when showing items
+  container.style.gridTemplateColumns = '';
 
   container.innerHTML = filteredItems
     .map((file) => {

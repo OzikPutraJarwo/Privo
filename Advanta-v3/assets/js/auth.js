@@ -91,6 +91,9 @@ function logout() {
   accessToken = null;
   localStorage.removeItem("currentUser");
   localStorage.removeItem("accessToken");
+  if (typeof clearLocalCache === "function") {
+    clearLocalCache();
+  }
 
   // Reset to login view
   document.getElementById("loginView").classList.add("active");

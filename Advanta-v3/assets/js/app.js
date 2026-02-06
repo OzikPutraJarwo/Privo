@@ -1,13 +1,73 @@
 // Main App Controller
 
+// Loading & Caching Helpers
+const CACHE_VERSION = 1;
+
+function getCacheKey(name) {
+  const user = getCurrentUser?.();
+  const userKey = user?.email || "anonymous";
+  return `advanta_cache_v${CACHE_VERSION}_${name}_${userKey}`;
+}
+
+function loadLocalCache(name) {
+  try {
+    const raw = localStorage.getItem(getCacheKey(name));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== CACHE_VERSION) return null;
+    return parsed.data || null;
+  } catch (error) {
+    console.warn("Failed to load cache:", name, error);
+    return null;
+  }
+}
+
+function saveLocalCache(name, data) {
+  try {
+    const payload = {
+      version: CACHE_VERSION,
+      savedAt: new Date().toISOString(),
+      data,
+    };
+    localStorage.setItem(getCacheKey(name), JSON.stringify(payload));
+  } catch (error) {
+    console.warn("Failed to save cache:", name, error);
+  }
+}
+
+function clearLocalCache() {
+  try {
+    const keys = Object.keys(localStorage);
+    keys.forEach((key) => {
+      if (key.startsWith(`advanta_cache_v${CACHE_VERSION}_`)) {
+        localStorage.removeItem(key);
+      }
+    });
+  } catch (error) {
+    console.warn("Failed to clear cache:", error);
+  }
+}
+
 // Show/hide loading spinner
 function showLoading(show) {
   const spinner = document.getElementById("loadingSpinner");
   if (show) {
     spinner.classList.add("active");
+    setLoadingProgress(0, "Loading...");
   } else {
     spinner.classList.remove("active");
   }
+}
+
+function setLoadingProgress(percent, message) {
+  const bar = document.getElementById("loadingProgressBar");
+  const text = document.getElementById("loadingProgressText");
+  const pct = document.getElementById("loadingProgressPercent");
+  const safePercent = Math.max(0, Math.min(100, Math.round(percent)));
+
+  if (bar) bar.style.width = `${safePercent}%`;
+  if (text && message) text.textContent = message;
+  if (pct) pct.textContent = `${safePercent}%`;
 }
 
 // Show success message
@@ -19,7 +79,58 @@ function showSuccessMessage(message) {
 // Show error message
 function showErrorMessage(message) {
   console.error("Error:", message);
-  alert(message);
+  showAlert(message, "error");
+}
+
+// Show generic alert modal
+function showAlert(message, type = "info", title = null) {
+  const modal = document.getElementById("alertModal");
+  const titleEl = document.getElementById("alertModalTitle");
+  const msgEl = document.getElementById("alertModalMessage");
+  const btnEl = document.getElementById("alertModalBtn");
+  const iconEl = document.getElementById("alertModalIcon");
+  const headerEl = document.getElementById("alertModalHeader");
+  
+  if (!modal) return;
+  
+  // Set title
+  if (title) {
+    titleEl.textContent = title;
+  } else {
+    titleEl.textContent = type === "error" ? "Error" : type === "success" ? "Success" : "Message";
+  }
+  
+  // Set message
+  msgEl.textContent = message;
+  
+  // Set icon and styling
+  headerEl.style.background = 
+    type === "error" ? "var(--danger-soft)" :
+    type === "success" ? "var(--success-soft)" :
+    type === "warning" ? "var(--warning-soft)" :
+    "var(--info-soft)";
+  
+  iconEl.style.color =
+    type === "error" ? "var(--danger)" :
+    type === "success" ? "var(--success)" :
+    type === "warning" ? "var(--warning)" :
+    "var(--info)";
+  
+  iconEl.textContent =
+    type === "error" ? "error" :
+    type === "success" ? "check_circle" :
+    type === "warning" ? "warning" :
+    "info";
+  
+  // Close previous listeners and add new one
+  const oldBtn = btnEl.cloneNode(true);
+  btnEl.parentNode.replaceChild(oldBtn, btnEl);
+  oldBtn.addEventListener("click", () => {
+    modal.classList.remove("active");
+  });
+  
+  // Show modal
+  modal.classList.add("active");
 }
 
 // ===========================
@@ -70,6 +181,14 @@ async function processSyncQueue() {
       next.error = error?.message || "Unknown error";
       syncState.lastError = next.error;
       syncState.status = "error";
+
+      // Check if it's an authentication error
+      if (error?.message?.includes("401") || error?.message?.includes("unauthorized") || error?.message?.includes("Invalid Credentials")) {
+        next.error = next.error + " - [Requires re-login]";
+        // Show alert with login option
+        showSyncErrorAlert(next.error, error);
+      }
+
       updateSyncUI();
       continue;
     }
@@ -111,7 +230,7 @@ function updateSyncUI() {
       btn.classList.add("error");
       iconSpan.textContent = "sync";
       btn.setAttribute("aria-label", "Sync error");
-      btn.setAttribute("title", "Sync error");
+      btn.setAttribute("title", "Sync error - Click to retry or re-login");
     } else {
       btn.classList.add("synced");
       iconSpan.textContent = "check_circle";
@@ -251,6 +370,99 @@ function switchPage(pageName) {
   syncNavActiveState(pageName);
 }
 
+// Helper function to navigate to a view
+function navigateToView(item) {
+  const view = item.dataset.view;
+  const sidebar = document.querySelector(".sidebar");
+  const sidebarOverlay = document.getElementById("sidebarOverlay");
+
+  if (item.classList.contains("nav-parent")) {
+    const group = item.closest(".nav-group");
+    if (group) group.classList.remove("collapsed");
+    item.setAttribute("aria-expanded", "true");
+  }
+
+  // Remove active from all nav items
+  document
+    .querySelectorAll(".nav-item")
+    .forEach((i) => i.classList.remove("active"));
+  item.classList.add("active");
+
+  switchPage(view);
+
+  // Auto-select first subitem if has submenu
+  if (view === "inventory") {
+    const firstSub = document.querySelector(
+      '.nav-subitem[data-parent="inventory"]',
+    );
+    if (firstSub) {
+      const category = firstSub.dataset.category;
+      switchCategory(category);
+      syncInventoryNavState(category);
+    }
+  } else if (view === "trial") {
+    const firstSub = document.querySelector(
+      '.nav-subitem[data-parent="trial"]',
+    );
+    if (firstSub) {
+      document
+        .querySelectorAll('.nav-subitem[data-parent="trial"]')
+        .forEach((s) => s.classList.remove("active"));
+      firstSub.classList.add("active");
+      const tab = firstSub.dataset.trialTab;
+      switchTrialTab(tab);
+    }
+  }
+
+  // Close mobile sidebar after navigation
+  if (sidebar) sidebar.classList.remove("open");
+  if (sidebarOverlay) sidebarOverlay.classList.remove("active");
+}
+
+// Helper function to navigate to a sub-view
+function navigateToSubView(item) {
+  const parent = item.dataset.parent;
+  const sidebar = document.querySelector(".sidebar");
+  const sidebarOverlay = document.getElementById("sidebarOverlay");
+
+  const group = item.closest(".nav-group");
+  if (group) group.classList.remove("collapsed");
+
+  // Remove active from all subitems of same parent
+  document
+    .querySelectorAll(`.nav-subitem[data-parent="${parent}"]`)
+    .forEach((sub) => sub.classList.remove("active"));
+  item.classList.add("active");
+
+  if (parent === "inventory") {
+    const category = item.dataset.category;
+    switchPage("inventory");
+    switchCategory(category);
+    syncInventoryNavState(category);
+  }
+
+  if (parent === "trial") {
+    const tab = item.dataset.trialTab;
+    switchPage("trial");
+    switchTrialTab(tab);
+  }
+
+  const isMobile = window.matchMedia("(max-width: 768px)").matches;
+  if (isMobile && sidebar && sidebarOverlay) {
+    sidebar.classList.remove("open");
+    sidebarOverlay.classList.remove("active");
+  }
+}
+
+// Show exit run trial confirmation modal
+function showExitRunTrialConfirmation(onConfirm) {
+  const modal = document.getElementById("exitRunTrialModal");
+  if (modal) {
+    modal.classList.add("active");
+    window.pendingNavigation = onConfirm;
+  }
+}
+
 function clearNavActiveState() {
   document
     .querySelectorAll(
@@ -314,6 +526,7 @@ function syncInventoryNavState(category) {
 async function initializeApp() {
   try {
     showLoading(true);
+    setLoadingProgress(5, "Preparing your workspace...");
 
     // Update user info
     const user = getCurrentUser();
@@ -351,29 +564,38 @@ async function initializeApp() {
     }
 
     // Initialize Drive structure
-    console.log("Initializing Drive structure...");
+    setLoadingProgress(12, "Preparing...");
     await initializeDriveStructure();
-    console.log("Drive structure initialized:", driveState);
 
-    // Initialize Inventory
-    console.log("Initializing Inventory...");
-    await initializeInventory();
-    console.log("Inventory initialized:", inventoryState);
+    // Initialize Inventory (silent background loading)
+    setLoadingProgress(20, "Loading cached data...");
+    initializeInventory({
+      onProgress: (p, msg) => {
+        // Silent background sync - no UI updates
+      },
+    });
 
-    // Initialize Trials
-    console.log("Initializing Trials...");
-    await initializeTrials();
-    console.log("Trials initialized");
+    // Initialize Trials (silent background loading)
+    setLoadingProgress(55, "Loading cached data...");
+    initializeTrials({
+      onProgress: (p, msg) => {
+        // Silent background sync - no UI updates
+      },
+    });
 
-    // Initialize Library
-    console.log("Initializing Library...");
-    await initializeLibrary();
-    console.log("Library initialized");
+    // Initialize Library (silent background loading)
+    setLoadingProgress(80, "Loading cached data...");
+    initializeLibrary({
+      onProgress: (p, msg) => {
+        // Silent background sync - no UI updates
+      },
+    });
 
     // Setup event listeners
     setupEventListeners();
     setupSyncUI();
 
+    setLoadingProgress(100, "Ready");
     showView("app");
     showLoading(false);
     console.log("App initialized successfully");
@@ -445,49 +667,17 @@ function setupEventListeners() {
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.addEventListener("click", (e) => {
       e.preventDefault();
-      const view = item.dataset.view;
-
-      if (item.classList.contains("nav-parent")) {
-        const group = item.closest(".nav-group");
-        if (group) group.classList.remove("collapsed");
-        item.setAttribute("aria-expanded", "true");
+      
+      // Check if in run trial mode
+      const isInRunTrialMode = document.body.classList.contains("run-trial-active");
+      if (isInRunTrialMode) {
+        showExitRunTrialConfirmation(() => {
+          navigateToView(item);
+        });
+        return;
       }
-
-      // Remove active from all nav items
-      document
-        .querySelectorAll(".nav-item")
-        .forEach((i) => i.classList.remove("active"));
-      item.classList.add("active");
-
-      switchPage(view);
-
-      // Auto-select first subitem if has submenu
-      if (view === "inventory") {
-        const firstSub = document.querySelector(
-          '.nav-subitem[data-parent="inventory"]',
-        );
-        if (firstSub) {
-          const category = firstSub.dataset.category;
-          switchCategory(category);
-          syncInventoryNavState(category);
-        }
-      } else if (view === "trial") {
-        const firstSub = document.querySelector(
-          '.nav-subitem[data-parent="trial"]',
-        );
-        if (firstSub) {
-          document
-            .querySelectorAll('.nav-subitem[data-parent="trial"]')
-            .forEach((s) => s.classList.remove("active"));
-          firstSub.classList.add("active");
-          const tab = firstSub.dataset.trialTab;
-          switchTrialTab(tab);
-        }
-      }
-
-      // Close mobile sidebar after navigation
-      if (sidebar) sidebar.classList.remove("open");
-      if (sidebarOverlay) sidebarOverlay.classList.remove("active");
+      
+      navigateToView(item);
     });
   });
 
@@ -495,35 +685,17 @@ function setupEventListeners() {
   document.querySelectorAll(".nav-subitem").forEach((item) => {
     item.addEventListener("click", (e) => {
       e.preventDefault();
-      const parent = item.dataset.parent;
-
-      const group = item.closest(".nav-group");
-      if (group) group.classList.remove("collapsed");
-
-      // Remove active from all subitems of same parent
-      document
-        .querySelectorAll(`.nav-subitem[data-parent="${parent}"]`)
-        .forEach((sub) => sub.classList.remove("active"));
-      item.classList.add("active");
-
-      if (parent === "inventory") {
-        const category = item.dataset.category;
-        switchPage("inventory");
-        switchCategory(category);
-        syncInventoryNavState(category);
+      
+      // Check if in run trial mode
+      const isInRunTrialMode = document.body.classList.contains("run-trial-active");
+      if (isInRunTrialMode) {
+        showExitRunTrialConfirmation(() => {
+          navigateToSubView(item);
+        });
+        return;
       }
-
-      if (parent === "trial") {
-        const tab = item.dataset.trialTab;
-        switchPage("trial");
-        switchTrialTab(tab);
-      }
-
-      const isMobile = window.matchMedia("(max-width: 768px)").matches;
-      if (isMobile && sidebar && sidebarOverlay) {
-        sidebar.classList.remove("open");
-        sidebarOverlay.classList.remove("active");
-      }
+      
+      navigateToSubView(item);
     });
   });
 
@@ -543,6 +715,39 @@ function setupEventListeners() {
       }
     });
   });
+
+  // Exit Run Trial Modal handlers
+  const exitRunTrialModal = document.getElementById("exitRunTrialModal");
+  const exitRunTrialCancelBtn = document.getElementById("exitRunTrialCancelBtn");
+  const exitRunTrialConfirmBtn = document.getElementById("exitRunTrialConfirmBtn");
+  
+  if (exitRunTrialCancelBtn) {
+    exitRunTrialCancelBtn.addEventListener("click", () => {
+      exitRunTrialModal.classList.remove("active");
+    });
+  }
+  
+  if (exitRunTrialConfirmBtn) {
+    exitRunTrialConfirmBtn.addEventListener("click", async () => {
+      exitRunTrialModal.classList.remove("active");
+      
+      // Auto-save progress before exiting
+      if (typeof saveRunTrialProgress === "function") {
+        await saveRunTrialProgress();
+      }
+      
+      // Exit run trial mode
+      if (typeof exitRunTrial === "function") {
+        exitRunTrial();
+      }
+      
+      // Execute pending navigation if any
+      if (window.pendingNavigation) {
+        window.pendingNavigation();
+        window.pendingNavigation = null;
+      }
+    });
+  }
 
   // Inventory submenu
   document.querySelectorAll(".submenu-item").forEach((item) => {
@@ -637,6 +842,42 @@ document.addEventListener("keydown", (e) => {
     }
   }
 });
+
+// Show sync error alert with retry/login options
+function showSyncErrorAlert(errorMessage, error) {
+  const isAuthError = errorMessage?.toLowerCase().includes("unauthorized") || 
+                      errorMessage?.toLowerCase().includes("requires re-login") ||
+                      error?.message?.includes("401");
+
+  const title = isAuthError ? "Authentication Required" : "Sync Error";
+  const message = isAuthError 
+    ? "Your session has expired. Please log in again to continue syncing."
+    : errorMessage || "An error occurred during sync. Please try again.";
+
+  // Create custom alert with buttons
+  showAlert(message, isAuthError ? "warning" : "error", title);
+  
+  // If it's auth error, add login button
+  if (isAuthError) {
+    const alertModal = document.getElementById("alertModal");
+    if (alertModal) {
+      const button = alertModal.querySelector(".alert-button");
+      if (button) {
+        const container = button.parentElement;
+        const loginBtn = document.createElement("button");
+        loginBtn.className = "btn btn-primary";
+        loginBtn.textContent = "Log In Again";
+        loginBtn.onclick = () => {
+          // Sign out and force re-login
+          gapi.auth2.getAuthInstance().signOut().then(() => {
+            location.reload();
+          });
+        };
+        container.insertBefore(loginBtn, button);
+      }
+    }
+  }
+}
 
 // Handle responsive sidebar toggle on mobile
 function setupMobileNav() {
