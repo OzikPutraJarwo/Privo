@@ -242,7 +242,7 @@ function updateSyncUI() {
       (item) => item.status === "pending" || item.status === "syncing",
     ).length;
     badge.textContent = String(pendingCount);
-    badge.style.display = pendingCount > 0 ? "inline-flex" : "none";
+    badge.classList.toggle("hidden", pendingCount <= 0);
   }
 
   if (panel) {
@@ -524,6 +524,8 @@ function syncInventoryNavState(category) {
 
 // Initialize app
 async function initializeApp() {
+  const isGuest = getCurrentUser()?.isGuest;
+
   try {
     showLoading(true);
     setLoadingProgress(5, "Preparing your workspace...");
@@ -542,7 +544,7 @@ async function initializeApp() {
       const userEmailEl = document.getElementById("userEmail");
       const userAvatar = document.getElementById("userAvatar");
       if (userNameEl) userNameEl.textContent = user.name;
-      if (userEmailEl) userEmailEl.textContent = user.email || "";
+      if (userEmailEl) userEmailEl.textContent = user.isGuest ? "Local data only" : (user.email || "");
       if (userAvatar) {
         if (user.picture) {
           userAvatar.style.backgroundImage = `url('${user.picture}')`;
@@ -560,12 +562,14 @@ async function initializeApp() {
       const userDropdownEmail = document.getElementById("userDropdownEmail");
 
       if (userDropdownName) userDropdownName.textContent = user.name;
-      if (userDropdownEmail) userDropdownEmail.textContent = user.email;
+      if (userDropdownEmail) userDropdownEmail.textContent = user.isGuest ? "Guest · Local data only" : user.email;
     }
 
-    // Initialize Drive structure
-    setLoadingProgress(12, "Preparing...");
-    await initializeDriveStructure();
+    // Initialize Drive structure (skip for guest)
+    if (!isGuest) {
+      setLoadingProgress(12, "Preparing...");
+      await initializeDriveStructure();
+    }
 
     // Initialize Inventory (silent background loading)
     setLoadingProgress(20, "Loading cached data...");
@@ -583,17 +587,24 @@ async function initializeApp() {
       },
     });
 
-    // Initialize Library (silent background loading)
-    setLoadingProgress(80, "Loading cached data...");
-    initializeLibrary({
-      onProgress: (p, msg) => {
-        // Silent background sync - no UI updates
-      },
-    });
+    // Initialize Library (silent background loading, skip for guest)
+    if (!isGuest) {
+      setLoadingProgress(80, "Loading cached data...");
+      initializeLibrary({
+        onProgress: (p, msg) => {
+          // Silent background sync - no UI updates
+        },
+      });
+    }
 
     // Setup event listeners
     setupEventListeners();
+    setupDataTransferEvents();
     setupSyncUI();
+
+    // Hide sync button for guests
+    const syncBtn = document.getElementById("syncStatusBtn");
+    if (syncBtn) syncBtn.classList.toggle("hidden", !!isGuest);
 
     setLoadingProgress(100, "Ready");
     showView("app");
@@ -892,3 +903,426 @@ window.addEventListener("resize", setupMobileNav);
 document.addEventListener("DOMContentLoaded", () => {
   setupMobileNav();
 });
+
+// ===========================
+// DATA IMPORT / EXPORT
+// ===========================
+const DATA_MAGIC = "ADVANTA_V3_BACKUP";
+const DATA_VERSION = 1;
+
+function showDataTransfer(title, message) {
+  const overlay = document.getElementById("dataTransferOverlay");
+  const titleEl = document.getElementById("dataTransferTitle");
+  const msgEl = document.getElementById("dataTransferMessage");
+  const bar = document.getElementById("dataTransferBar");
+  if (titleEl) titleEl.textContent = title;
+  if (msgEl) msgEl.textContent = message;
+  if (bar) bar.style.width = "0%";
+  if (overlay) overlay.classList.add("active");
+}
+
+function updateDataTransfer(message, percent) {
+  const msgEl = document.getElementById("dataTransferMessage");
+  const bar = document.getElementById("dataTransferBar");
+  if (msgEl && message) msgEl.textContent = message;
+  if (bar && percent != null) bar.style.width = `${Math.round(percent)}%`;
+}
+
+function hideDataTransfer() {
+  const overlay = document.getElementById("dataTransferOverlay");
+  if (overlay) overlay.classList.remove("active");
+}
+
+// XOR-based obfuscation so the file can't be opened as plain text
+function obfuscate(str) {
+  const key = "AdvantaV3SecretKey2026";
+  const bytes = new TextEncoder().encode(str);
+  const out = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    out[i] = bytes[i] ^ key.charCodeAt(i % key.length);
+  }
+  return out;
+}
+
+function deobfuscate(buffer) {
+  const key = "AdvantaV3SecretKey2026";
+  const bytes = new Uint8Array(buffer);
+  const out = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    out[i] = bytes[i] ^ key.charCodeAt(i % key.length);
+  }
+  return new TextDecoder().decode(out);
+}
+
+// EXPORT DATA
+async function exportData() {
+  showDataTransfer("Exporting Data", "Collecting all data...");
+  updateDataTransfer(null, 10);
+
+  await new Promise(r => setTimeout(r, 200));
+
+  const payload = {
+    magic: DATA_MAGIC,
+    version: DATA_VERSION,
+    exportedAt: new Date().toISOString(),
+    inventory: {
+      crops: inventoryState.items.crops || [],
+      lines: inventoryState.items.lines || [],
+      locations: inventoryState.items.locations || [],
+      parameters: inventoryState.items.parameters || [],
+    },
+    trials: trialState.trials || [],
+  };
+
+  updateDataTransfer("Encoding data...", 50);
+  await new Promise(r => setTimeout(r, 150));
+
+  const json = JSON.stringify(payload);
+  const encoded = obfuscate(json);
+
+  updateDataTransfer("Preparing file...", 80);
+  await new Promise(r => setTimeout(r, 150));
+
+  const blob = new Blob([encoded], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  a.href = url;
+  a.download = `advanta_backup_${dateStr}.adv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  updateDataTransfer("Export complete!", 100);
+  await new Promise(r => setTimeout(r, 600));
+  hideDataTransfer();
+  showAlert("Data exported successfully.", "success", "Export Complete");
+}
+
+// IMPORT DATA
+function triggerImport() {
+  const input = document.getElementById("importFileInput");
+  if (input) {
+    input.value = "";
+    input.click();
+  }
+}
+
+async function handleImportFile(file) {
+  if (!file) return;
+
+  showDataTransfer("Importing Data", "Reading file...");
+  updateDataTransfer(null, 10);
+
+  try {
+    const buffer = await file.arrayBuffer();
+
+    updateDataTransfer("Decoding data...", 30);
+    await new Promise(r => setTimeout(r, 150));
+
+    let json;
+    try {
+      json = deobfuscate(buffer);
+    } catch {
+      hideDataTransfer();
+      showAlert("Invalid backup file. Cannot read data.", "error", "Import Failed");
+      return;
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(json);
+    } catch {
+      hideDataTransfer();
+      showAlert("Corrupted backup file. Data could not be parsed.", "error", "Import Failed");
+      return;
+    }
+
+    if (payload.magic !== DATA_MAGIC) {
+      hideDataTransfer();
+      showAlert("This file is not a valid Advanta backup.", "error", "Import Failed");
+      return;
+    }
+
+    updateDataTransfer("Checking for duplicates...", 60);
+    await new Promise(r => setTimeout(r, 200));
+
+    // Merge & detect duplicates
+    const incoming = payload.inventory || {};
+    const incomingTrials = payload.trials || [];
+
+    const duplicates = [];
+
+    // Check each category
+    const categories = ["crops", "lines", "locations", "parameters"];
+    for (const cat of categories) {
+      const existing = inventoryState.items[cat] || [];
+      const newItems = incoming[cat] || [];
+      for (const item of newItems) {
+        const dup = existing.find(e => e.id === item.id || (e.name && e.name === item.name));
+        if (dup) {
+          duplicates.push({
+            category: cat,
+            existingItem: dup,
+            newItem: item,
+            action: "keep_existing", // default action
+          });
+        }
+      }
+    }
+
+    // Check trials
+    for (const trial of incomingTrials) {
+      const dup = trialState.trials.find(e => e.id === trial.id || (e.name && e.name === trial.name));
+      if (dup) {
+        duplicates.push({
+          category: "trials",
+          existingItem: dup,
+          newItem: trial,
+          action: "keep_existing",
+        });
+      }
+    }
+
+    hideDataTransfer();
+
+    if (duplicates.length > 0) {
+      // Show duplicate review modal
+      await showDuplicateReview(duplicates, incoming, incomingTrials);
+    } else {
+      // No duplicates — apply directly
+      await applyImport(incoming, incomingTrials, []);
+    }
+
+  } catch (error) {
+    hideDataTransfer();
+    console.error("Import error:", error);
+    showAlert("Error importing data: " + error.message, "error", "Import Failed");
+  }
+}
+
+function showDuplicateReview(duplicates, incoming, incomingTrials) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("duplicateReviewModal");
+    const list = document.getElementById("duplicateReviewList");
+    const desc = document.getElementById("duplicateReviewDesc");
+
+    desc.textContent = `Found ${duplicates.length} duplicate(s). Choose how to handle each one.`;
+
+    list.innerHTML = duplicates.map((dup, idx) => {
+      const catLabel = dup.category.charAt(0).toUpperCase() + dup.category.slice(1);
+      return `
+        <div class="dup-item" id="dupItem${idx}">
+          <div class="dup-item-info">
+            <div class="dup-item-name">${escapeHtml(dup.newItem.name || dup.newItem.id)}</div>
+            <div class="dup-item-meta">${catLabel} · ID: ${dup.newItem.id.substring(0, 12)}...</div>
+          </div>
+          <span class="dup-item-badge">Duplicate</span>
+          <div class="dup-actions">
+            <button class="btn btn-secondary dup-action-btn active" data-idx="${idx}" data-action="keep_existing" title="Keep existing, skip imported">Keep Existing</button>
+            <button class="btn btn-secondary dup-action-btn" data-idx="${idx}" data-action="replace" title="Replace existing with imported">Replace</button>
+            <button class="btn btn-secondary dup-action-btn" data-idx="${idx}" data-action="keep_both" title="Keep both items">Keep Both</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    modal.classList.add("active");
+
+    // Handle per-item actions
+    list.addEventListener("click", function handler(e) {
+      const btn = e.target.closest(".dup-action-btn");
+      if (!btn) return;
+      const idx = parseInt(btn.dataset.idx);
+      const action = btn.dataset.action;
+      duplicates[idx].action = action;
+
+      // Update active state
+      const row = document.getElementById(`dupItem${idx}`);
+      row.querySelectorAll(".dup-action-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+
+    // Keep All button
+    document.getElementById("dupKeepAllBtn").onclick = () => {
+      duplicates.forEach((d, i) => {
+        d.action = "keep_existing";
+        const row = document.getElementById(`dupItem${i}`);
+        row.querySelectorAll(".dup-action-btn").forEach(b => b.classList.toggle("active", b.dataset.action === "keep_existing"));
+      });
+    };
+
+    // Skip All New
+    document.getElementById("dupRemoveAllNewBtn").onclick = () => {
+      duplicates.forEach((d, i) => {
+        d.action = "keep_existing";
+        const row = document.getElementById(`dupItem${i}`);
+        row.querySelectorAll(".dup-action-btn").forEach(b => b.classList.toggle("active", b.dataset.action === "keep_existing"));
+      });
+    };
+
+    // Apply
+    document.getElementById("dupApplyBtn").onclick = async () => {
+      modal.classList.remove("active");
+      await applyImport(incoming, incomingTrials, duplicates);
+      resolve();
+    };
+  });
+}
+
+async function applyImport(incoming, incomingTrials, duplicates) {
+  showDataTransfer("Applying Import", "Merging data...");
+  updateDataTransfer(null, 20);
+  await new Promise(r => setTimeout(r, 200));
+
+  const dupMap = {};
+  for (const dup of duplicates) {
+    const key = `${dup.category}_${dup.newItem.id}`;
+    dupMap[key] = dup.action;
+    // Also track by name for name-matched duplicates
+    if (dup.newItem.name) {
+      const nameKey = `${dup.category}_name_${dup.newItem.name}`;
+      dupMap[nameKey] = dup.action;
+    }
+  }
+
+  function getDupAction(cat, item) {
+    const a = dupMap[`${cat}_${item.id}`];
+    if (a) return a;
+    if (item.name) {
+      const b = dupMap[`${cat}_name_${item.name}`];
+      if (b) return b;
+    }
+    return null; // no duplicate
+  }
+
+  // Merge inventory categories
+  const categories = ["crops", "lines", "locations", "parameters"];
+  for (const cat of categories) {
+    const existing = inventoryState.items[cat] || [];
+    const newItems = incoming[cat] || [];
+
+    for (const item of newItems) {
+      const action = getDupAction(cat, item);
+      if (action === "keep_existing") continue; // skip imported
+      if (action === "replace") {
+        // Remove existing, add new
+        const idx = existing.findIndex(e => e.id === item.id || (e.name && e.name === item.name));
+        if (idx >= 0) existing.splice(idx, 1);
+        existing.push(item);
+      } else if (action === "keep_both") {
+        // Give new item a unique id suffix
+        item.id = item.id + "_imported_" + Date.now();
+        existing.push(item);
+      } else {
+        // No duplicate — just add
+        existing.push(item);
+      }
+    }
+    inventoryState.items[cat] = existing;
+  }
+
+  updateDataTransfer("Merging trials...", 50);
+  await new Promise(r => setTimeout(r, 150));
+
+  // Merge trials
+  for (const trial of incomingTrials) {
+    const action = getDupAction("trials", trial);
+    if (action === "keep_existing") continue;
+    if (action === "replace") {
+      const idx = trialState.trials.findIndex(e => e.id === trial.id || (e.name && e.name === trial.name));
+      if (idx >= 0) trialState.trials.splice(idx, 1);
+      trialState.trials.push(trial);
+    } else if (action === "keep_both") {
+      trial.id = trial.id + "_imported_" + Date.now();
+      trialState.trials.push(trial);
+    } else {
+      trialState.trials.push(trial);
+    }
+  }
+
+  updateDataTransfer("Saving to local cache...", 70);
+  await new Promise(r => setTimeout(r, 150));
+
+  // Save everything to local cache
+  if (typeof saveLocalCache === "function") {
+    saveLocalCache("inventory", { items: inventoryState.items });
+    saveLocalCache("trials", { trials: trialState.trials });
+  }
+
+  updateDataTransfer("Updating UI...", 85);
+  await new Promise(r => setTimeout(r, 150));
+
+  // Refresh UI
+  updateDashboardCounts();
+  switchCategory(inventoryState.currentCategory || "crops");
+  renderTrials();
+  renderDashboardTrialProgress();
+
+  // Sync to Google Drive if logged in (not guest)
+  const isGuest = getCurrentUser()?.isGuest;
+  if (!isGuest && typeof getAccessToken === "function" && getAccessToken()) {
+    updateDataTransfer("Uploading to Google Drive...", 90);
+
+    // Enqueue sync for all inventory items
+    for (const cat of categories) {
+      for (const item of inventoryState.items[cat]) {
+        if (typeof enqueueSync === "function") {
+          enqueueSync({
+            label: `Sync ${cat}: ${item.name || item.id}`,
+            run: async () => {
+              await saveItemToGoogleDrive(cat, item);
+            }
+          });
+        }
+      }
+    }
+    // Enqueue sync for all trials
+    for (const trial of trialState.trials) {
+      if (typeof enqueueSync === "function") {
+        enqueueSync({
+          label: `Sync trial: ${trial.name || trial.id}`,
+          run: async () => {
+            await saveTrialToGoogleDrive(trial);
+          }
+        });
+      }
+    }
+  }
+
+  updateDataTransfer("Import complete!", 100);
+  await new Promise(r => setTimeout(r, 600));
+  hideDataTransfer();
+  showAlert("Data imported successfully!", "success", "Import Complete");
+}
+
+// Wire up import/export buttons
+function setupDataTransferEvents() {
+  const exportBtn = document.getElementById("exportDataBtn");
+  const importBtn = document.getElementById("importDataBtn");
+  const importInput = document.getElementById("importFileInput");
+
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      const dropdown = document.getElementById("userDropdown");
+      if (dropdown) dropdown.classList.remove("active");
+      exportData();
+    });
+  }
+
+  if (importBtn) {
+    importBtn.addEventListener("click", () => {
+      const dropdown = document.getElementById("userDropdown");
+      if (dropdown) dropdown.classList.remove("active");
+      triggerImport();
+    });
+  }
+
+  if (importInput) {
+    importInput.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (file) handleImportFile(file);
+    });
+  }
+}

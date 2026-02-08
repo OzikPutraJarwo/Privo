@@ -226,7 +226,7 @@ function renderLibraryList() {
         ? "No files yet. Upload your first document to the library."
         : "No files match your search or filter.";
 
-    container.style.gridTemplateColumns = '1fr';
+    container.classList.add('library-grid-empty');
     container.innerHTML = `
             <div class="empty-state">
                 <span class="material-symbols-rounded">folder_open</span>
@@ -238,7 +238,7 @@ function renderLibraryList() {
   }
 
   // Reset grid to normal when showing items
-  container.style.gridTemplateColumns = '';
+  container.classList.remove('library-grid-empty');
 
   container.innerHTML = filteredItems
     .map((file) => {
@@ -378,7 +378,7 @@ function renderLibraryPreview(file, url) {
   if (!preview) return;
 
   if (file.mimeType === "application/pdf") {
-    preview.innerHTML = `<iframe src="${url}" style="height: 520px;"></iframe>`;
+    preview.innerHTML = `<iframe src="${url}" class="library-preview-iframe"></iframe>`;
     return;
   }
 
@@ -393,9 +393,9 @@ function renderLibraryPreview(file, url) {
   }
 
   preview.innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        <div class="library-preview-fallback">
             <p>Preview not available for this file type.</p>
-            <a href="${url}" download="${escapeHtml(file.name)}" class="btn btn-primary" style="width: fit-content;">Download</a>
+            <a href="${url}" download="${escapeHtml(file.name)}" class="btn btn-primary library-download-btn">Download</a>
         </div>
     `;
 }

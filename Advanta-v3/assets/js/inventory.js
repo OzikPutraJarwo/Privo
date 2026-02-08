@@ -184,40 +184,43 @@ async function initializeInventory(options = {}) {
       }
     }
 
-    // Load items for all categories from Drive
-    const total = CATEGORIES.length;
-    let done = 0;
-    for (const category of CATEGORIES) {
-      const key = category.toLowerCase();
-      
-      // Add to sync queue for visibility
-      if (typeof enqueueSync === 'function') {
-        enqueueSync({
-          label: `Load ${category}`,
-          run: async () => {
-            inventoryState.items[key] = await loadItemsFromGoogleDrive(category);
-            done += 1;
-            if (onProgress) {
-              onProgress(done / total, `Syncing ${category}...`);
+    // Load items for all categories from Drive (skip for guest)
+    const isGuest = typeof getCurrentUser === 'function' && getCurrentUser()?.isGuest;
+    if (!isGuest) {
+      const total = CATEGORIES.length;
+      let done = 0;
+      for (const category of CATEGORIES) {
+        const key = category.toLowerCase();
+        
+        // Add to sync queue for visibility
+        if (typeof enqueueSync === 'function') {
+          enqueueSync({
+            label: `Load ${category}`,
+            run: async () => {
+              inventoryState.items[key] = await loadItemsFromGoogleDrive(category);
+              done += 1;
+              if (onProgress) {
+                onProgress(done / total, `Syncing ${category}...`);
+              }
+              
+              // Update UI after each category
+              updateDashboardCounts();
+              if (inventoryState.currentCategory === key) {
+                switchCategory(inventoryState.currentCategory);
+              }
+              updateCropTypeSuggestions();
+              
+              if (typeof saveLocalCache === 'function') {
+                saveLocalCache('inventory', { items: inventoryState.items });
+              }
             }
-            
-            // Update UI after each category
-            updateDashboardCounts();
-            if (inventoryState.currentCategory === key) {
-              switchCategory(inventoryState.currentCategory);
-            }
-            updateCropTypeSuggestions();
-            
-            if (typeof saveLocalCache === 'function') {
-              saveLocalCache('inventory', { items: inventoryState.items });
-            }
+          });
+        } else {
+          inventoryState.items[key] = await loadItemsFromGoogleDrive(category);
+          done += 1;
+          if (onProgress) {
+            onProgress(done / total, `Syncing ${category}...`);
           }
-        });
-      } else {
-        inventoryState.items[key] = await loadItemsFromGoogleDrive(category);
-        done += 1;
-        if (onProgress) {
-          onProgress(done / total, `Syncing ${category}...`);
         }
       }
     }
@@ -335,7 +338,7 @@ function renderInventoryItems() {
                         <div class="item-meta">
                             <div class="item-name">${escapeHtml(crop.name)}</div>
                             ${crop.cropType ? `<div class="item-subtext">Type: ${escapeHtml(crop.cropType)}</div>` : ""}
-                            ${relatedLines.length > 0 ? `<div class="item-subtext" style="color: var(--text-secondary);">Lines: ${relatedLines.length}</div>` : ""}
+                            ${relatedLines.length > 0 ? `<div class="item-subtext">Lines: ${relatedLines.length}</div>` : ""}
                         </div>
                         <div class="item-actions">
                             <button class="expand-crop-btn" data-crop-id="${crop.id}" title="View Lines">
@@ -407,17 +410,17 @@ function renderInventoryItems() {
 
         // Add map preview for locations
         const mapPreview = isLocations
-          ? `<div id="locationPreviewMap${item.id}" style="width: 100px; height: 100px; border-radius: var(--radius) 0 0 var(--radius); flex-shrink: 0; background: var(--bg-secondary);"></div>`
+          ? `<div id="locationPreviewMap${item.id}" class="location-preview-map"></div>`
           : "";
 
         return `
-                <div class="inventory-item" style="${isLocations ? 'display: grid; grid-template-columns: 100px 1fr auto; min-height: 100px; padding: 0; overflow: hidden;' : ''}">
+                <div class="inventory-item${isLocations ? ' location-item' : ''}">
                     ${mapPreview}
-                    <div class="item-meta" style="${isLocations ? 'display: flex; flex-direction: column; justify-content: center; padding: 0.75rem 1rem;' : ''}">
+                    <div class="item-meta">
                         <div class="item-name">${escapeHtml(item.name)}</div>
                         ${locationMeta || paramMeta}
                     </div>
-                    <div class="item-actions" style="${isLocations ? 'display: flex; flex-direction: column; justify-content: center; padding-right: 0.75rem; gap: 0.25rem;' : ''}">
+                    <div class="item-actions">
                         <button class="edit-btn" data-id="${item.id}" title="Edit">
                             <span class="material-symbols-rounded">edit</span>
                         </button>
@@ -528,10 +531,9 @@ function showCropLinesPopup(cropId) {
 
   const popup = document.createElement("div");
   popup.id = "cropLinesPopup";
-  popup.className = "library-preview-modal active";
-  popup.style.zIndex = "1004";
+  popup.className = "library-preview-modal active crop-lines-popup";
   popup.innerHTML = `
-    <div class="library-preview-modal-content" style="max-width: 700px; height: auto; max-height: 80vh;">
+    <div class="library-preview-modal-content crop-lines-popup-content">
       <div class="library-detail-header">
         <div class="library-detail-info">
           <h3>${escapeHtml(crop.name)} — Lines</h3>
@@ -547,18 +549,32 @@ function showCropLinesPopup(cropId) {
           </button>
         </div>
       </div>
-      <div class="library-preview" style="padding: 1rem;">
+      <div class="library-preview crop-lines-preview">
         ${relatedLines.length === 0
-          ? `<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
-              <span class="material-symbols-rounded" style="font-size: 2.5rem; display: block; margin-bottom: 0.5rem; opacity: 0.4;">eco</span>
+          ? `<div class="crop-lines-empty">
+              <span class="material-symbols-rounded">eco</span>
               <p>No lines yet for this crop.</p>
             </div>`
-          : `<div style="display: flex; flex-direction: column; gap: 0.5rem;">
-              ${relatedLines.map((line) => `
-                <div class="inventory-item" style="margin: 0;">
+          : `<div class="crop-lines-list">
+              ${relatedLines.map((line) => {
+                const metaParts = [];
+                if (line.stage) metaParts.push('Stage: ' + escapeHtml(line.stage));
+                if (line.quantity != null && line.quantity !== '') metaParts.push('Qty: ' + line.quantity);
+                if (line.seedOrigin) metaParts.push('Seed: ' + escapeHtml(line.seedOrigin));
+                if (line.role) metaParts.push('Role: ' + escapeHtml(line.role));
+                if (line.sprCode) metaParts.push('SPR: ' + escapeHtml(line.sprCode));
+                if (line.parentCode) metaParts.push('Parent: ' + escapeHtml(line.parentCode));
+                if (line.hybridCode) metaParts.push('Hybrid: ' + escapeHtml(line.hybridCode));
+                if (line.arrivalDate) metaParts.push('Arrival: ' + escapeHtml(line.arrivalDate));
+                if (line.registeredDate) metaParts.push('Reg: ' + escapeHtml(line.registeredDate));
+                const metaLine1 = metaParts.slice(0, 4).join(' · ');
+                const metaLine2 = metaParts.slice(4).join(' · ');
+                return `
+                <div class="inventory-item">
                   <div class="item-meta">
-                    <div class="item-name" style="font-size: 0.95rem;">${escapeHtml(line.name)}</div>
-                    <div class="item-subtext">Stage: ${escapeHtml(line.stage || "-")} · Qty: ${line.quantity ?? "-"}</div>
+                    <div class="item-name crop-line-name">${escapeHtml(line.name)}</div>
+                    ${metaLine1 ? `<div class="item-subtext">${metaLine1}</div>` : `<div class="item-subtext">No details</div>`}
+                    ${metaLine2 ? `<div class="item-subtext">${metaLine2}</div>` : ''}
                   </div>
                   <div class="item-actions">
                     <button class="popup-line-edit-btn" data-id="${line.id}" title="Edit">
@@ -568,8 +584,8 @@ function showCropLinesPopup(cropId) {
                       <span class="material-symbols-rounded">delete</span>
                     </button>
                   </div>
-                </div>
-              `).join("")}
+                </div>`;
+              }).join("")}
             </div>`
         }
       </div>

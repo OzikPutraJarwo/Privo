@@ -34,35 +34,38 @@ async function initializeTrials(options = {}) {
       }
     }
 
-    // Load trials from Google Drive (in background via sync queue)
-    if (typeof enqueueSync === 'function') {
-      enqueueSync({
-        label: 'Load Trials',
-        run: async () => {
-          trialState.trials = await loadTrialsFromGoogleDrive();
-          renderTrials();
-          renderDashboardTrialProgress();
+    // Load trials from Google Drive (in background via sync queue) — skip for guest
+    const isGuest = typeof getCurrentUser === 'function' && getCurrentUser()?.isGuest;
+    if (!isGuest) {
+      if (typeof enqueueSync === 'function') {
+        enqueueSync({
+          label: 'Load Trials',
+          run: async () => {
+            trialState.trials = await loadTrialsFromGoogleDrive();
+            renderTrials();
+            renderDashboardTrialProgress();
 
-          if (typeof saveLocalCache === "function") {
-            saveLocalCache("trials", { trials: trialState.trials });
-          }
+            if (typeof saveLocalCache === "function") {
+              saveLocalCache("trials", { trials: trialState.trials });
+            }
 
-          if (onProgress) {
-            onProgress(1, "Trials synced");
+            if (onProgress) {
+              onProgress(1, "Trials synced");
+            }
           }
+        });
+      } else {
+        trialState.trials = await loadTrialsFromGoogleDrive();
+        renderTrials();
+        renderDashboardTrialProgress();
+
+        if (typeof saveLocalCache === "function") {
+          saveLocalCache("trials", { trials: trialState.trials });
         }
-      });
-    } else {
-      trialState.trials = await loadTrialsFromGoogleDrive();
-      renderTrials();
-      renderDashboardTrialProgress();
 
-      if (typeof saveLocalCache === "function") {
-        saveLocalCache("trials", { trials: trialState.trials });
-      }
-
-      if (onProgress) {
-        onProgress(1, "Trials synced");
+        if (onProgress) {
+          onProgress(1, "Trials synced");
+        }
       }
     }
   } catch (error) {
@@ -102,24 +105,24 @@ function renderTrials() {
                           : 'var(--text-tertiary)';
 
       return `
-            <div class="inventory-item" onclick="showTrialDetail('${trial.id}')" style="cursor: pointer;">
-                <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 0;">
-                  <div style="width: 40px; height: 40px; border-radius: var(--radius); background: var(--primary-soft); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                    <span class="material-symbols-rounded" style="font-size: 1.25rem; color: var(--primary);">science</span>
+            <div class="inventory-item trial-list-item" onclick="showTrialDetail('${trial.id}')">
+                <div class="trial-item-row">
+                  <div class="trial-item-icon">
+                    <span class="material-symbols-rounded">science</span>
                   </div>
-                  <div class="item-meta" style="min-width: 0;">
+                  <div class="item-meta">
                     <div class="item-name">${escapeHtml(trial.name)}</div>
-                    <div class="item-subtext" style="display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
-                      <span class="material-symbols-rounded" style="font-size: 0.85rem;">eco</span>${escapeHtml(trial.cropName || trial.cropType || "-")}
-                      <span style="opacity: 0.4;">·</span>
-                      <span class="material-symbols-rounded" style="font-size: 0.85rem;">calendar_month</span>${startDate} — ${endDate}
+                    <div class="item-subtext trial-meta-row">
+                      <span class="material-symbols-rounded">eco</span>${escapeHtml(trial.cropName || trial.cropType || "-")}
+                      <span class="meta-separator">·</span>
+                      <span class="material-symbols-rounded">calendar_month</span>${startDate} — ${endDate}
                     </div>
-                    <div class="item-subtext" style="display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
-                      <span class="material-symbols-rounded" style="font-size: 0.85rem;">map</span>${areaCount} area(s)
-                      <span style="opacity: 0.4;">·</span>
-                      <span class="material-symbols-rounded" style="font-size: 0.85rem;">assignment</span>${trial.parameters ? trial.parameters.length : 0} param(s)
-                      <span style="opacity: 0.4;">·</span>
-                      <span style="color: ${progressColor}; font-weight: 600; font-size: 0.8rem;">${progress.percentage}%</span>
+                    <div class="item-subtext trial-meta-row">
+                      <span class="material-symbols-rounded">map</span>${areaCount} area(s)
+                      <span class="meta-separator">·</span>
+                      <span class="material-symbols-rounded">assignment</span>${trial.parameters ? trial.parameters.length : 0} param(s)
+                      <span class="meta-separator">·</span>
+                      <span class="trial-progress-badge" style="color: ${progressColor}">${progress.percentage}%</span>
                     </div>
                   </div>
                 </div>
@@ -195,7 +198,7 @@ function openAddTrialModal() {
   populateTrialParameters();
 
   // Reset areas list
-  document.getElementById("areasList").style.display = "none";
+  document.getElementById("areasList").classList.add("hidden");
   document.getElementById("areasListContainer").innerHTML = "";
 
   // Setup section nav click handlers
@@ -274,10 +277,10 @@ function toggleTrialEditor(show) {
 
   if (show) {
     editor.classList.add("active");
-    panel.style.display = "none";
+    panel.classList.add("hidden");
   } else {
     editor.classList.remove("active");
-    panel.style.display = "block";
+    panel.classList.remove("hidden");
   }
 }
 
@@ -358,13 +361,13 @@ function showTrialSection(sectionName) {
   const saveBtn = document.getElementById("trialModalSaveBtn");
 
   if (sectionName === "general") {
-    prevBtn.style.display = "none";
-    nextBtn.style.display = "block";
-    saveBtn.style.display = "none";
+    prevBtn.classList.add("hidden");
+    nextBtn.classList.remove("hidden");
+    saveBtn.classList.add("hidden");
   } else if (sectionName === "location") {
-    prevBtn.style.display = "block";
-    nextBtn.style.display = "block";
-    saveBtn.style.display = "none";
+    prevBtn.classList.remove("hidden");
+    nextBtn.classList.remove("hidden");
+    saveBtn.classList.add("hidden");
     // Initialize map when entering location section
     if (!trialMapInstance) {
       const trial = trialState.editingTrialId
@@ -381,9 +384,9 @@ function showTrialSection(sectionName) {
       }
     }
   } else if (sectionName === "layouting") {
-    prevBtn.style.display = "block";
-    nextBtn.style.display = "none";
-    saveBtn.style.display = "block";
+    prevBtn.classList.remove("hidden");
+    nextBtn.classList.add("hidden");
+    saveBtn.classList.remove("hidden");
     // Initialize layouting section
     initializeLayoutingSection();
   }
@@ -533,7 +536,7 @@ function populateTrialParameters(selectedIds = []) {
 
     if (filtered.length === 0) {
       container.innerHTML =
-        '<p style="color: var(--text-tertiary); font-size: 0.875rem;">No parameters found</p>';
+        '<p class="param-no-results">No parameters found</p>';
       return;
     }
 
@@ -541,15 +544,13 @@ function populateTrialParameters(selectedIds = []) {
       .map((param) => {
         const isChecked = selectedIds.includes(param.id);
         return `
-                <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; cursor: pointer; border-radius: 6px; transition: var(--transition);" 
-                       onmouseover="this.style.backgroundColor='var(--bg-tertiary)'" 
-                       onmouseout="this.style.backgroundColor='transparent'">
+                <label class="param-checkbox-label">
                     <input type="checkbox" value="${param.id}" ${isChecked ? "checked" : ""} 
-                           style="width: auto; cursor: pointer;" 
+                           class="param-checkbox-input" 
                            onchange="updateSelectedParamCount()">
-                    <div style="flex: 1;">
-                        <div style="font-weight: 500;">${escapeHtml(param.name)}</div>
-                        <div style="font-size: 0.875rem; color: var(--text-secondary);">
+                    <div class="param-checkbox-info">
+                        <div class="param-checkbox-name">${escapeHtml(param.name)}</div>
+                        <div class="param-checkbox-meta">
                             ${escapeHtml(param.initial || "")} · ${escapeHtml(param.type || "")} · ${escapeHtml(param.unit || "")}
                         </div>
                     </div>
@@ -690,19 +691,19 @@ function startDrawing() {
   const startBtn = document.getElementById("startDrawingBtn");
   startBtn.innerHTML =
     '<span class="material-symbols-rounded">stop</span><span>Stop Drawing</span>';
-  startBtn.style.backgroundColor = "var(--danger)";
+  startBtn.classList.add("btn-drawing");
 
   // Show zone info panel
   const zonePanel = document.getElementById("zoneInfoPanel");
   if (zonePanel) {
-    zonePanel.style.display = "flex";
+    zonePanel.classList.remove("hidden");
   }
 
   // Add click listener to map
   trialMapInstance.on("click", handleMapClickForDrawing);
 
   // Change cursor
-  trialMapInstance.getContainer().style.cursor = "crosshair";
+  trialMapInstance.getContainer().classList.add("cursor-crosshair");
 
   // Add keyboard shortcuts
   document.addEventListener("keydown", handleDrawingKeyboard);
@@ -718,7 +719,7 @@ function stopDrawing() {
   const startBtn = document.getElementById("startDrawingBtn");
   startBtn.innerHTML =
     '<span class="material-symbols-rounded">draw</span><span>Start Drawing Area</span>';
-  startBtn.style.backgroundColor = "";
+  startBtn.classList.remove("btn-drawing");
 
   // Remove click listener
   trialMapInstance.off("click", handleMapClickForDrawing);
@@ -727,12 +728,12 @@ function stopDrawing() {
   document.removeEventListener("keydown", handleDrawingKeyboard);
 
   // Restore cursor
-  trialMapInstance.getContainer().style.cursor = "";
+  trialMapInstance.getContainer().classList.remove("cursor-crosshair");
 
   // Hide zone info panel
   const zonePanel = document.getElementById("zoneInfoPanel");
   if (zonePanel) {
-    zonePanel.style.display = "none";
+    zonePanel.classList.add("hidden");
   }
 
   // Clear current drawing if not complete
@@ -822,7 +823,7 @@ function updateZoneInfoPanel() {
 
   // Show panel once we have points
   if (pointCount > 0 && zonePanel) {
-    zonePanel.style.display = "block";
+    zonePanel.classList.remove("hidden");
   }
 
   // Calculate and display area if we have 3+ points
@@ -880,7 +881,7 @@ function saveCurrentArea() {
   const cancelBtn = document.getElementById("cancelAreaNameBtn");
 
   input.value = `Area ${trialState.currentAreas.length + 1}`;
-  dialog.style.display = "block";
+  dialog.classList.remove("hidden");
   input.focus();
   input.select();
 
@@ -931,7 +932,7 @@ function saveCurrentArea() {
     document.getElementById("saveAreaBtn").disabled = true;
 
     // Hide dialog
-    dialog.style.display = "none";
+    dialog.classList.add("hidden");
     input.value = "";
 
     // Update areas list
@@ -944,7 +945,7 @@ function saveCurrentArea() {
 
   // Cancel handler
   newCancelBtn.addEventListener("click", () => {
-    dialog.style.display = "none";
+    dialog.classList.add("hidden");
     input.value = "";
   });
 
@@ -1149,23 +1150,23 @@ function buildAreaPopupContent(area) {
   const coordsList = area.coordinates
     .map(
       (coord, i) =>
-        `<div style="font-size: 0.75rem;">Point ${i + 1}: ${coord[0].toFixed(6)}, ${coord[1].toFixed(6)}</div>`,
+        `<div class="area-popup-coord-item">Point ${i + 1}: ${coord[0].toFixed(6)}, ${coord[1].toFixed(6)}</div>`,
     )
     .join("");
 
   const address = area.address || "Unknown address";
 
   return `
-        <div style="min-width: 220px;">
-            <strong style="font-size: 0.95rem;">${escapeHtml(area.name)}</strong>
-            <div style="margin-top: 0.5rem; font-size: 0.875rem;">
+        <div class="area-popup">
+            <strong class="area-popup-title">${escapeHtml(area.name)}</strong>
+            <div class="area-popup-info">
                 <strong>Area:</strong> ${areaSize} hectares
             </div>
-            <div style="margin-top: 0.5rem; font-size: 0.875rem;">
+            <div class="area-popup-info">
                 <strong>Address:</strong> ${escapeHtml(address)}
             </div>
-            <div style="margin-top: 0.5rem; max-height: 150px; overflow-y: auto;">
-                <strong style="font-size: 0.875rem;">Coordinates:</strong>
+            <div class="area-popup-coords">
+                <strong class="area-popup-coords-title">Coordinates:</strong>
                 ${coordsList}
             </div>
         </div>
@@ -1209,11 +1210,11 @@ function renderAreasList() {
   const listDiv = document.getElementById("areasList");
 
   if (trialState.currentAreas.length === 0) {
-    listDiv.style.display = "none";
+    listDiv.classList.add("hidden");
     return;
   }
 
-  listDiv.style.display = "block";
+  listDiv.classList.remove("hidden");
 
   container.innerHTML = trialState.currentAreas
     .map((area, index) => {
@@ -1224,33 +1225,33 @@ function renderAreasList() {
       const coordsList = area.coordinates
         .map(
           (coord, i) =>
-            `<div style="font-size: 0.8rem; color: var(--text-secondary);">  • Point ${i + 1}: ${coord[0].toFixed(6)}, ${coord[1].toFixed(6)}</div>`,
+            `<div class="area-coord-item">  • Point ${i + 1}: ${coord[0].toFixed(6)}, ${coord[1].toFixed(6)}</div>`,
         )
         .join("");
 
       return `
-            <div style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem; display: flex; gap: 0.75rem;">
-                <div id="areaPreviewMap${index}" style="width: 80px; height: 80px; border-radius: 4px; border: 1px solid var(--border); flex-shrink: 0; background: var(--bg-secondary);"></div>
-                <div style="flex: 1;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                        <strong style="font-size: 0.95rem;">${escapeHtml(area.name)}</strong>
-                        <button type="button" onclick="removeArea(${index})" class="btn btn-sm" style="background: var(--danger); color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.875rem; display: flex; align-items: center; gap: 0.25rem;">
-                            <span class="material-symbols-rounded" style="font-size: 1rem;">delete</span>
+            <div class="area-list-card">
+                <div id="areaPreviewMap${index}" class="area-preview-map"></div>
+                <div class="area-list-body">
+                    <div class="area-list-header">
+                        <strong class="area-list-title">${escapeHtml(area.name)}</strong>
+                        <button type="button" onclick="removeArea(${index})" class="btn btn-sm area-remove-btn">
+                            <span class="material-symbols-rounded">delete</span>
                             <span>Remove</span>
                         </button>
                     </div>
-                    <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                    <div class="area-list-info">
                         <strong>Area:</strong> ${areaSize} hectares (${(areaSize * 10000).toFixed(0)} m²)
                     </div>
-                    <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                    <div class="area-list-info">
                         <strong>Address:</strong> ${escapeHtml(address)}
                     </div>
-                    <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                    <div class="area-list-info">
                         <strong>Points:</strong> ${area.coordinates.length}
                     </div>
-                    <details style="margin-top: 0.5rem;">
-                        <summary style="cursor: pointer; font-size: 0.875rem; color: var(--text-secondary);">View Coordinates</summary>
-                        <div style="margin-top: 0.5rem; max-height: 120px; overflow-y: auto;">
+                    <details class="area-list-details">
+                        <summary>View Coordinates</summary>
+                        <div class="area-list-coords">
                             ${coordsList}
                         </div>
                     </details>
@@ -1628,7 +1629,7 @@ function initializeLayoutingSection() {
   // Check if we have areas from location section
   if (!trialState.currentAreas || trialState.currentAreas.length === 0) {
     container.innerHTML = `
-            <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+            <div class="td-no-items">
                 <p>No areas defined. Please go to the Location section and create trial areas first.</p>
             </div>
         `;
@@ -1766,7 +1767,7 @@ function createAreaLayoutingForm(area, areaIndex) {
     const labels = linesList.querySelectorAll("label");
     labels.forEach((label) => {
       const text = label.textContent.toLowerCase();
-      label.style.display = text.includes(query) ? "flex" : "none";
+      label.classList.toggle("hidden", !text.includes(query));
     });
   });
 
@@ -1851,7 +1852,7 @@ function generateLayoutForArea(areaIndex) {
   if (selectedLines.length === 0) {
     if (resultContainer) {
       resultContainer.innerHTML =
-        '<div style="padding: 1rem; text-align: center; color: var(--text-tertiary);">Select lines to generate layout</div>';
+        '<div class="td-no-items">Select lines to generate layout</div>';
     }
     return;
   }
@@ -1972,7 +1973,7 @@ function renderLayoutResult(areaIndex, layouts) {
 
   layouts.forEach((grid, repIndex) => {
     html += `
-            <div class="layouting-table-wrap" style="margin-bottom: 1.5rem;">
+            <div class="layouting-table-wrap">
                 <table class="layouting-table">
                     <tbody>
                         ${grid
@@ -2051,7 +2052,7 @@ function renderRunTrialList() {
   if (runnableTrials.length === 0) {
     if (header) header.classList.remove("hidden");
     container.innerHTML = `
-      <div class="empty-state" style="grid-column: 1 / -1;">
+      <div class="empty-state run-empty-grid">
         <span class="material-symbols-rounded">science</span>
         <p>No trials available to run. Create a trial with areas and layout first.</p>
       </div>
@@ -2081,13 +2082,13 @@ function renderRunTrialList() {
             <div class="run-trial-card-icon">
               <span class="material-symbols-rounded">play_circle</span>
             </div>
-            <div style="flex: 1;">
+            <div class="run-trial-card-body">
               <div class="run-trial-card-title">${escapeHtml(trial.name)}</div>
               <div class="run-trial-card-meta">${escapeHtml(trial.cropName || "")} · ${escapeHtml(trial.trialType || "")}</div>
             </div>
-            <div style="text-align: right;">
-              <div style="font-size: 0.75rem; color: ${statusColor}; font-weight: 600;">${statusText}</div>
-              <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary);">${progressPercent}%</div>
+            <div class="run-trial-card-right">
+              <div class="run-trial-status-label" style="color: ${statusColor}">${statusText}</div>
+              <div class="run-trial-status-percent">${progressPercent}%</div>
             </div>
           </div>
           <div class="run-trial-card-stats">
@@ -2172,8 +2173,8 @@ function startRunTrial(trialId) {
   runTrialState.currentRepIndex = null;
 
   // Show run interface
-  document.getElementById("runTrialSelection").style.display = "none";
-  document.getElementById("runTrialInterface").style.display = "block";
+  document.getElementById("runTrialSelection").classList.add("hidden");
+  document.getElementById("runTrialInterface").classList.remove("hidden");
   document.getElementById("runTrialName").textContent = trial.name;
 
   document.body.classList.add("run-trial-active", "sidebar-collapsed");
@@ -2196,8 +2197,8 @@ function exitRunTrial() {
   runTrialState.currentLineId = null;
   runTrialState.currentRepIndex = null;
 
-  document.getElementById("runTrialSelection").style.display = "block";
-  document.getElementById("runTrialInterface").style.display = "none";
+  document.getElementById("runTrialSelection").classList.remove("hidden");
+  document.getElementById("runTrialInterface").classList.add("hidden");
 
   document.body.classList.remove("run-trial-active", "sidebar-collapsed");
 
@@ -2229,7 +2230,7 @@ function renderRunTrialNavTree() {
           <span class="material-symbols-rounded expand-icon">expand_more</span>
           <span class="material-symbols-rounded">location_on</span>
           <span>${escapeHtml(area.name || `Area ${areaIndex + 1}`)}</span>
-          <span id="area-progress-${areaIndex}" style="font-size: 0.7rem; color: var(--text-secondary); margin-left: auto;"></span>
+          <span id="area-progress-${areaIndex}" class="nav-progress-text"></span>
         </div>
         <div class="run-nav-area-content">
     `;
@@ -2261,8 +2262,8 @@ function renderRunTrialNavTree() {
           <div class="run-nav-param-header" onclick="toggleNavParam(${areaIndex}, '${param.id}')">
             <span class="material-symbols-rounded expand-icon">expand_more</span>
             <span>${escapeHtml(param.name)}</span>
-            <span style="font-size: 0.7rem; color: var(--text-tertiary);">(${param.initial || ""})</span>
-            <span style="font-size: 0.7rem; color: var(--text-secondary); margin-left: auto;">${paramCompleted}/${paramTotal}</span>
+            <span class="nav-param-initial">(${param.initial || ""})</span>
+            <span class="nav-param-count">${paramCompleted}/${paramTotal}</span>
           </div>
           <div class="run-nav-reps">
       `;
@@ -2296,7 +2297,7 @@ function renderRunTrialNavTree() {
             <div class="run-nav-rep-header" onclick="toggleNavRep(${areaIndex}, '${param.id}', ${repIndex})">
               <span class="material-symbols-rounded expand-icon">expand_more</span>
               <span>Replication ${repIndex + 1}</span>
-              ${allCompleted ? '<span class="material-symbols-rounded rep-status" style="color: var(--success); font-size: 14px; margin-left: auto;">check_circle</span>' : someCompleted ? '<span class="material-symbols-rounded rep-status" style="color: var(--warning); font-size: 14px; margin-left: auto;">radio_button_partial</span>' : ''}
+              ${allCompleted ? '<span class="material-symbols-rounded rep-status rep-status-icon rep-status-success">check_circle</span>' : someCompleted ? '<span class="material-symbols-rounded rep-status rep-status-icon rep-status-warning">radio_button_partial</span>' : ''}
             </div>
             <div class="run-nav-lines">
         `;
@@ -2318,7 +2319,7 @@ function renderRunTrialNavTree() {
                    onclick="selectLine(${areaIndex}, '${param.id}', '${cell.id}', ${repIndex})"
                    data-unique-key="${uniqueKey}">
                 <span>${escapeHtml(cell.name)}</span>
-                ${isCompleted ? '<span class="material-symbols-rounded line-status" style="color: var(--success);">check_circle</span>' : ""}
+                ${isCompleted ? '<span class="material-symbols-rounded line-status line-status-icon">check_circle</span>' : ""}
               </div>
             `;
           });
@@ -2612,7 +2613,7 @@ function renderQuestionCard() {
             )
             .join("")}
           <label class="run-photo-add">
-            <input type="file" accept="image/*" capture="environment" style="display: none;" onchange="handlePhotoUpload(event)">
+            <input type="file" accept="image/*" capture="environment" class="photo-upload-input" onchange="handlePhotoUpload(event)">
             <span class="material-symbols-rounded">add_a_photo</span>
             <span>Add</span>
           </label>
@@ -2679,7 +2680,7 @@ function openMobileNav() {
   const overlay = document.getElementById('mobileNavOverlay');
   if (nav) nav.classList.add('open');
   if (overlay) overlay.classList.add('open');
-  document.body.style.overflow = 'hidden';
+  document.body.classList.add('no-scroll');
 }
 
 function closeMobileNav() {
@@ -2687,7 +2688,7 @@ function closeMobileNav() {
   const overlay = document.getElementById('mobileNavOverlay');
   if (nav) nav.classList.remove('open');
   if (overlay) overlay.classList.remove('open');
-  document.body.style.overflow = '';
+  document.body.classList.remove('no-scroll');
 }
 
 // Handle photo upload
@@ -2836,7 +2837,7 @@ function renderCompletionState(isComplete, lines) {
   if (isComplete) {
     container.innerHTML = `
       <div class="run-empty-state">
-        <span class="material-symbols-rounded" style="color: var(--success); font-size: 72px;">check_circle</span>
+        <span class="material-symbols-rounded completion-icon-success">check_circle</span>
         <h3>Trial Complete!</h3>
         <p>All questions have been answered. Saving progress...</p>
       </div>
@@ -2850,11 +2851,11 @@ function renderCompletionState(isComplete, lines) {
     
     container.innerHTML = `
       <div class="run-empty-state">
-        <span class="material-symbols-rounded" style="font-size: 72px;">assignment</span>
+        <span class="material-symbols-rounded completion-icon-default">assignment</span>
         <h3>End of Questions</h3>
         <p>Progress: ${completed} / ${lines.length} (${percentage}%)</p>
         <p>You've reached the last question. Continue to review from the beginning.</p>
-        <button class="btn btn-primary" onclick="navigateToFirstLine()" style="margin-top: 1rem;">
+        <button class="btn btn-primary completion-restart-btn" onclick="navigateToFirstLine()">
           <span class="material-symbols-rounded">restart_alt</span>
           <span>Start from Beginning</span>
         </button>
@@ -3096,9 +3097,9 @@ function showLineProgress(areaIndex, lineId, repIndex) {
         </div>
         <div class="param-status">
           ${isAnswered 
-            ? `<span class="material-symbols-rounded" style="color: var(--success);">check_circle</span>
+            ? `<span class="material-symbols-rounded status-icon-success">check_circle</span>
                <span class="param-value">${escapeHtml(response.value || '')}${response.photos?.length ? ` + ${response.photos.length} photo(s)` : ''}</span>`
-            : '<span class="material-symbols-rounded" style="color: var(--text-tertiary);">radio_button_unchecked</span>'
+            : '<span class="material-symbols-rounded status-icon-muted">radio_button_unchecked</span>'
           }
         </div>
       </div>
@@ -3275,134 +3276,127 @@ function showTrialDetail(trialId) {
 
   body.innerHTML = `
     <!-- Progress Bar -->
-    <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <span class="material-symbols-rounded" style="color: ${progressColor}; font-size: 1.25rem;">donut_large</span>
-          <span style="font-weight: 600; color: var(--text-primary);">Trial Progress</span>
+    <div class="td-section td-card">
+      <div class="td-row">
+        <div class="td-flex">
+          <span class="material-symbols-rounded td-progress-fill" style="color: ${progressColor};">donut_large</span>
+          <span class="td-info-label">Trial Progress</span>
         </div>
-        <span style="font-weight: 700; font-size: 1.1rem; color: ${progressColor};">${progress.percentage}%</span>
+        <span class="td-progress-summary" style="color: ${progressColor};">${progress.percentage}%</span>
       </div>
-      <div style="height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden;">
-        <div style="height: 100%; width: ${progress.percentage}%; background: ${progressColor}; border-radius: 4px; transition: width 0.3s ease;"></div>
+      <div class="td-progress-track">
+        <div class="td-progress-fill" style="width: ${progress.percentage}%; background: ${progressColor};"></div>
       </div>
-      <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+      <div class="td-progress-summary">
         <span>${progress.completed} of ${progress.total} observations completed</span>
         <span>${progress.percentage === 100 ? 'Completed' : progress.percentage > 0 ? 'In Progress' : 'Not Started'}</span>
       </div>
     </div>
 
     <!-- Info Grid -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-      <div style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-        <span class="material-symbols-rounded" style="color: var(--primary); font-size: 1.3rem; margin-top: 2px;">eco</span>
+    <div class="td-info-grid">
+      <div class="td-info-item">
+        <span class="material-symbols-rounded td-info-icon">eco</span>
         <div>
-          <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 0.15rem;">Crop</div>
-          <div style="font-weight: 600; color: var(--text-primary); font-size: 0.95rem;">${escapeHtml(trial.cropName || '-')}</div>
+          <div class="td-info-label">Crop</div>
+          <div class="td-info-value">${escapeHtml(trial.cropName || '-')}</div>
         </div>
       </div>
-      <div style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-        <span class="material-symbols-rounded" style="color: var(--primary); font-size: 1.3rem; margin-top: 2px;">science</span>
+      <div class="td-info-item">
+        <span class="material-symbols-rounded td-info-icon">science</span>
         <div>
-          <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 0.15rem;">Trial Type</div>
-          <div style="font-weight: 600; color: var(--text-primary); font-size: 0.95rem;">${escapeHtml(trial.trialType || '-')}</div>
+          <div class="td-info-label">Trial Type</div>
+          <div class="td-info-value">${escapeHtml(trial.trialType || '-')}</div>
         </div>
       </div>
-      <div style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-        <span class="material-symbols-rounded" style="color: var(--primary); font-size: 1.3rem; margin-top: 2px;">calendar_month</span>
+      <div class="td-info-item">
+        <span class="material-symbols-rounded td-info-icon">calendar_month</span>
         <div>
-          <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 0.15rem;">Planting Window</div>
-          <div style="font-weight: 600; color: var(--text-primary); font-size: 0.95rem;">${trial.plantingStart ? formatMonthYear(trial.plantingStart) : '-'} — ${trial.plantingEnd ? formatMonthYear(trial.plantingEnd) : '-'}</div>
-        </div>
-      </div>
-      <div style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-        <span class="material-symbols-rounded" style="color: var(--primary); font-size: 1.3rem; margin-top: 2px;">location_on</span>
-        <div>
-          <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 0.15rem;">Location</div>
-          <div style="font-weight: 600; color: var(--text-primary); font-size: 0.95rem;">${location ? escapeHtml(location.name) : (trial.locationId ? 'Unknown' : 'Not set')}</div>
+          <div class="td-info-label">Planting Window</div>
+          <div class="td-info-value">${trial.plantingStart ? formatMonthYear(trial.plantingStart) : '-'} — ${trial.plantingEnd ? formatMonthYear(trial.plantingEnd) : '-'}</div>
         </div>
       </div>
     </div>
 
     <!-- Stats Row -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem;">
-      <div style="text-align: center; padding: 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-        <span class="material-symbols-rounded" style="font-size: 1.5rem; color: var(--primary); display: block; margin-bottom: 0.25rem;">map</span>
-        <div style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">${areaCount}</div>
-        <div style="font-size: 0.75rem; color: var(--text-secondary);">Areas</div>
+    <div class="td-stats-grid">
+      <div class="td-stat-item">
+        <span class="material-symbols-rounded td-stat-icon">map</span>
+        <div class="td-stat-value">${areaCount}</div>
+        <div class="td-stat-label">Areas</div>
       </div>
-      <div style="text-align: center; padding: 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-        <span class="material-symbols-rounded" style="font-size: 1.5rem; color: var(--primary); display: block; margin-bottom: 0.25rem;">grass</span>
-        <div style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">${totalLines}</div>
-        <div style="font-size: 0.75rem; color: var(--text-secondary);">Lines</div>
+      <div class="td-stat-item">
+        <span class="material-symbols-rounded td-stat-icon">grass</span>
+        <div class="td-stat-value">${totalLines}</div>
+        <div class="td-stat-label">Lines</div>
       </div>
-      <div style="text-align: center; padding: 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-        <span class="material-symbols-rounded" style="font-size: 1.5rem; color: var(--primary); display: block; margin-bottom: 0.25rem;">assignment</span>
-        <div style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">${paramDetails.length}</div>
-        <div style="font-size: 0.75rem; color: var(--text-secondary);">Parameters</div>
+      <div class="td-stat-item">
+        <span class="material-symbols-rounded td-stat-icon">assignment</span>
+        <div class="td-stat-value">${paramDetails.length}</div>
+        <div class="td-stat-label">Parameters</div>
       </div>
-      <div style="text-align: center; padding: 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-        <span class="material-symbols-rounded" style="font-size: 1.5rem; color: ${progressColor}; display: block; margin-bottom: 0.25rem;">check_circle</span>
-        <div style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">${progress.completed}</div>
-        <div style="font-size: 0.75rem; color: var(--text-secondary);">Answered</div>
+      <div class="td-stat-item">
+        <span class="material-symbols-rounded td-stat-icon" style="color: ${progressColor};">check_circle</span>
+        <div class="td-stat-value">${progress.completed}</div>
+        <div class="td-stat-label">Answered</div>
       </div>
     </div>
 
     ${trial.description ? `
     <!-- Description -->
-    <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border);">
-      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-        <span class="material-symbols-rounded" style="font-size: 1.1rem; color: var(--text-secondary);">description</span>
-        <span style="font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">Description</span>
+    <div class="td-section td-card">
+      <div class="td-section-header">
+        <span class="material-symbols-rounded td-section-icon">description</span>
+        <span class="td-desc-label">Description</span>
       </div>
-      <p style="color: var(--text-primary); line-height: 1.6; margin: 0; font-size: 0.9rem;">${escapeHtml(trial.description)}</p>
+      <p class="td-description">${escapeHtml(trial.description)}</p>
     </div>
     ` : ''}
 
     <!-- Parameters Section -->
-    <div style="margin-bottom: 1.5rem;">
-      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
-        <span class="material-symbols-rounded" style="font-size: 1.1rem; color: var(--text-secondary);">biotech</span>
-        <span style="font-weight: 600; font-size: 0.9rem; color: var(--text-primary);">Observation Parameters</span>
-        <span style="background: var(--primary-soft); color: var(--primary); font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px;">${paramDetails.length}</span>
+    <div class="td-section">
+      <div class="td-section-header">
+        <span class="material-symbols-rounded td-section-icon">biotech</span>
+        <span class="td-section-title">Observation Parameters</span>
+        <span class="td-section-count">${paramDetails.length}</span>
       </div>
       ${paramDetails.length > 0 ? `
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.5rem;">
+      <div class="td-params-grid">
         ${paramDetails.map(param => `
-          <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border); font-size: 0.875rem;">
-            <span class="material-symbols-rounded" style="font-size: 1rem; color: var(--primary);">${getParamIcon(param.type)}</span>
-            <span style="color: var(--text-primary); flex: 1;">${escapeHtml(param.name)}</span>
-            <span style="color: var(--text-tertiary); font-size: 0.75rem;">${escapeHtml(param.type || '')}</span>
-            ${param.unit ? `<span style="color: var(--text-tertiary); font-size: 0.75rem; background: var(--bg-secondary); padding: 0.1rem 0.4rem; border-radius: 4px;">${escapeHtml(param.unit)}</span>` : ''}
-            ${param.requirePhoto ? '<span class="material-symbols-rounded" style="font-size: 0.9rem; color: var(--warning);" title="Photo required">photo_camera</span>' : ''}
+          <div class="td-param-item">
+            <span class="material-symbols-rounded td-param-icon">${getParamIcon(param.type)}</span>
+            <span class="td-param-name">${escapeHtml(param.name)}</span>
+            <span class="td-param-type">${escapeHtml(param.type || '')}</span>
+            ${param.unit ? `<span class="td-param-unit">${escapeHtml(param.unit)}</span>` : ''}
+            ${param.requirePhoto ? '<span class="material-symbols-rounded td-param-photo" title="Photo required">photo_camera</span>' : ''}
           </div>
         `).join('')}
       </div>
-      ` : `<div style="color: var(--text-tertiary); padding: 0.5rem;">No parameters assigned.</div>`}
+      ` : `<div class="td-no-items">No parameters assigned.</div>`}
     </div>
 
     <!-- Trial Areas Section -->
     <div>
-      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
-        <span class="material-symbols-rounded" style="font-size: 1.1rem; color: var(--text-secondary);">map</span>
-        <span style="font-weight: 600; font-size: 0.9rem; color: var(--text-primary);">Trial Areas</span>
-        <span style="background: var(--primary-soft); color: var(--primary); font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px;">${areaCount}</span>
+      <div class="td-section-header">
+        <span class="material-symbols-rounded td-section-icon">map</span>
+        <span class="td-section-title">Trial Areas</span>
+        <span class="td-section-count">${areaCount}</span>
       </div>
-      <div id="trialDetailAreaMaps" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+      <div id="trialDetailAreaMaps" class="td-area-maps-grid">
         <!-- Area maps will be rendered here -->
       </div>
     </div>
 
     <!-- Timestamps -->
-    <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); display: flex; gap: 1.5rem; flex-wrap: wrap;">
+    <div class="td-timestamps">
       ${trial.createdAt ? `
-      <div style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--text-tertiary);">
-        <span class="material-symbols-rounded" style="font-size: 0.9rem;">schedule</span>
+      <div class="td-timestamp">
+        <span class="material-symbols-rounded">schedule</span>
         Created: ${new Date(trial.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
       </div>` : ''}
       ${trial.updatedAt ? `
-      <div style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--text-tertiary);">
-        <span class="material-symbols-rounded" style="font-size: 0.9rem;">update</span>
+      <div class="td-timestamp">
+        <span class="material-symbols-rounded">update</span>
         Updated: ${new Date(trial.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
       </div>` : ''}
     </div>
@@ -3411,10 +3405,12 @@ function showTrialDetail(trialId) {
   // Show modal first, then initialize maps after a tick (so container is visible)
   modal.classList.add('active');
 
-  // Initialize area maps after modal is visible
-  setTimeout(() => {
-    initializeTrialDetailAreaMaps(trial);
-  }, 50);
+  // Initialize area maps after modal is fully laid out
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      initializeTrialDetailAreaMaps(trial);
+    });
+  });
 }
 
 // Helper: Get icon name for parameter type
@@ -3467,8 +3463,8 @@ function initializeTrialDetailAreaMaps(trial) {
 
   if (areas.length === 0) {
     container.innerHTML = `
-      <div style="color: var(--text-tertiary); padding: 2rem; text-align: center; grid-column: 1 / -1;">
-        <span class="material-symbols-rounded" style="font-size: 2.5rem; display: block; margin-bottom: 0.5rem; opacity: 0.4;">map</span>
+      <div class="td-no-areas">
+        <span class="material-symbols-rounded">map</span>
         <p>No areas defined for this trial.</p>
       </div>`;
     return;
@@ -3482,28 +3478,28 @@ function initializeTrialDetailAreaMaps(trial) {
     const repCount = area.layout?.replications || area.layout?.result?.length || 1;
 
     return `
-      <div style="border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--bg-primary); box-shadow: var(--shadow-sm);">
-        <div id="detailAreaMap${index}" style="height: 250px; width: 100%;"></div>
-        <div style="padding: 0.75rem 1rem; border-top: 1px solid var(--border);">
-          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-            <span class="material-symbols-rounded" style="font-size: 1.1rem; color: var(--primary);">pentagon</span>
-            <h5 style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary); margin: 0;">${escapeHtml(area.name || 'Area ' + (index + 1))}</h5>
+      <div class="td-area-card">
+        <div id="detailAreaMap${index}" class="td-area-map"></div>
+        <div class="td-area-info">
+          <div class="td-area-name-row">
+            <span class="material-symbols-rounded td-area-name-icon">pentagon</span>
+            <h5 class="td-area-name">${escapeHtml(area.name || 'Area ' + (index + 1))}</h5>
           </div>
-          <div style="display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--text-secondary);">
-            <span style="display: flex; align-items: center; gap: 0.25rem;">
-              <span class="material-symbols-rounded" style="font-size: 0.9rem;">straighten</span>
+          <div class="td-area-stats">
+            <span class="td-area-stat">
+              <span class="material-symbols-rounded">straighten</span>
               ${areaSize}
             </span>
-            <span style="display: flex; align-items: center; gap: 0.25rem;">
-              <span class="material-symbols-rounded" style="font-size: 0.9rem;">radio_button_checked</span>
+            <span class="td-area-stat">
+              <span class="material-symbols-rounded">radio_button_checked</span>
               ${pointCount} pts
             </span>
-            <span style="display: flex; align-items: center; gap: 0.25rem;">
-              <span class="material-symbols-rounded" style="font-size: 0.9rem;">grass</span>
+            <span class="td-area-stat">
+              <span class="material-symbols-rounded">grass</span>
               ${lineCount} lines
             </span>
-            <span style="display: flex; align-items: center; gap: 0.25rem;">
-              <span class="material-symbols-rounded" style="font-size: 0.9rem;">repeat</span>
+            <span class="td-area-stat">
+              <span class="material-symbols-rounded">repeat</span>
               ${repCount} rep(s)
             </span>
           </div>
@@ -3512,12 +3508,12 @@ function initializeTrialDetailAreaMaps(trial) {
     `;
   }).join('');
 
-  // Initialize map for each area with a slight delay to ensure DOM is ready
-  setTimeout(() => {
+  // Initialize map for each area after DOM is ready
+  requestAnimationFrame(() => {
     areas.forEach((area, index) => {
       renderDetailAreaMap(area, index);
     });
-  }, 100);
+  });
 }
 
 // Render individual area map in trial detail
@@ -3525,29 +3521,51 @@ function renderDetailAreaMap(area, index) {
   const mapContainer = document.getElementById(`detailAreaMap${index}`);
   if (!mapContainer) return;
 
-  // Check container has dimensions
+  // Check container has dimensions — if not, wait until it does
   if (mapContainer.offsetWidth === 0 || mapContainer.offsetHeight === 0) {
-    // Retry after a bit if container isn't visible yet
-    setTimeout(() => renderDetailAreaMap(area, index), 200);
+    const ro = new ResizeObserver((entries, observer) => {
+      if (mapContainer.offsetWidth > 0 && mapContainer.offsetHeight > 0) {
+        observer.disconnect();
+        renderDetailAreaMap(area, index);
+      }
+    });
+    ro.observe(mapContainer);
     return;
+  }
+
+  // Collect polygon coordinates first
+  let latlngs = [];
+  if (area.coordinates && area.coordinates.length > 0) {
+    latlngs = area.coordinates.map(coord => [coord[0], coord[1]]);
+  } else if (area.polygon && area.polygon.length > 0) {
+    latlngs = area.polygon.map(coord => [coord.lat, coord.lng]);
+  }
+
+  // Compute initial view from polygon so map starts at the right place
+  let initCenter = [-6.2, 106.8];
+  let initZoom = 12;
+  if (latlngs.length > 0) {
+    const bounds = L.latLngBounds(latlngs);
+    initCenter = bounds.getCenter();
+    initZoom = 16; // a reasonable default, fitBounds will correct it
   }
 
   // Create map instance
   const map = L.map(mapContainer, {
     zoomControl: false,
-    attributionControl: false
-  }).setView([-6.2, 106.8], 12);
+    attributionControl: false,
+    fadeAnimation: false,
+    zoomAnimation: false
+  }).setView(initCenter, initZoom);
 
   // Add satellite layer
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: '',
     maxNativeZoom: 19,
     maxZoom: 25
   }).addTo(map);
 
   // Add labels layer
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png', {
-    attribution: '',
     maxNativeZoom: 19,
     maxZoom: 25,
     pane: 'shadowPane'
@@ -3562,14 +3580,7 @@ function renderDetailAreaMap(area, index) {
   map.keyboard.disable();
   if (map.tap) map.tap.disable();
 
-  // Draw polygon
-  let latlngs = [];
-  if (area.coordinates && area.coordinates.length > 0) {
-    latlngs = area.coordinates.map(coord => [coord[0], coord[1]]);
-  } else if (area.polygon && area.polygon.length > 0) {
-    latlngs = area.polygon.map(coord => [coord.lat, coord.lng]);
-  }
-
+  // Draw polygon and fit bounds
   if (latlngs.length > 0) {
     L.polygon(latlngs, {
       color: '#2563eb',
@@ -3578,20 +3589,19 @@ function renderDetailAreaMap(area, index) {
       weight: 2
     }).addTo(map);
 
-    // Fit bounds to area
-    map.fitBounds(latlngs, { padding: [20, 20] });
+    map.fitBounds(latlngs, { padding: [20, 20], animate: false });
   }
 
   // Store map instance
   window.trialDetailAreaMaps[index] = map;
 
-  // Fix map size
+  // Force a reliable invalidateSize after rendering is complete
   setTimeout(() => {
-    map.invalidateSize();
+    map.invalidateSize({ animate: false });
     if (latlngs.length > 0) {
-      map.fitBounds(latlngs, { padding: [20, 20] });
+      map.fitBounds(latlngs, { padding: [20, 20], animate: false });
     }
-  }, 150);
+  }, 300);
 }
 
 // Edit trial from detail modal

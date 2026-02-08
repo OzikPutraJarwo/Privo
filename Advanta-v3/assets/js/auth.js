@@ -77,9 +77,24 @@ function requestLogin() {
   tokenClient.requestAccessToken({ prompt: "consent" });
 }
 
+// Guest login
+function loginAsGuest() {
+  currentUser = {
+    email: null,
+    name: "Guest",
+    picture: null,
+    isGuest: true,
+  };
+  localStorage.setItem("currentUser", JSON.stringify(currentUser));
+  showView("app");
+  initializeApp();
+}
+
 function logout() {
-  // Revoke the token
-  if (accessToken) {
+  const wasGuest = currentUser?.isGuest;
+
+  // Revoke the token if Google user
+  if (!wasGuest && accessToken) {
     google.accounts.oauth2.revoke(accessToken, () => {
       console.log("Token revoked");
     });
@@ -120,27 +135,44 @@ document.addEventListener("DOMContentLoaded", async () => {
       loginBtn.addEventListener("click", requestLogin);
     }
 
+    // Setup guest login button
+    const guestBtn = document.getElementById("guestLoginBtn");
+    if (guestBtn) {
+      guestBtn.addEventListener("click", loginAsGuest);
+    }
+
     // Check if user was previously logged in
     const storedToken = localStorage.getItem("accessToken");
     const storedUser = localStorage.getItem("currentUser");
 
-    if (storedToken && storedUser) {
-      accessToken = storedToken;
-      currentUser = JSON.parse(storedUser);
-      gapi.client.setToken({ access_token: accessToken });
+    if (storedUser) {
+      const parsedUser = JSON.parse(storedUser);
 
-      // Verify token is still valid by making a simple API call
-      try {
-        await gapi.client.drive.about.get({ fields: "user" });
+      // Guest user — restore locally
+      if (parsedUser.isGuest) {
+        currentUser = parsedUser;
         showView("app");
         initializeApp();
-      } catch (error) {
-        // Token expired, clear and show login
-        console.log("Token expired, please login again");
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("currentUser");
-        accessToken = null;
-        currentUser = null;
+        return;
+      }
+
+      // Google user — verify token
+      if (storedToken) {
+        accessToken = storedToken;
+        currentUser = parsedUser;
+        gapi.client.setToken({ access_token: accessToken });
+
+        try {
+          await gapi.client.drive.about.get({ fields: "user" });
+          showView("app");
+          initializeApp();
+        } catch (error) {
+          console.log("Token expired, please login again");
+          localStorage.removeItem("accessToken");
+          localStorage.removeItem("currentUser");
+          accessToken = null;
+          currentUser = null;
+        }
       }
     }
   } catch (error) {
