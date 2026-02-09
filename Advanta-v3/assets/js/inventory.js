@@ -249,7 +249,7 @@ async function initializeInventory(options = {}) {
   } catch (error) {
     console.error("Error initializing inventory:", error);
     if (!hasCache) {
-      alert("Error loading inventory data. Please refresh the page.");
+      showToast("Error loading inventory data. Please refresh the page.", "error");
     }
   }
 }
@@ -860,60 +860,60 @@ async function saveItem() {
     : false;
 
   if (!name) {
-    alert("Please enter an item name");
+    showToast("Please enter an item name", "error");
     return;
   }
 
   if (isCrops && !cropType) {
-    alert("Please enter a crop type");
+    showToast("Please enter a crop type", "error");
     return;
   }
 
   if (isLines) {
     if (!lineCrop) {
-      alert("Please select a crop");
+      showToast("Please select a crop", "error");
       return;
     }
     if (!lineQuantity) {
-      alert("Please enter quantity");
+      showToast("Please enter quantity", "error");
       return;
     }
     if (!lineStage) {
-      alert("Please select a stage");
+      showToast("Please select a stage", "error");
       return;
     }
     if (!lineRole) {
-      alert("Please select a role");
+      showToast("Please select a role", "error");
       return;
     }
   }
 
   if (isLocations) {
     if (!locationCoord) {
-      alert("Please select a location on the map");
+      showToast("Please select a location on the map", "error");
       return;
     }
   }
 
   if (isParameters) {
     if (!paramInitial) {
-      alert("Please enter parameter initial");
+      showToast("Please enter parameter initial", "error");
       return;
     }
     if (!paramType) {
-      alert("Please select a type");
+      showToast("Please select a type", "error");
       return;
     }
     if (paramType === "range" && !paramRange) {
-      alert("Please enter range definition (e.g., 1-100)");
+      showToast("Please enter range definition (e.g., 1-100)", "error");
       return;
     }
     if (paramType === "radio" && !paramRadio) {
-      alert("Please enter radio options");
+      showToast("Please enter radio options", "error");
       return;
     }
     if (paramType === "checkbox" && !paramCheckbox) {
-      alert("Please enter checkbox options");
+      showToast("Please enter checkbox options", "error");
       return;
     }
   }
@@ -1084,7 +1084,7 @@ async function deleteItem(itemId) {
     }
   } catch (error) {
     console.error("Error deleting item:", error);
-    alert("Error deleting item. Please try again.");
+    showToast("Error deleting item. Please try again.", "error");
   }
 }
 

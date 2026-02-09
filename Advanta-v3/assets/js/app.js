@@ -254,6 +254,7 @@ function updateSyncUI() {
 
     panel.innerHTML = syncState.queue
       .slice(-20)
+      .reverse()
       .map((item) => {
         const statusClass =
           item.status === "success"
@@ -522,7 +523,248 @@ function syncInventoryNavState(category) {
     .forEach((item) => item.classList.remove("active"));
 }
 
-// Initialize app
+// ===========================
+// TOAST NOTIFICATION SYSTEM
+// ===========================
+
+function showToast(message, type = "info", duration = 3000) {
+  let existingContainer = document.getElementById("toastContainer");
+  if (!existingContainer) {
+    existingContainer = document.createElement("div");
+    existingContainer.id = "toastContainer";
+    existingContainer.style.cssText = `
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      pointer-events: none;
+      z-index: 2000;
+      max-width: 400px;
+    `;
+    document.body.appendChild(existingContainer);
+  }
+
+  const toast = document.createElement("div");
+  const bgColor = type === "success" ? "var(--success)" : 
+                  type === "error" ? "var(--danger)" :
+                  type === "warning" ? "var(--warning)" :
+                  "var(--primary)";
+  const icon = type === "success" ? "check_circle" :
+               type === "error" ? "error" :
+               type === "warning" ? "warning" :
+               "info";
+
+  toast.style.cssText = `
+    background: ${bgColor};
+    color: white;
+    padding: 0.875rem 1.25rem;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    animation: slideInRight 0.3s ease-out;
+    pointer-events: auto;
+  `;
+
+  toast.innerHTML = `
+    <span class="material-symbols-rounded" style="font-size: 1.25rem; flex-shrink: 0;">${icon}</span>
+    <span style="flex: 1; line-height: 1.4;">${escapeHtml(message)}</span>
+    <button style="
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: white;
+      cursor: pointer;
+      padding: 0.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    " onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+      <span class="material-symbols-rounded" style="font-size: 1rem;">close</span>
+    </button>
+  `;
+
+  const closeBtn = toast.querySelector("button");
+  closeBtn.addEventListener("click", () => {
+    toast.style.animation = "slideOutRight 0.3s ease-out forwards";
+    setTimeout(() => toast.remove(), 300);
+  });
+
+  existingContainer.appendChild(toast);
+
+  if (duration > 0) {
+    setTimeout(() => {
+      if (toast.parentElement) {
+        toast.style.animation = "slideOutRight 0.3s ease-out forwards";
+        setTimeout(() => toast.remove(), 300);
+      }
+    }, duration);
+  }
+}
+
+// ===========================
+// CONFIRMATION MODAL
+// ===========================
+function showConfirmModal(title, message, onConfirm, onCancel) {
+  const existingModal = document.getElementById("confirmModal");
+  if (existingModal) {
+    existingModal.remove();
+  }
+
+  const modal = document.createElement("div");
+  modal.id = "confirmModal";
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+    animation: fadeIn 0.2s ease-out;
+  `;
+
+  const backdrop = document.createElement("div");
+  backdrop.style.cssText = `
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  `;
+  backdrop.addEventListener("click", () => {
+    modal.style.animation = "fadeOut 0.2s ease-out forwards";
+    setTimeout(() => modal.remove(), 200);
+    if (onCancel) onCancel();
+  });
+  modal.appendChild(backdrop);
+
+  const content = document.createElement("div");
+  content.style.cssText = `
+    position: relative;
+    background: var(--bg-primary);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-xl);
+    max-width: 500px;
+    width: 90%;
+    padding: 2rem;
+    z-index: 1;
+  `;
+
+  const titleEl = document.createElement("h2");
+  titleEl.style.cssText = `
+    margin: 0 0 0.75rem 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  `;
+  titleEl.textContent = title;
+
+  const messageEl = document.createElement("p");
+  messageEl.style.cssText = `
+    margin: 0 0 1.5rem 0;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  `;
+  messageEl.textContent = message;
+
+  const buttonsDiv = document.createElement("div");
+  buttonsDiv.style.cssText = `
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+  `;
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.style.cssText = `
+    padding: 0.625rem 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+  `;
+  cancelBtn.addEventListener("mouseover", () => {
+    cancelBtn.style.background = "var(--bg-tertiary)";
+  });
+  cancelBtn.addEventListener("mouseout", () => {
+    cancelBtn.style.background = "var(--bg-secondary)";
+  });
+  cancelBtn.addEventListener("click", () => {
+    modal.style.animation = "fadeOut 0.2s ease-out forwards";
+    setTimeout(() => modal.remove(), 200);
+    if (onCancel) onCancel();
+  });
+
+  const confirmBtn = document.createElement("button");
+  confirmBtn.textContent = "Confirm";
+  confirmBtn.style.cssText = `
+    padding: 0.625rem 1.25rem;
+    border: none;
+    background: var(--primary);
+    color: white;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+  `;
+  confirmBtn.addEventListener("mouseover", () => {
+    confirmBtn.style.opacity = "0.9";
+  });
+  confirmBtn.addEventListener("mouseout", () => {
+    confirmBtn.style.opacity = "1";
+  });
+  confirmBtn.addEventListener("click", () => {
+    modal.style.animation = "fadeOut 0.2s ease-out forwards";
+    setTimeout(() => modal.remove(), 200);
+    if (onConfirm) onConfirm();
+  });
+
+  buttonsDiv.appendChild(cancelBtn);
+  buttonsDiv.appendChild(confirmBtn);
+
+  content.appendChild(titleEl);
+  content.appendChild(messageEl);
+  content.appendChild(buttonsDiv);
+  modal.appendChild(content);
+
+  document.body.appendChild(modal);
+
+  // Add fadeIn/fadeOut animations if not already in CSS
+  if (!document.getElementById("confirmModalStyles")) {
+    const style = document.createElement("style");
+    style.id = "confirmModalStyles";
+    style.textContent = `
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
+// ===========================
+// INITIALIZE APP
+// ===========================
+
 async function initializeApp() {
   const isGuest = getCurrentUser()?.isGuest;
 
@@ -587,15 +829,13 @@ async function initializeApp() {
       },
     });
 
-    // Initialize Library (silent background loading, skip for guest)
-    if (!isGuest) {
-      setLoadingProgress(80, "Loading cached data...");
-      initializeLibrary({
-        onProgress: (p, msg) => {
-          // Silent background sync - no UI updates
-        },
-      });
-    }
+    // Initialize Library (silent background loading)
+    setLoadingProgress(80, "Loading cached data...");
+    initializeLibrary({
+      onProgress: (p, msg) => {
+        // Silent background sync - no UI updates
+      },
+    });
 
     // Setup event listeners
     setupEventListeners();
@@ -613,12 +853,19 @@ async function initializeApp() {
   } catch (error) {
     console.error("Error initializing app:", error);
     showLoading(false);
-    alert("Error initializing app: " + error.message);
+    showToast("Error initializing app: " + error.message, "error");
   }
 }
 
 // Setup event listeners
 function setupEventListeners() {
+  // Guard against duplicate setup
+  if (setupEventListeners.initialized) {
+    console.log("Event listeners already initialized");
+    return;
+  }
+  setupEventListeners.initialized = true;
+
   // Mobile menu toggle
   const menuToggle = document.getElementById("menuToggle");
   const sidebar = document.querySelector(".sidebar");
@@ -668,9 +915,9 @@ function setupEventListeners() {
   const userLogoutBtn = document.getElementById("userLogoutBtn");
   if (userLogoutBtn) {
     userLogoutBtn.addEventListener("click", () => {
-      if (confirm("Are you sure you want to logout?")) {
+      showConfirmModal("Logout", "Are you sure you want to logout?", () => {
         logout();
-      }
+      });
     });
   }
 

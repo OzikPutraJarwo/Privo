@@ -1817,8 +1817,6 @@ body {
   padding: 0.5rem;
   max-height: 205px;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column-reverse;
 }
 
 .sync-item {
@@ -2275,10 +2273,6 @@ body {
 
   .layouting-controls {
     grid-template-columns: 1fr;
-  }
-
-  .library-detail-actions .btn span:last-child {
-    display: none;
   }
 
   /* Large datasets handling */
@@ -3562,6 +3556,32 @@ body.run-trial-active .main-content {
 .zone-undo-redo button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ===========================
+   TOAST NOTIFICATIONS
+   =========================== */
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%) translateY(0);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%) translateY(0);
+  }
 }
 
 .zone-undo-redo button span {

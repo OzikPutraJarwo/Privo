@@ -71,7 +71,7 @@ async function initializeTrials(options = {}) {
   } catch (error) {
     console.error("Error initializing trials:", error);
     if (!hasCache) {
-      alert("Error loading trials data. Please refresh the page.");
+      showToast("Error loading trials data. Please refresh the page.", "error");
     }
   }
 }
@@ -431,23 +431,23 @@ function validateGeneralSection() {
   ).length;
 
   if (!name) {
-    alert("Please enter trial name");
+    showToast("Please enter trial name", "error");
     return false;
   }
   if (!plantingStart || !plantingEnd) {
-    alert("Please enter planting window dates");
+    showToast("Please enter planting window dates", "error");
     return false;
   }
   if (!cropId) {
-    alert("Please select crop");
+    showToast("Please select crop", "error");
     return false;
   }
   if (!trialType) {
-    alert("Please select trial type");
+    showToast("Please select trial type", "error");
     return false;
   }
   if (selectedParams === 0) {
-    alert("Please select at least one observation parameter");
+    showToast("Please select at least one observation parameter", "error");
     return false;
   }
 
@@ -460,11 +460,11 @@ function validateLocationSection() {
   const locationId = locationEl ? locationEl.value : null;
 
   if (locationEl && !locationId) {
-    alert("Please select location");
+    showToast("Please select location", "error");
     return false;
   }
   if (trialState.currentAreas.length === 0) {
-    alert("Please draw at least one trial area");
+    showToast("Please draw at least one trial area", "error");
     return false;
   }
 
@@ -895,7 +895,7 @@ function saveCurrentArea() {
   newConfirmBtn.addEventListener("click", () => {
     const areaName = input.value.trim();
     if (!areaName) {
-      alert("Please enter area name");
+      showToast("Please enter area name", "error");
       return;
     }
 
@@ -1398,27 +1398,27 @@ async function saveTrial() {
 
   // Validation
   if (!name) {
-    alert("Please enter trial name");
+    showToast("Please enter trial name", "error");
     return;
   }
   if (!plantingStart || !plantingEnd) {
-    alert("Please enter planting window dates");
+    showToast("Please enter planting window dates", "error");
     return;
   }
   if (!cropId) {
-    alert("Please select crop");
+    showToast("Please select crop", "error");
     return;
   }
   if (!trialType) {
-    alert("Please select trial type");
+    showToast("Please select trial type", "error");
     return;
   }
   if (selectedParams.length === 0) {
-    alert("Please select at least one observation parameter");
+    showToast("Please select at least one observation parameter", "error");
     return;
   }
   if (trialState.currentAreas.length === 0) {
-    alert("Please draw at least one trial area");
+    showToast("Please draw at least one trial area", "error");
     return;
   }
 
@@ -1528,7 +1528,7 @@ async function deleteTrial(trialId) {
     }
   } catch (error) {
     console.error("Error deleting trial:", error);
-    alert("Error deleting trial. Please try again.");
+    showToast("Error deleting trial. Please try again.", "error");
   }
 }
 
@@ -2011,7 +2011,7 @@ function validateLayoutingSection() {
   );
 
   if (!hasAnyLayout) {
-    alert("Please generate layout for at least one area");
+    showToast("Please generate layout for at least one area", "error");
     return false;
   }
 

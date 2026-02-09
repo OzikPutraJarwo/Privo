@@ -34,11 +34,33 @@ async function initializeLibrary(options = {}) {
     );
     setupLibraryEvents();
     
-    // Load library items in background via sync queue\n    if (typeof enqueueSync === 'function') {\n      enqueueSync({\n        label: 'Load Library',\n        run: async () => {\n          await loadLibraryItems();\n          if (typeof saveLocalCache === \"function\") {\n            saveLocalCache(\"library\", { items: libraryState.items });\n          }\n          if (onProgress) {\n            onProgress(1, \"Library synced\");\n          }\n        }\n      });\n    } else {\n      await loadLibraryItems();\n      if (typeof saveLocalCache === \"function\") {\n        saveLocalCache(\"library\", { items: libraryState.items });\n      }\n      if (onProgress) {\n        onProgress(1, \"Library synced\");\n      }\n    }
+    // Load library items in background via sync queue
+    if (typeof enqueueSync === 'function') {
+      enqueueSync({
+        label: 'Load Library',
+        run: async () => {
+          await loadLibraryItems();
+          if (typeof saveLocalCache === "function") {
+            saveLocalCache("library", { items: libraryState.items });
+          }
+          if (onProgress) {
+            onProgress(1, "Library synced");
+          }
+        }
+      });
+    } else {
+      await loadLibraryItems();
+      if (typeof saveLocalCache === "function") {
+        saveLocalCache("library", { items: libraryState.items });
+      }
+      if (onProgress) {
+        onProgress(1, "Library synced");
+      }
+    }
   } catch (error) {
     console.error("Error initializing library:", error);
     if (!hasCache) {
-      alert("Error loading library data. Please refresh the page.");
+      showToast("Error loading library data. Please refresh the page.", "error");
     }
   }
 }
@@ -504,7 +526,7 @@ async function downloadLibraryItem() {
     URL.revokeObjectURL(url);
   } catch (error) {
     console.error("Error downloading file:", error);
-    alert("Failed to download file.");
+    showToast("Failed to download file.", "error");
   }
 }
 

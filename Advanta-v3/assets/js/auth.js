@@ -8,6 +8,14 @@ const DISCOVERY_DOCS = [
 const SCOPES =
   "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email";
 
+// Placeholder for showLoading - will be overridden by app.js
+function showLoading(isLoading) {
+  const loader = document.getElementById("loadingContainer");
+  if (loader) {
+    loader.style.display = isLoading ? "flex" : "none";
+  }
+}
+
 let tokenClient;
 let currentUser = null;
 let accessToken = null;
@@ -37,7 +45,7 @@ function handleAuthResponse(response) {
   if (response.error) {
     console.error("Auth error:", response);
     showLoading(false);
-    alert("Authentication failed. Please try again.");
+    showToast("Authentication failed. Please try again.", "error");
     return;
   }
 
@@ -67,7 +75,7 @@ function handleAuthResponse(response) {
       .catch((error) => {
         console.error("Error getting user info:", error);
         showLoading(false);
-        alert("Failed to get user information. Please try again.");
+        showToast("Failed to get user information. Please try again.", "error");
       });
   }
 }
@@ -113,6 +121,11 @@ function logout() {
   // Reset to login view
   document.getElementById("loginView").classList.add("active");
   document.getElementById("appView").classList.remove("active");
+
+  // Reset setupEventListeners flag so they can be re-attached on next login
+  if (typeof setupEventListeners === "function") {
+    setupEventListeners.initialized = false;
+  }
 }
 
 function getCurrentUser() {
