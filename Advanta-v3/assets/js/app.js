@@ -172,21 +172,63 @@ async function processSyncQueue() {
     updateSyncUI();
 
     try {
+      // Ensure valid token before each sync operation
+      if (typeof ensureValidToken === "function" && !getCurrentUser()?.isGuest) {
+        const tokenValid = await ensureValidToken();
+        if (!tokenValid) {
+          next.status = "error";
+          next.error = "Session expired. Please log in again.";
+          syncState.lastError = next.error;
+          syncState.status = "error";
+          updateSyncUI();
+          continue;
+        }
+      }
+
       await next.run();
       next.status = "success";
       next.error = null;
       syncState.lastError = null;
     } catch (error) {
-      next.status = "error";
-      next.error = error?.message || "Unknown error";
-      syncState.lastError = next.error;
-      syncState.status = "error";
+      const errorMsg = error?.message || "Unknown error";
+      const isAuthError = errorMsg.includes("401") || 
+                          errorMsg.includes("unauthorized") || 
+                          errorMsg.includes("Invalid Credentials") ||
+                          errorMsg.includes("Login Required");
 
-      // Check if it's an authentication error
-      if (error?.message?.includes("401") || error?.message?.includes("unauthorized") || error?.message?.includes("Invalid Credentials")) {
-        next.error = next.error + " - [Requires re-login]";
-        // Show alert with login option
-        showSyncErrorAlert(next.error, error);
+      if (isAuthError && typeof ensureValidToken === "function") {
+        // Auth error — try to re-login and retry this item
+        console.log("Auth error during sync, attempting re-login...");
+        showToast("Session expired, re-authenticating...", "warning", 3000);
+
+        const tokenValid = await ensureValidToken();
+        if (tokenValid) {
+          // Retry the same item
+          try {
+            await next.run();
+            next.status = "success";
+            next.error = null;
+            syncState.lastError = null;
+            showToast("Re-authenticated successfully, sync resumed", "success");
+            updateSyncUI();
+            continue;
+          } catch (retryError) {
+            next.status = "error";
+            next.error = retryError?.message || "Retry failed";
+            syncState.lastError = next.error;
+            syncState.status = "error";
+          }
+        } else {
+          next.status = "error";
+          next.error = "Session expired. Please log in again.";
+          syncState.lastError = next.error;
+          syncState.status = "error";
+        }
+      } else {
+        next.status = "error";
+        next.error = errorMsg;
+        syncState.lastError = next.error;
+        syncState.status = "error";
       }
 
       updateSyncUI();

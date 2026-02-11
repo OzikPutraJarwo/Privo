@@ -19,6 +19,11 @@ function showLoading(isLoading) {
 let tokenClient;
 let currentUser = null;
 let accessToken = null;
+let tokenExpiresAt = null;
+let tokenRefreshTimer = null;
+
+// Token refresh interval: 50 minutes (tokens expire at ~60min)
+const TOKEN_REFRESH_INTERVAL = 50 * 60 * 1000;
 
 // Initialize Google APIs
 function initializeGoogleAPIs() {
@@ -45,6 +50,13 @@ function handleAuthResponse(response) {
   if (response.error) {
     console.error("Auth error:", response);
     showLoading(false);
+
+    // If this was a silent refresh attempt, resolve the pending promise
+    if (_silentRefreshResolve) {
+      _silentRefreshResolve(false);
+      _silentRefreshResolve = null;
+    }
+
     showToast("Authentication failed. Please try again.", "error");
     return;
   }
@@ -53,7 +65,26 @@ function handleAuthResponse(response) {
     accessToken = response.access_token;
     gapi.client.setToken({ access_token: accessToken });
 
-    // Get user info
+    // Calculate token expiry (default 3600s = 1 hour)
+    const expiresIn = (response.expires_in || 3600) * 1000;
+    tokenExpiresAt = Date.now() + expiresIn;
+
+    // Save to localStorage
+    localStorage.setItem("accessToken", accessToken);
+    localStorage.setItem("tokenExpiresAt", tokenExpiresAt.toString());
+
+    // Start auto-refresh timer
+    scheduleTokenRefresh();
+
+    // If this was a silent refresh, resolve promise and return
+    if (_silentRefreshResolve) {
+      console.log("Token silently refreshed, expires in", Math.round(expiresIn / 60000), "min");
+      _silentRefreshResolve(true);
+      _silentRefreshResolve = null;
+      return;
+    }
+
+    // Get user info (only on first login, not on refresh)
     fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
@@ -67,7 +98,6 @@ function handleAuthResponse(response) {
 
         // Save to localStorage
         localStorage.setItem("currentUser", JSON.stringify(currentUser));
-        localStorage.setItem("accessToken", accessToken);
 
         // Initialize app
         initializeApp();
@@ -78,6 +108,103 @@ function handleAuthResponse(response) {
         showToast("Failed to get user information. Please try again.", "error");
       });
   }
+}
+
+// Silent refresh callback resolver
+let _silentRefreshResolve = null;
+
+// Schedule automatic token refresh before expiry
+function scheduleTokenRefresh() {
+  if (tokenRefreshTimer) {
+    clearTimeout(tokenRefreshTimer);
+  }
+
+  const timeUntilRefresh = tokenExpiresAt
+    ? Math.max(tokenExpiresAt - Date.now() - 10 * 60 * 1000, 60000) // 10 min before expiry, minimum 1 min
+    : TOKEN_REFRESH_INTERVAL;
+
+  tokenRefreshTimer = setTimeout(async () => {
+    console.log("Auto-refreshing token...");
+    const success = await silentTokenRefresh();
+    if (!success) {
+      console.warn("Silent refresh failed, will retry on next sync");
+    }
+  }, timeUntilRefresh);
+
+  console.log("Token refresh scheduled in", Math.round(timeUntilRefresh / 60000), "min");
+}
+
+// Silently refresh the token without user interaction
+function silentTokenRefresh() {
+  return new Promise((resolve) => {
+    if (!tokenClient || currentUser?.isGuest) {
+      resolve(false);
+      return;
+    }
+
+    _silentRefreshResolve = resolve;
+
+    // Timeout: if no response in 10s, consider failed
+    const timeout = setTimeout(() => {
+      if (_silentRefreshResolve) {
+        _silentRefreshResolve = null;
+        resolve(false);
+      }
+    }, 10000);
+
+    try {
+      // prompt: '' means silent refresh (no popup if user already authorized)
+      tokenClient.requestAccessToken({ prompt: "" });
+    } catch (e) {
+      clearTimeout(timeout);
+      _silentRefreshResolve = null;
+      console.error("Silent refresh error:", e);
+      resolve(false);
+    }
+  });
+}
+
+// Check if token is expired or about to expire
+function isTokenExpired() {
+  if (!tokenExpiresAt) return true;
+  // Consider expired if less than 2 minutes remaining
+  return Date.now() > tokenExpiresAt - 2 * 60 * 1000;
+}
+
+// Ensure we have a valid token, refresh if needed
+// Returns true if token is valid, false if re-login is required
+async function ensureValidToken() {
+  if (currentUser?.isGuest) return true;
+  if (!isTokenExpired()) return true;
+
+  console.log("Token expired, attempting silent refresh...");
+  const refreshed = await silentTokenRefresh();
+
+  if (refreshed) {
+    return true;
+  }
+
+  // Silent refresh failed - need interactive re-login
+  console.warn("Silent refresh failed, requesting interactive login...");
+  return await interactiveReLogin();
+}
+
+// Show re-login popup without leaving the app
+function interactiveReLogin() {
+  return new Promise((resolve) => {
+    showToast("Session expired. Logging in again...", "warning", 5000);
+
+    _silentRefreshResolve = resolve;
+
+    // Use consent prompt since silent failed
+    try {
+      tokenClient.requestAccessToken({ prompt: "consent" });
+    } catch (e) {
+      _silentRefreshResolve = null;
+      console.error("Interactive re-login error:", e);
+      resolve(false);
+    }
+  });
 }
 
 function requestLogin() {
@@ -108,12 +235,20 @@ function logout() {
     });
   }
 
+  // Clear refresh timer
+  if (tokenRefreshTimer) {
+    clearTimeout(tokenRefreshTimer);
+    tokenRefreshTimer = null;
+  }
+
   // Clear data
   gapi.client.setToken(null);
   currentUser = null;
   accessToken = null;
+  tokenExpiresAt = null;
   localStorage.removeItem("currentUser");
   localStorage.removeItem("accessToken");
+  localStorage.removeItem("tokenExpiresAt");
   if (typeof clearLocalCache === "function") {
     clearLocalCache();
   }
@@ -157,6 +292,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Check if user was previously logged in
     const storedToken = localStorage.getItem("accessToken");
     const storedUser = localStorage.getItem("currentUser");
+    const storedExpiry = localStorage.getItem("tokenExpiresAt");
 
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
@@ -169,22 +305,36 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // Google user — verify token
+      // Google user — verify token or silently refresh
       if (storedToken) {
         accessToken = storedToken;
         currentUser = parsedUser;
+        tokenExpiresAt = storedExpiry ? parseInt(storedExpiry) : null;
         gapi.client.setToken({ access_token: accessToken });
 
-        try {
-          await gapi.client.drive.about.get({ fields: "user" });
+        // Check if token is still valid
+        if (!isTokenExpired()) {
+          // Token still valid, use it and schedule refresh
           showView("app");
+          scheduleTokenRefresh();
           initializeApp();
-        } catch (error) {
-          console.log("Token expired, please login again");
-          localStorage.removeItem("accessToken");
-          localStorage.removeItem("currentUser");
-          accessToken = null;
-          currentUser = null;
+        } else {
+          // Token expired, try silent refresh
+          console.log("Stored token expired, attempting silent refresh...");
+          const refreshed = await silentTokenRefresh();
+          if (refreshed) {
+            showView("app");
+            initializeApp();
+          } else {
+            // Silent refresh failed, clear and show login
+            console.log("Silent refresh failed, please login again");
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("currentUser");
+            localStorage.removeItem("tokenExpiresAt");
+            accessToken = null;
+            currentUser = null;
+            tokenExpiresAt = null;
+          }
         }
       }
     }

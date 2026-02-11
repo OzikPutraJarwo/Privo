@@ -1042,50 +1042,50 @@ async function saveItem() {
 }
 
 // Delete item
-async function deleteItem(itemId) {
-  if (
-    !confirm(
-      "Are you sure you want to delete this item? This action cannot be undone.",
-    )
-  ) {
-    return;
-  }
+function deleteItem(itemId) {
+  showConfirmModal(
+    "Delete Item",
+    "Are you sure you want to delete this item? This action cannot be undone.",
+    async () => {
+      try {
+        const category = inventoryState.currentCategory;
+        const itemIndex = inventoryState.items[category].findIndex(
+          (i) => i.id === itemId,
+        );
+        const removedItem = inventoryState.items[category][itemIndex];
 
-  try {
-    const category = inventoryState.currentCategory;
-    const itemIndex = inventoryState.items[category].findIndex(
-      (i) => i.id === itemId,
-    );
-    const removedItem = inventoryState.items[category][itemIndex];
+        if (itemIndex >= 0) {
+          inventoryState.items[category].splice(itemIndex, 1);
+        }
 
-    if (itemIndex >= 0) {
-      inventoryState.items[category].splice(itemIndex, 1);
+        // Delete from Google Drive
+        const categoryName = category.charAt(0).toUpperCase() + category.slice(1);
+        enqueueSync({
+          label: `Delete ${categoryName}: ${removedItem?.name || itemId}`,
+          run: () => deleteItemFromGoogleDrive(categoryName, itemId),
+        });
+
+        // Update dashboard
+        updateDashboardCounts();
+
+        if (category === "crops") {
+          updateCropTypeSuggestions();
+        }
+
+        // Render items
+        renderInventoryItems();
+
+        if (typeof saveLocalCache === "function") {
+          saveLocalCache("inventory", { items: inventoryState.items });
+        }
+        
+        showToast("Item deleted", "success");
+      } catch (error) {
+        console.error("Error deleting item:", error);
+        showToast("Error deleting item. Please try again.", "error");
+      }
     }
-
-    // Delete from Google Drive
-    const categoryName = category.charAt(0).toUpperCase() + category.slice(1);
-    enqueueSync({
-      label: `Delete ${categoryName}: ${removedItem?.name || itemId}`,
-      run: () => deleteItemFromGoogleDrive(categoryName, itemId),
-    });
-
-    // Update dashboard
-    updateDashboardCounts();
-
-    if (category === "crops") {
-      updateCropTypeSuggestions();
-    }
-
-    // Render items
-    renderInventoryItems();
-
-    if (typeof saveLocalCache === "function") {
-      saveLocalCache("inventory", { items: inventoryState.items });
-    }
-  } catch (error) {
-    console.error("Error deleting item:", error);
-    showToast("Error deleting item. Please try again.", "error");
-  }
+  );
 }
 
 // Update dashboard counts

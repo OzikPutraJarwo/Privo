@@ -489,19 +489,24 @@ async function deleteLibraryItem(fileId = null) {
   const item = libraryState.items.find((file) => file.id === targetId);
   if (!item) return;
 
-  if (!confirm(`Delete ${item.name}? This cannot be undone.`)) return;
+  showConfirmModal(
+    "Delete File",
+    `Delete ${item.name}? This cannot be undone.`,
+    async () => {
+      await gapi.client.drive.files.delete({ fileId: targetId });
+      if (libraryState.selectedId === targetId) {
+        libraryState.selectedId = null;
+        if (libraryState.previewUrl) {
+          URL.revokeObjectURL(libraryState.previewUrl);
+          libraryState.previewUrl = null;
+        }
+        setLibraryDetailVisible(false);
+      }
 
-  await gapi.client.drive.files.delete({ fileId: targetId });
-  if (libraryState.selectedId === targetId) {
-    libraryState.selectedId = null;
-    if (libraryState.previewUrl) {
-      URL.revokeObjectURL(libraryState.previewUrl);
-      libraryState.previewUrl = null;
+      await loadLibraryItems();
+      showToast("File deleted", "success");
     }
-    setLibraryDetailVisible(false);
-  }
-
-  await loadLibraryItems();
+  );
 }
 
 async function downloadLibraryItem() {

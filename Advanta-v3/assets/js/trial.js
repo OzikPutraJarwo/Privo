@@ -81,6 +81,7 @@ function renderTrials() {
   const container = document.getElementById("trialList");
 
   if (trialState.trials.length === 0) {
+    container.classList.add("empty-trial")
     container.innerHTML = `
             <div class="empty-state">
                 <span class="material-symbols-rounded">science</span>
@@ -88,6 +89,8 @@ function renderTrials() {
             </div>
         `;
     return;
+  } else {
+    container.classList.remove("empty-trial");
   }
 
   container.innerHTML = trialState.trials
@@ -1497,58 +1500,115 @@ async function saveTrial() {
 }
 
 // Delete trial
-async function deleteTrial(trialId) {
-  if (
-    !confirm(
-      "Are you sure you want to delete this trial? This action cannot be undone.",
-    )
-  ) {
-    return;
-  }
+function deleteTrial(trialId) {
+  showConfirmModal(
+    "Delete Trial",
+    "Are you sure you want to delete this trial? This action cannot be undone.",
+    async () => {
+      try {
+        const trialIndex = trialState.trials.findIndex((t) => t.id === trialId);
+        const removedTrial = trialState.trials[trialIndex];
 
-  try {
-    const trialIndex = trialState.trials.findIndex((t) => t.id === trialId);
-    const removedTrial = trialState.trials[trialIndex];
+        if (trialIndex >= 0) {
+          trialState.trials.splice(trialIndex, 1);
+        }
 
-    if (trialIndex >= 0) {
-      trialState.trials.splice(trialIndex, 1);
+        // Delete from Google Drive
+        enqueueSync({
+          label: `Delete Trial: ${removedTrial?.name || trialId}`,
+          run: () => deleteTrialFromGoogleDrive(trialId),
+        });
+
+        // Render trials
+        renderTrials();
+
+        if (typeof saveLocalCache === "function") {
+          saveLocalCache("trials", { trials: trialState.trials });
+        }
+        
+        showToast("Trial deleted", "success");
+      } catch (error) {
+        console.error("Error deleting trial:", error);
+        showToast("Error deleting trial. Please try again.", "error");
+      }
     }
-
-    // Delete from Google Drive
-    enqueueSync({
-      label: `Delete Trial: ${removedTrial?.name || trialId}`,
-      run: () => deleteTrialFromGoogleDrive(trialId),
-    });
-
-    // Render trials
-    renderTrials();
-
-    if (typeof saveLocalCache === "function") {
-      saveLocalCache("trials", { trials: trialState.trials });
-    }
-  } catch (error) {
-    console.error("Error deleting trial:", error);
-    showToast("Error deleting trial. Please try again.", "error");
-  }
+  );
 }
 
 // Load trials from Google Drive
+// ===========================
+// GRANULAR DRIVE STORAGE FOR TRIALS
+// Structure: Advanta/Trials/{trialId}/meta.json
+//            Advanta/Trials/{trialId}/responses/{areaIndex}_{paramId}.json
+// Each area+param combo = separate file → no multi-device conflicts
+// ===========================
+
+let trialsFolderId = null;
+
+async function getTrialsFolderId() {
+  if (!trialsFolderId) {
+    trialsFolderId = await getOrCreateFolder("Trials", driveState.advantaFolderId);
+  }
+  return trialsFolderId;
+}
+
 async function loadTrialsFromGoogleDrive() {
   try {
-    const folderId = await getOrCreateFolder(
-      "Trials",
-      driveState.inventoryFolderId,
-    );
-    const files = await gapi.client.drive.files.list({
-      q: `'${folderId}' in parents and trashed=false`,
+    const rootFolderId = await getTrialsFolderId();
+
+    // List all trial folders
+    const foldersResp = await gapi.client.drive.files.list({
+      q: `'${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
       fields: "files(id, name)",
       pageSize: 1000,
     });
 
+    const trialFolders = foldersResp.result.files || [];
     const trials = [];
-    for (const file of files.result.files) {
-      const content = await getFileContent(file.id);
-      trials.push(content);
+
+    for (const folder of trialFolders) {
+      try {
+        // Load meta.json
+        const metaFile = await findFile("meta.json", folder.id);
+        if (!metaFile) continue;
+
+        const trial = await getFileContent(metaFile.id);
+        trial.id = trial.id || folder.name; // Folder name = trialId
+
+        // Load responses from responses/ subfolder
+        const responsesFolderId = await findFolder("responses", folder.id);
+        if (responsesFolderId) {
+          const respFiles = await gapi.client.drive.files.list({
+            q: `'${responsesFolderId.id}' in parents and mimeType='application/json' and trashed=false`,
+            fields: "files(id, name)",
+            pageSize: 1000,
+          });
+
+          const responses = {};
+          for (const respFile of (respFiles.result.files || [])) {
+            try {
+              const respData = await getFileContent(respFile.id);
+              // File name format: {areaIndex}_{paramId}.json
+              const key = respFile.name.replace(".json", "");
+              const sepIdx = key.indexOf("_");
+              if (sepIdx === -1) continue;
+
+              const areaIndex = key.substring(0, sepIdx);
+              const paramId = key.substring(sepIdx + 1);
+
+              if (!responses[areaIndex]) responses[areaIndex] = {};
+              responses[areaIndex][paramId] = respData;
+            } catch (e) {
+              console.error(`Error loading response ${respFile.name}:`, e);
+            }
+          }
+          trial.responses = responses;
+        }
+
+        trials.push(trial);
+      } catch (e) {
+        console.error(`Error loading trial folder ${folder.name}:`, e);
+      }
     }
 
     return trials;
@@ -1558,28 +1618,54 @@ async function loadTrialsFromGoogleDrive() {
   }
 }
 
-// Save trial to Google Drive
+// Save trial metadata to Google Drive (without responses)
 async function saveTrialToGoogleDrive(trial) {
-  const folderId = await getOrCreateFolder(
-    "Trials",
-    driveState.inventoryFolderId,
-  );
-  const fileName = `${trial.id}.json`;
-  const content = JSON.stringify(trial, null, 2);
+  const rootFolderId = await getTrialsFolderId();
+  const trialFolderId = await getOrCreateFolder(trial.id, rootFolderId);
 
-  const existingFile = await findFile(fileName, folderId);
+  // Save meta.json (trial definition WITHOUT responses to keep it small)
+  const meta = { ...trial };
+  delete meta.responses; // Responses saved separately
+
+  await uploadJsonFile("meta.json", trialFolderId, meta);
+}
+
+// Save only the responses for a specific area+param to Drive
+async function saveTrialResponsesToDrive(trial) {
+  const rootFolderId = await getTrialsFolderId();
+  const trialFolderId = await getOrCreateFolder(trial.id, rootFolderId);
+  const responsesFolderId = await getOrCreateFolder("responses", trialFolderId);
+
+  const responses = trial.responses || {};
+
+  // Save each area+param combo as a separate file
+  for (const areaIndex of Object.keys(responses)) {
+    for (const paramId of Object.keys(responses[areaIndex])) {
+      const fileName = `${areaIndex}_${paramId}.json`;
+      const data = responses[areaIndex][paramId];
+      await uploadJsonFile(fileName, responsesFolderId, data);
+    }
+  }
+}
+
+// Helper: upload/update a JSON file in a specific folder
+async function uploadJsonFile(fileName, parentFolderId, data) {
+  const content = JSON.stringify(data, null, 2);
+  const existingFile = await findFile(fileName, parentFolderId);
 
   const metadata = {
     name: fileName,
     mimeType: "application/json",
-    parents: existingFile ? undefined : [folderId],
   };
+  if (!existingFile) {
+    metadata.parents = [parentFolderId];
+  }
 
   const boundary = "-------314159265358979323846";
   const delimiter = "\r\n--" + boundary + "\r\n";
   const closeDelimiter = "\r\n--" + boundary + "--";
 
-  const multipartRequestBody =
+  const body =
     delimiter +
     "Content-Type: application/json\r\n\r\n" +
     JSON.stringify(metadata) +
@@ -1597,23 +1683,20 @@ async function saveTrialToGoogleDrive(trial) {
     headers: {
       "Content-Type": 'multipart/related; boundary="' + boundary + '"',
     },
-    body: multipartRequestBody,
+    body: body,
   });
 
   await request;
 }
 
-// Delete trial from Google Drive
+// Delete trial folder and all contents from Google Drive
 async function deleteTrialFromGoogleDrive(trialId) {
-  const folderId = await getOrCreateFolder(
-    "Trials",
-    driveState.inventoryFolderId,
-  );
-  const fileName = `${trialId}.json`;
-  const file = await findFile(fileName, folderId);
+  const rootFolderId = await getTrialsFolderId();
+  const trialFolder = await findFolder(trialId, rootFolderId);
 
-  if (file) {
-    await gapi.client.drive.files.delete({ fileId: file.id });
+  if (trialFolder) {
+    // Deleting the folder deletes all contents (meta.json, responses/, etc.)
+    await gapi.client.drive.files.delete({ fileId: trialFolder.id });
   }
 }
 
@@ -2940,10 +3023,10 @@ async function saveRunTrialProgress() {
     saveLocalCache("trials", { trials: trialState.trials });
   }
 
-  // Save to Google Drive
+  // Save responses to Google Drive (granular — per area+param file)
   enqueueSync({
-    label: `Save Trial Progress: ${trial.name}`,
-    run: () => saveTrialToGoogleDrive(trial),
+    label: `Save Responses: ${trial.name}`,
+    run: () => saveTrialResponsesToDrive(trial),
   });
 
   // Update nav and progress display
@@ -3616,9 +3699,16 @@ function editTrialFromDetail() {
 function deleteTrialFromDetail() {
   if (window.currentDetailTrialId) {
     const trial = trialState.trials.find(t => t.id === window.currentDetailTrialId);
-    if (trial && confirm('Are you sure you want to delete this trial?')) {
-      closeTrialDetailModal();
-      deleteTrialById(window.currentDetailTrialId);
+    if (trial) {
+      showConfirmModal(
+        "Delete Trial",
+        "Are you sure you want to delete this trial? This action cannot be undone.",
+        () => {
+          closeTrialDetailModal();
+          deleteTrialById(window.currentDetailTrialId);
+          showToast("Trial deleted", "success");
+        }
+      );
     }
   }
 }
@@ -3634,9 +3724,6 @@ function deleteTrialById(trialId) {
 
   enqueueSync({
     label: 'Delete Trial',
-    run: async () => {
-      const file = await gapi.client.drive.files.get({ fileId: trialId, fields: 'trashed' });
-      await gapi.client.drive.files.delete({ fileId: trialId });
-    },
+    run: () => deleteTrialFromGoogleDrive(trialId),
   });
 }
