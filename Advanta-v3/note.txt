@@ -1,2 +1,0 @@
-Q
-1. ketika line diconsume, apakah ketika trial dihapus, quantitynya kembali?
