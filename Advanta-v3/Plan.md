@@ -5,7 +5,7 @@
 - [x] `User & Auth` Token auto-refresh system & extended token to 60 minutes
 - [x] `User & Auth` Auth-aware sync with auto re-login
 - [x] `User & Auth` Granular GDrive structure for multi-save data without conflict
-- [ ] `User & Auth` Almost-real-time data update and exchange (and check for quotas, too)
+- [x] `User & Auth` Almost-real-time data update and exchange (and check for quotas, too)
 - [ ] `Inventory > Crops` Lines quantity consumed via per-trial created
 - [ ] `Inventory > Parameters` Change "Quantity" to "Number of Sample"
 - [ ] `Inventory > Parameters` Range definition using 2 column (min - max)
@@ -29,7 +29,7 @@
 - [ ] `Trial > Run Trial` Popup "are you sure?" with autosave when #runTrialBackBtn clicked
 
 Reminders Feature:
-- [ ] `Reminder` Add new navigation, with Agronomy and Observation submenu
+- [x] `Reminder` Add new navigation, with Agronomy and Observation submenu
 - [ ] `Reminder > Observation` Reminders for data retrieval per parameters
 - [ ] `Reminder > Agronomy` Reminders for agronomy things (fertilizing, spraying, etc)
 

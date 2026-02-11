@@ -172,63 +172,21 @@ async function processSyncQueue() {
     updateSyncUI();
 
     try {
-      // Ensure valid token before each sync operation
-      if (typeof ensureValidToken === "function" && !getCurrentUser()?.isGuest) {
-        const tokenValid = await ensureValidToken();
-        if (!tokenValid) {
-          next.status = "error";
-          next.error = "Session expired. Please log in again.";
-          syncState.lastError = next.error;
-          syncState.status = "error";
-          updateSyncUI();
-          continue;
-        }
-      }
-
       await next.run();
       next.status = "success";
       next.error = null;
       syncState.lastError = null;
     } catch (error) {
-      const errorMsg = error?.message || "Unknown error";
-      const isAuthError = errorMsg.includes("401") || 
-                          errorMsg.includes("unauthorized") || 
-                          errorMsg.includes("Invalid Credentials") ||
-                          errorMsg.includes("Login Required");
+      next.status = "error";
+      next.error = error?.message || "Unknown error";
+      syncState.lastError = next.error;
+      syncState.status = "error";
 
-      if (isAuthError && typeof ensureValidToken === "function") {
-        // Auth error — try to re-login and retry this item
-        console.log("Auth error during sync, attempting re-login...");
-        showToast("Session expired, re-authenticating...", "warning", 3000);
-
-        const tokenValid = await ensureValidToken();
-        if (tokenValid) {
-          // Retry the same item
-          try {
-            await next.run();
-            next.status = "success";
-            next.error = null;
-            syncState.lastError = null;
-            showToast("Re-authenticated successfully, sync resumed", "success");
-            updateSyncUI();
-            continue;
-          } catch (retryError) {
-            next.status = "error";
-            next.error = retryError?.message || "Retry failed";
-            syncState.lastError = next.error;
-            syncState.status = "error";
-          }
-        } else {
-          next.status = "error";
-          next.error = "Session expired. Please log in again.";
-          syncState.lastError = next.error;
-          syncState.status = "error";
-        }
-      } else {
-        next.status = "error";
-        next.error = errorMsg;
-        syncState.lastError = next.error;
-        syncState.status = "error";
+      // Check if it's an authentication error
+      if (error?.message?.includes("401") || error?.message?.includes("unauthorized") || error?.message?.includes("Invalid Credentials")) {
+        next.error = next.error + " - [Requires re-login]";
+        // Show alert with login option
+        showSyncErrorAlert(next.error, error);
       }
 
       updateSyncUI();
@@ -296,7 +254,6 @@ function updateSyncUI() {
 
     panel.innerHTML = syncState.queue
       .slice(-20)
-      .reverse()
       .map((item) => {
         const statusClass =
           item.status === "success"
@@ -392,6 +349,7 @@ function switchPage(pageName) {
     inventory: "inventoryContent",
     trial: "trialContent",
     library: "libraryContent",
+    reminder: "reminderContent",
   };
 
   if (pageMap[pageName]) {
@@ -404,6 +362,7 @@ function switchPage(pageName) {
     inventory: "Inventory",
     trial: "Trial",
     library: "Library",
+    reminder: "Reminder",
   };
 
   if (titleMap[pageName]) {
@@ -455,6 +414,18 @@ function navigateToView(item) {
       const tab = firstSub.dataset.trialTab;
       switchTrialTab(tab);
     }
+  } else if (view === "reminder") {
+    const firstSub = document.querySelector(
+      '.nav-subitem[data-parent="reminder"]',
+    );
+    if (firstSub) {
+      document
+        .querySelectorAll('.nav-subitem[data-parent="reminder"]')
+        .forEach((s) => s.classList.remove("active"));
+      firstSub.classList.add("active");
+      const tab = firstSub.dataset.reminderTab;
+      switchReminderTab(tab);
+    }
   }
 
   // Close mobile sidebar after navigation
@@ -488,6 +459,12 @@ function navigateToSubView(item) {
     const tab = item.dataset.trialTab;
     switchPage("trial");
     switchTrialTab(tab);
+  }
+
+  if (parent === "reminder") {
+    const tab = item.dataset.reminderTab;
+    switchPage("reminder");
+    switchReminderTab(tab);
   }
 
   const isMobile = window.matchMedia("(max-width: 768px)").matches;
@@ -565,248 +542,7 @@ function syncInventoryNavState(category) {
     .forEach((item) => item.classList.remove("active"));
 }
 
-// ===========================
-// TOAST NOTIFICATION SYSTEM
-// ===========================
-
-function showToast(message, type = "info", duration = 3000) {
-  let existingContainer = document.getElementById("toastContainer");
-  if (!existingContainer) {
-    existingContainer = document.createElement("div");
-    existingContainer.id = "toastContainer";
-    existingContainer.style.cssText = `
-      position: fixed;
-      bottom: 1.5rem;
-      right: 1.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      pointer-events: none;
-      z-index: 2000;
-      max-width: 400px;
-    `;
-    document.body.appendChild(existingContainer);
-  }
-
-  const toast = document.createElement("div");
-  const bgColor = type === "success" ? "var(--success)" : 
-                  type === "error" ? "var(--danger)" :
-                  type === "warning" ? "var(--warning)" :
-                  "var(--primary)";
-  const icon = type === "success" ? "check_circle" :
-               type === "error" ? "error" :
-               type === "warning" ? "warning" :
-               "info";
-
-  toast.style.cssText = `
-    background: ${bgColor};
-    color: white;
-    padding: 0.875rem 1.25rem;
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-lg);
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.9rem;
-    font-weight: 500;
-    animation: slideInRight 0.3s ease-out;
-    pointer-events: auto;
-  `;
-
-  toast.innerHTML = `
-    <span class="material-symbols-rounded" style="font-size: 1.25rem; flex-shrink: 0;">${icon}</span>
-    <span style="flex: 1; line-height: 1.4;">${escapeHtml(message)}</span>
-    <button style="
-      background: rgba(255,255,255,0.2);
-      border: none;
-      color: white;
-      cursor: pointer;
-      padding: 0.25rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 4px;
-      transition: background 0.2s;
-      flex-shrink: 0;
-    " onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">
-      <span class="material-symbols-rounded" style="font-size: 1rem;">close</span>
-    </button>
-  `;
-
-  const closeBtn = toast.querySelector("button");
-  closeBtn.addEventListener("click", () => {
-    toast.style.animation = "slideOutRight 0.3s ease-out forwards";
-    setTimeout(() => toast.remove(), 300);
-  });
-
-  existingContainer.appendChild(toast);
-
-  if (duration > 0) {
-    setTimeout(() => {
-      if (toast.parentElement) {
-        toast.style.animation = "slideOutRight 0.3s ease-out forwards";
-        setTimeout(() => toast.remove(), 300);
-      }
-    }, duration);
-  }
-}
-
-// ===========================
-// CONFIRMATION MODAL
-// ===========================
-function showConfirmModal(title, message, onConfirm, onCancel) {
-  const existingModal = document.getElementById("confirmModal");
-  if (existingModal) {
-    existingModal.remove();
-  }
-
-  const modal = document.createElement("div");
-  modal.id = "confirmModal";
-  modal.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 3000;
-    animation: fadeIn 0.2s ease-out;
-  `;
-
-  const backdrop = document.createElement("div");
-  backdrop.style.cssText = `
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-  `;
-  backdrop.addEventListener("click", () => {
-    modal.style.animation = "fadeOut 0.2s ease-out forwards";
-    setTimeout(() => modal.remove(), 200);
-    if (onCancel) onCancel();
-  });
-  modal.appendChild(backdrop);
-
-  const content = document.createElement("div");
-  content.style.cssText = `
-    position: relative;
-    background: var(--bg-primary);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-xl);
-    max-width: 500px;
-    width: 90%;
-    padding: 2rem;
-    z-index: 1;
-  `;
-
-  const titleEl = document.createElement("h2");
-  titleEl.style.cssText = `
-    margin: 0 0 0.75rem 0;
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  `;
-  titleEl.textContent = title;
-
-  const messageEl = document.createElement("p");
-  messageEl.style.cssText = `
-    margin: 0 0 1.5rem 0;
-    color: var(--text-secondary);
-    line-height: 1.5;
-  `;
-  messageEl.textContent = message;
-
-  const buttonsDiv = document.createElement("div");
-  buttonsDiv.style.cssText = `
-    display: flex;
-    gap: 0.75rem;
-    justify-content: flex-end;
-  `;
-
-  const cancelBtn = document.createElement("button");
-  cancelBtn.textContent = "Cancel";
-  cancelBtn.style.cssText = `
-    padding: 0.625rem 1.25rem;
-    border: 1px solid var(--border);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-weight: 500;
-    transition: all 0.2s;
-  `;
-  cancelBtn.addEventListener("mouseover", () => {
-    cancelBtn.style.background = "var(--bg-tertiary)";
-  });
-  cancelBtn.addEventListener("mouseout", () => {
-    cancelBtn.style.background = "var(--bg-secondary)";
-  });
-  cancelBtn.addEventListener("click", () => {
-    modal.style.animation = "fadeOut 0.2s ease-out forwards";
-    setTimeout(() => modal.remove(), 200);
-    if (onCancel) onCancel();
-  });
-
-  const confirmBtn = document.createElement("button");
-  confirmBtn.textContent = "Confirm";
-  confirmBtn.style.cssText = `
-    padding: 0.625rem 1.25rem;
-    border: none;
-    background: var(--primary);
-    color: white;
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-weight: 500;
-    transition: all 0.2s;
-  `;
-  confirmBtn.addEventListener("mouseover", () => {
-    confirmBtn.style.opacity = "0.9";
-  });
-  confirmBtn.addEventListener("mouseout", () => {
-    confirmBtn.style.opacity = "1";
-  });
-  confirmBtn.addEventListener("click", () => {
-    modal.style.animation = "fadeOut 0.2s ease-out forwards";
-    setTimeout(() => modal.remove(), 200);
-    if (onConfirm) onConfirm();
-  });
-
-  buttonsDiv.appendChild(cancelBtn);
-  buttonsDiv.appendChild(confirmBtn);
-
-  content.appendChild(titleEl);
-  content.appendChild(messageEl);
-  content.appendChild(buttonsDiv);
-  modal.appendChild(content);
-
-  document.body.appendChild(modal);
-
-  // Add fadeIn/fadeOut animations if not already in CSS
-  if (!document.getElementById("confirmModalStyles")) {
-    const style = document.createElement("style");
-    style.id = "confirmModalStyles";
-    style.textContent = `
-      @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-      }
-      @keyframes fadeOut {
-        from { opacity: 1; }
-        to { opacity: 0; }
-      }
-    `;
-    document.head.appendChild(style);
-  }
-}
-
-// ===========================
-// INITIALIZE APP
-// ===========================
-
+// Initialize app
 async function initializeApp() {
   const isGuest = getCurrentUser()?.isGuest;
 
@@ -871,13 +607,15 @@ async function initializeApp() {
       },
     });
 
-    // Initialize Library (silent background loading)
-    setLoadingProgress(80, "Loading cached data...");
-    initializeLibrary({
-      onProgress: (p, msg) => {
-        // Silent background sync - no UI updates
-      },
-    });
+    // Initialize Library (silent background loading, skip for guest)
+    if (!isGuest) {
+      setLoadingProgress(80, "Loading cached data...");
+      initializeLibrary({
+        onProgress: (p, msg) => {
+          // Silent background sync - no UI updates
+        },
+      });
+    }
 
     // Setup event listeners
     setupEventListeners();
@@ -887,6 +625,9 @@ async function initializeApp() {
     // Hide sync button for guests
     const syncBtn = document.getElementById("syncStatusBtn");
     if (syncBtn) syncBtn.classList.toggle("hidden", !!isGuest);
+    
+    const syncDownBtn = document.getElementById("syncDownBtn");
+    if (syncDownBtn) syncDownBtn.classList.toggle("hidden", !!isGuest);
 
     setLoadingProgress(100, "Ready");
     showView("app");
@@ -895,19 +636,12 @@ async function initializeApp() {
   } catch (error) {
     console.error("Error initializing app:", error);
     showLoading(false);
-    showToast("Error initializing app: " + error.message, "error");
+    alert("Error initializing app: " + error.message);
   }
 }
 
 // Setup event listeners
 function setupEventListeners() {
-  // Guard against duplicate setup
-  if (setupEventListeners.initialized) {
-    console.log("Event listeners already initialized");
-    return;
-  }
-  setupEventListeners.initialized = true;
-
   // Mobile menu toggle
   const menuToggle = document.getElementById("menuToggle");
   const sidebar = document.querySelector(".sidebar");
@@ -957,9 +691,9 @@ function setupEventListeners() {
   const userLogoutBtn = document.getElementById("userLogoutBtn");
   if (userLogoutBtn) {
     userLogoutBtn.addEventListener("click", () => {
-      showConfirmModal("Logout", "Are you sure you want to logout?", () => {
+      if (confirm("Are you sure you want to logout?")) {
         logout();
-      });
+      }
     });
   }
 
@@ -1127,6 +861,51 @@ function setupEventListeners() {
       switchCategory(categories[index]);
     });
   });
+
+  // Sync down button
+  const syncDownBtn = document.getElementById("syncDownBtn");
+  if (syncDownBtn) {
+    syncDownBtn.addEventListener("click", () => {
+      syncDownFromDrive();
+    });
+  }
+
+  // Reminder tab switching
+  document.querySelectorAll(".submenu-item[data-reminder-tab]").forEach((item) => {
+    item.addEventListener("click", () => {
+      const tab = item.dataset.reminderTab;
+      
+      // Update active states
+      document.querySelectorAll(".submenu-item[data-reminder-tab]").forEach((btn) => {
+        btn.classList.remove("active");
+      });
+      item.classList.add("active");
+
+      // Show corresponding content
+      document.querySelectorAll(".reminder-tab-content").forEach((content) => {
+        content.classList.remove("active");
+      });
+      
+      const contentId = tab === "observation" ? "reminderObservationContent" : "reminderAgronomyContent";
+      const content = document.getElementById(contentId);
+      if (content) content.classList.add("active");
+    });
+  });
+
+  // Add reminder buttons (placeholder for coming soon functionality)
+  const addObservationBtn = document.getElementById("addObservationBtn");
+  if (addObservationBtn) {
+    addObservationBtn.addEventListener("click", () => {
+      showAlert("Observation reminders are coming soon!", "info", "Coming Soon");
+    });
+  }
+
+  const addAgronomyBtn = document.getElementById("addAgronomyBtn");
+  if (addAgronomyBtn) {
+    addAgronomyBtn.addEventListener("click", () => {
+      showAlert("Agronomy reminders are coming soon!", "info", "Coming Soon");
+    });
+  }
 }
 
 // Handle keyboard shortcuts
@@ -1142,6 +921,28 @@ document.addEventListener("keydown", (e) => {
     }
   }
 });
+
+// Switch reminder tab
+function switchReminderTab(tabName) {
+  // Update submenu buttons
+  document.querySelectorAll(".submenu-item[data-reminder-tab]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.reminderTab === tabName);
+  });
+
+  // Update content visibility
+  document.querySelectorAll(".reminder-tab-content").forEach((content) => {
+    content.classList.remove("active");
+  });
+
+  const contentId = tabName === "observation" ? "reminderObservationContent" : "reminderAgronomyContent";
+  const content = document.getElementById(contentId);
+  if (content) content.classList.add("active");
+
+  // Update sidebar subnav
+  document.querySelectorAll('.nav-subitem[data-parent="reminder"]').forEach((item) => {
+    item.classList.toggle("active", item.dataset.reminderTab === tabName);
+  });
+}
 
 // Show sync error alert with retry/login options
 function showSyncErrorAlert(errorMessage, error) {
@@ -1614,4 +1415,262 @@ function setupDataTransferEvents() {
       if (file) handleImportFile(file);
     });
   }
+}
+// ===========================
+// SYNC DOWN FROM DRIVE
+// ===========================
+let currentConflict = null;
+
+async function syncDownFromDrive() {
+  const user = getCurrentUser();
+  if (!user || user.isGuest) {
+    showAlert("Sync from Drive is only available for logged-in users.", "warning", "Not Available");
+    return;
+  }
+
+  if (!getAccessToken || !getAccessToken()) {
+    showAlert("Not authenticated with Google Drive.", "error", "Auth Error");
+    return;
+  }
+
+  showDataTransfer("Loading from Drive", "Fetching remote data...");
+  updateDataTransfer(null, 10);
+
+  try {
+    await new Promise(r => setTimeout(r, 200));
+
+    // Get folder structure
+    const inventoryFolder = await getOrCreateFolder("Advanta_Inventory");
+    const trialFolder = await getOrCreateFolder("Advanta_Trials");
+
+    updateDataTransfer("Checking for new data...", 30);
+    await new Promise(r => setTimeout(r, 150));
+
+    const categories = ["crops", "lines", "locations", "parameters"];
+    const newItems = { crops: [], lines: [], locations: [], parameters: [] };
+    const conflicts = [];
+
+    // Check each inventory category
+    for (const cat of categories) {
+      const catFolder = await getOrCreateFolder(cat, inventoryFolder);
+      
+      // List files in category folder
+      const response = await gapi.client.drive.files.list({
+        q: `'${catFolder}' in parents and mimeType='application/json' and trashed=false`,
+        spaces: "drive",
+        fields: "files(id, name, modifiedTime)",
+        pageSize: 1000,
+      });
+      
+      const files = response.result.files || [];
+
+      for (const file of files) {
+        const remoteItem = await getFileContent(file.id);
+        if (!remoteItem || !remoteItem.id) continue;
+
+        const localItems = inventoryState.items[cat] || [];
+        const localItem = localItems.find(item => item.id === remoteItem.id);
+
+        if (!localItem) {
+          // New item - add it
+          newItems[cat].push(remoteItem);
+        } else {
+          // Check for conflict (local modified but not synced yet)
+          const localModified = localItem.modifiedAt || localItem.createdAt;
+          const remoteModified = file.modifiedTime;
+
+          if (localModified && remoteModified) {
+            const localDate = new Date(localModified);
+            const remoteDate = new Date(remoteModified);
+
+            // Check if local has pending changes
+            const hasPendingChanges = syncQueue.some(task => 
+              task.label && task.label.includes(remoteItem.id)
+            );
+
+            if (remoteDate > localDate && hasPendingChanges) {
+              // Conflict detected
+              conflicts.push({
+                category: cat,
+                localItem,
+                remoteItem,
+                fileId: file.id,
+                localModified: localDate.toLocaleString(),
+                remoteModified: remoteDate.toLocaleString(),
+              });
+            } else if (remoteDate > localDate) {
+              // Remote is newer and no pending changes - update local
+              const idx = localItems.findIndex(item => item.id === remoteItem.id);
+              if (idx >= 0) localItems[idx] = remoteItem;
+            }
+          }
+        }
+      }
+    }
+
+    updateDataTransfer("Checking trials...", 60);
+    await new Promise(r => setTimeout(r, 150));
+
+    // Check trials
+    const trialFilesResponse = await gapi.client.drive.files.list({
+      q: `'${trialFolder}' in parents and mimeType='application/json' and trashed=false`,
+      spaces: "drive",
+      fields: "files(id, name, modifiedTime)",
+      pageSize: 1000,
+    });
+    
+    const trialFiles = trialFilesResponse.result.files || [];
+    const newTrials = [];
+
+    for (const file of trialFiles) {
+      const remoteTrial = await getFileContent(file.id);
+      if (!remoteTrial || !remoteTrial.id) continue;
+
+      const localTrial = trialState.trials.find(t => t.id === remoteTrial.id);
+
+      if (!localTrial) {
+        newTrials.push(remoteTrial);
+      } else {
+        const localModified = localTrial.modifiedAt || localTrial.createdAt;
+        const remoteModified = file.modifiedTime;
+
+        if (localModified && remoteModified) {
+          const localDate = new Date(localModified);
+          const remoteDate = new Date(remoteModified);
+
+          const hasPendingChanges = syncQueue.some(task => 
+            task.label && task.label.includes(remoteTrial.id)
+          );
+
+          if (remoteDate > localDate && hasPendingChanges) {
+            conflicts.push({
+              category: "trials",
+              localItem: localTrial,
+              remoteItem: remoteTrial,
+              fileId: file.id,
+              localModified: localDate.toLocaleString(),
+              remoteModified: remoteDate.toLocaleString(),
+            });
+          } else if (remoteDate > localDate) {
+            const idx = trialState.trials.findIndex(t => t.id === remoteTrial.id);
+            if (idx >= 0) trialState.trials[idx] = remoteTrial;
+          }
+        }
+      }
+    }
+
+    hideDataTransfer();
+
+    // Handle conflicts one by one
+    if (conflicts.length > 0) {
+      for (const conflict of conflicts) {
+        const resolved = await showConflictModal(conflict);
+        if (!resolved) break; // User cancelled
+      }
+    }
+
+    // Apply new items
+    let hasNewData = false;
+    for (const cat of categories) {
+      if (newItems[cat].length > 0) {
+        inventoryState.items[cat].push(...newItems[cat]);
+        hasNewData = true;
+      }
+    }
+    if (newTrials.length > 0) {
+      trialState.trials.push(...newTrials);
+      hasNewData = true;
+    }
+
+    if (hasNewData || conflicts.length > 0) {
+      // Save to local cache
+      saveLocalCache("inventory", { items: inventoryState.items });
+      saveLocalCache("trials", { trials: trialState.trials });
+
+      // Refresh UI
+      updateDashboardCounts();
+      switchCategory(inventoryState.currentCategory || "crops");
+      renderTrials();
+      renderDashboardTrialProgress();
+
+      const totalNew = categories.reduce((sum, cat) => sum + newItems[cat].length, 0) + newTrials.length;
+      showAlert(`Loaded ${totalNew} new item(s) and resolved ${conflicts.length} conflict(s).`, "success", "Sync Complete");
+    } else {
+      showAlert("No new data found on Drive.", "info", "Already Up to Date");
+    }
+
+  } catch (error) {
+    hideDataTransfer();
+    console.error("Sync down error:", error);
+    showAlert("Error loading data from Drive: " + error.message, "error", "Sync Failed");
+  }
+}
+
+function showConflictModal(conflict) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("syncConflictModal");
+    const details = document.getElementById("conflictDetails");
+    const keepLocalBtn = document.getElementById("conflictKeepLocalBtn");
+    const keepRemoteBtn = document.getElementById("conflictKeepRemoteBtn");
+
+    const catLabel = conflict.category.charAt(0).toUpperCase() + conflict.category.slice(1);
+    const itemName = conflict.localItem.name || conflict.localItem.id;
+
+    details.innerHTML = `
+      <div class="conflict-item-name">${escapeHtml(itemName)} (${catLabel})</div>
+      <div class="conflict-versions">
+        <div class="conflict-version">
+          <div class="conflict-version-label">Local Version</div>
+          <div class="conflict-version-data">Modified: ${conflict.localModified}</div>
+          <div class="conflict-version-data text-muted">Has unsaved changes</div>
+        </div>
+        <div class="conflict-version">
+          <div class="conflict-version-label">Remote Version</div>
+          <div class="conflict-version-data">Modified: ${conflict.remoteModified}</div>
+          <div class="conflict-version-data text-muted">From Google Drive</div>
+        </div>
+      </div>
+    `;
+
+    modal.classList.add("active");
+
+    const handleKeepLocal = () => {
+      modal.classList.remove("active");
+      cleanup();
+      resolve(true); // Continue to next conflict
+    };
+
+    const handleKeepRemote = () => {
+      // Replace local with remote
+      if (conflict.category === "trials") {
+        const idx = trialState.trials.findIndex(t => t.id === conflict.remoteItem.id);
+        if (idx >= 0) trialState.trials[idx] = conflict.remoteItem;
+      } else {
+        const items = inventoryState.items[conflict.category];
+        const idx = items.findIndex(item => item.id === conflict.remoteItem.id);
+        if (idx >= 0) items[idx] = conflict.remoteItem;
+      }
+      
+      // Remove from sync queue
+      const queueIdx = syncQueue.findIndex(task => 
+        task.label && task.label.includes(conflict.remoteItem.id)
+      );
+      if (queueIdx >= 0) {
+        syncQueue.splice(queueIdx, 1);
+        updateSyncUI();
+      }
+
+      modal.classList.remove("active");
+      cleanup();
+      resolve(true);
+    };
+
+    function cleanup() {
+      keepLocalBtn.removeEventListener("click", handleKeepLocal);
+      keepRemoteBtn.removeEventListener("click", handleKeepRemote);
+    }
+
+    keepLocalBtn.addEventListener("click", handleKeepLocal);
+    keepRemoteBtn.addEventListener("click", handleKeepRemote);
+  });
 }

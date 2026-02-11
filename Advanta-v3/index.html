@@ -99,6 +99,23 @@
             <span class="material-symbols-rounded">folder_open</span>
             <span>Library</span>
           </a>
+          <div class="nav-group" data-view="reminder">
+            <a href="#" class="nav-item nav-parent" data-view="reminder">
+              <span class="material-symbols-rounded">notifications</span>
+              <span>Reminder</span>
+              <span class="material-symbols-rounded nav-caret">expand_more</span>
+            </a>
+            <div class="nav-submenu">
+              <a href="#" class="nav-subitem" data-parent="reminder" data-reminder-tab="observation">
+                <span class="material-symbols-rounded">visibility</span>
+                <span>Observation</span>
+              </a>
+              <a href="#" class="nav-subitem" data-parent="reminder" data-reminder-tab="agronomy">
+                <span class="material-symbols-rounded">yard</span>
+                <span>Agronomy</span>
+              </a>
+            </div>
+          </div>
         </nav>
 
       </aside>
@@ -117,6 +134,9 @@
             <h2 id="pageTitle">Dashboard</h2>
           </div>
           <div class="topbar-right">
+            <button id="syncDownBtn" class="sync-status" aria-label="Load new data from Drive" title="Load from Drive">
+              <span class="material-symbols-rounded">cloud_download</span>
+            </button>
             <button id="syncStatusBtn" class="sync-status" aria-label="Sync status" title="Synced">
               <span class="material-symbols-rounded">sync</span>
               <span id="syncQueueCount" class="sync-badge">0</span>
@@ -621,6 +641,36 @@
               </div>
             </div>
           </div>
+
+          <!-- Reminder View -->
+          <div id="reminderContent" class="page-content">
+            <div class="submenu-nav" id="reminderSubmenu">
+              <button class="submenu-item active" data-reminder-tab="observation">
+                <span class="material-symbols-rounded">visibility</span>
+                <span>Observation</span>
+              </button>
+              <button class="submenu-item" data-reminder-tab="agronomy">
+                <span class="material-symbols-rounded">yard</span>
+                <span>Agronomy</span>
+              </button>
+            </div>
+
+            <div id="reminderObservationContent" class="reminder-tab-content active">
+              <div class="empty-state">
+                <span class="material-symbols-rounded">schedule</span>
+                <h3>Coming Soon</h3>
+                <p>Observation reminders are under development</p>
+              </div>
+            </div>
+
+            <div id="reminderAgronomyContent" class="reminder-tab-content">
+              <div class="empty-state">
+                <span class="material-symbols-rounded">schedule</span>
+                <h3>Coming Soon</h3>
+                <p>Agronomy reminders are under development</p>
+              </div>
+            </div>
+          </div>
         </div>
       </main>
     </div>
@@ -838,6 +888,25 @@
 
     <!-- Hidden file input for import -->
     <input type="file" id="importFileInput" accept=".adv" class="hidden">
+
+    <!-- Sync Conflict Modal -->
+    <div id="syncConflictModal" class="modal-overlay">
+      <div class="modal-container modal-medium">
+        <div class="modal-header">
+          <span class="material-symbols-rounded modal-icon error-icon">warning</span>
+          <h3>Sync Conflict Detected</h3>
+        </div>
+        <div class="modal-body">
+          <p id="conflictMessage">The following item has been modified both locally and on Google Drive:</p>
+          <div id="conflictDetails" class="conflict-details"></div>
+          <p class="text-muted">Choose which version to keep:</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="conflictKeepLocalBtn">Keep Local (Cancel Sync)</button>
+          <button class="btn btn-primary" id="conflictKeepRemoteBtn">Use Remote (Replace Local)</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Loading Spinner -->
     <div id="loadingSpinner" class="loading-spinner">
