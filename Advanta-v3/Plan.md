@@ -6,12 +6,12 @@
 - [x] `User & Auth` Auth-aware sync with auto re-login
 - [x] `User & Auth` Granular GDrive structure for multi-save data without conflict
 - [x] `User & Auth` Almost-real-time data update and exchange (and check for quotas, too)
-- [ ] `Inventory > Crops` Lines quantity consumed via per-trial created
-- [ ] `Inventory > Parameters` Change "Quantity" to "Number of Sample"
-- [ ] `Inventory > Parameters` Range definition using 2 column (min - max)
-- [ ] `Inventory > Parameters` No unit compability
-- [ ] `Inventory > Parameters` Insert photo for question per sample/line radio
-- [ ] `Inventory > Parameters` New type: Formula, a calculate parameters with custom formula
+- [x] `Inventory > Crops` Lines quantity consumed via per-trial created
+- [x] `Inventory > Parameters` Change "Quantity" to "Number of Sample"
+- [x] `Inventory > Parameters` Range definition using 2 column (min - max)
+- [x] `Inventory > Parameters` No unit compability
+- [x] `Inventory > Parameters` Insert photo for question per sample/line radio
+- [-] `Inventory > Parameters` New type: Formula, a calculate parameters with custom formula
 - [ ] `Trial > Trial Management` General: List for selected param and line with 2 columns, draggable
 - [ ] `Trial > Trial Management` General: Add number of rows per plot (number)
 - [ ] `Trial > Trial Management` General: Add plot length (number)
@@ -36,6 +36,9 @@ Reminders Feature:
 Dashboard Updates:
 - [ ] Linked to reminder
 
-Additional/unsure/etc:
+Unsure:
 - [ ] Observation parameters (date type) linked to run trial/fieldbook and reminders
 - [ ] Export and import in Excel/CSV format (escape plan)
+
+Additional:
+- [ ] `Trial > Trial Management` Archived trials

@@ -120,6 +120,18 @@ function handleParameterTypeChange() {
   }
 }
 
+function togglePhotoModeGroup() {
+  const photoCheckbox = document.getElementById("paramPhoto");
+  const photoModeGroup = document.getElementById("paramPhotoModeGroup");
+  if (!photoCheckbox || !photoModeGroup) return;
+  
+  if (photoCheckbox.checked) {
+    photoModeGroup.classList.remove("hidden");
+  } else {
+    photoModeGroup.classList.add("hidden");
+  }
+}
+
 function updateLineCropOptions() {
   const select = document.getElementById("lineCrop");
   if (!select) return;
@@ -498,13 +510,28 @@ function openAddModal() {
   if (inventoryState.currentCategory === "parameters") {
     document.getElementById("paramInitial").value = "";
     document.getElementById("paramType").value = "";
-    document.getElementById("paramRange").value = "";
+    document.getElementById("paramRangeMin").value = "";
+    document.getElementById("paramRangeMax").value = "";
     document.getElementById("paramRadio").value = "";
     document.getElementById("paramCheckbox").value = "";
     document.getElementById("paramUnit").value = "";
-    document.getElementById("paramQuantity").value = "";
+    document.getElementById("paramQuantity").value = "1";
     document.getElementById("paramPhoto").checked = false;
-
+    
+    // Reset photo mode
+    const photoModeRadios = document.querySelectorAll('input[name="photoMode"]');
+    if (photoModeRadios.length > 0) photoModeRadios[0].checked = true;
+    
+    // Hide photo mode group initially
+    togglePhotoModeGroup();
+    
+    // Setup photo checkbox listener
+    const photoCheckbox = document.getElementById("paramPhoto");
+    if (photoCheckbox) {
+      photoCheckbox.removeEventListener("change", togglePhotoModeGroup);
+      photoCheckbox.addEventListener("change", togglePhotoModeGroup);
+    }
+    
     // Setup type change listener
     const typeSelect = document.getElementById("paramType");
     if (typeSelect) {
@@ -722,12 +749,33 @@ function openEditModal(itemId) {
   if (inventoryState.currentCategory === "parameters") {
     document.getElementById("paramInitial").value = item.initial || "";
     document.getElementById("paramType").value = item.type || "";
-    document.getElementById("paramRange").value = item.rangeDefinition || "";
+    
+    // Handle new range fields with backward compatibility
+    if (item.rangeMin !== undefined && item.rangeMax !== undefined) {
+      document.getElementById("paramRangeMin").value = item.rangeMin;
+      document.getElementById("paramRangeMax").value = item.rangeMax;
+    } else if (item.rangeDefinition) {
+      // Parse legacy format "min-max"
+      const parts = item.rangeDefinition.split("-");
+      if (parts.length === 2) {
+        document.getElementById("paramRangeMin").value = parts[0].trim();
+        document.getElementById("paramRangeMax").value = parts[1].trim();
+      }
+    }
+    
     document.getElementById("paramRadio").value = item.radioOptions || "";
     document.getElementById("paramCheckbox").value = item.checkboxOptions || "";
     document.getElementById("paramUnit").value = item.unit || "";
-    document.getElementById("paramQuantity").value = item.quantity ?? "";
+    document.getElementById("paramQuantity").value = item.numberOfSamples ?? item.quantity ?? 1;
     document.getElementById("paramPhoto").checked = item.requirePhoto || false;
+    
+    // Set photo mode radio buttons
+    const photoMode = item.photoMode || 'per-sample';
+    const photoModeRadio = document.querySelector(`input[name="photoMode"][value="${photoMode}"]`);
+    if (photoModeRadio) photoModeRadio.checked = true;
+    
+    // Show/hide photo mode based on requirePhoto
+    togglePhotoModeGroup();
 
     // Setup type change listener
     const typeSelect = document.getElementById("paramType");
@@ -735,6 +783,13 @@ function openEditModal(itemId) {
       typeSelect.removeEventListener("change", handleParameterTypeChange);
       typeSelect.addEventListener("change", handleParameterTypeChange);
       handleParameterTypeChange(); // Trigger to show correct conditional field
+    }
+    
+    // Setup photo checkbox listener
+    const photoCheckbox = document.getElementById("paramPhoto");
+    if (photoCheckbox) {
+      photoCheckbox.removeEventListener("change", togglePhotoModeGroup);
+      photoCheckbox.addEventListener("change", togglePhotoModeGroup);
     }
   }
   document.getElementById("itemModal").classList.add("active");
@@ -774,7 +829,8 @@ function closeModal() {
   const paramFields = [
     "paramInitial",
     "paramType",
-    "paramRange",
+    "paramRangeMin",
+    "paramRangeMax",
     "paramRadio",
     "paramCheckbox",
     "paramUnit",
@@ -786,6 +842,11 @@ function closeModal() {
   });
   const paramPhoto = document.getElementById("paramPhoto");
   if (paramPhoto) paramPhoto.checked = false;
+  
+  // Reset photo mode
+  const photoModeRadios = document.querySelectorAll('input[name="photoMode"]');
+  if (photoModeRadios.length > 0) photoModeRadios[0].checked = true;
+  
   destroyLocationMap();
 }
 
@@ -840,8 +901,11 @@ async function saveItem() {
   const paramType = isParameters
     ? document.getElementById("paramType")?.value.trim()
     : "";
-  const paramRange = isParameters
-    ? document.getElementById("paramRange")?.value.trim()
+  const paramRangeMin = isParameters
+    ? document.getElementById("paramRangeMin")?.value.trim()
+    : "";
+  const paramRangeMax = isParameters
+    ? document.getElementById("paramRangeMax")?.value.trim()
     : "";
   const paramRadio = isParameters
     ? document.getElementById("paramRadio")?.value.trim()
@@ -858,6 +922,9 @@ async function saveItem() {
   const paramPhoto = isParameters
     ? document.getElementById("paramPhoto")?.checked
     : false;
+  const paramPhotoMode = isParameters && paramPhoto
+    ? document.querySelector('input[name="photoMode"]:checked')?.value || 'per-sample'
+    : undefined;
 
   if (!name) {
     showToast("Please enter an item name", "error");
@@ -904,8 +971,12 @@ async function saveItem() {
       showToast("Please select a type", "error");
       return;
     }
-    if (paramType === "range" && !paramRange) {
-      showToast("Please enter range definition (e.g., 1-100)", "error");
+    if (paramType === "range" && (!paramRangeMin || !paramRangeMax)) {
+      showToast("Please enter both minimum and maximum values for range", "error");
+      return;
+    }
+    if (paramType === "range" && Number(paramRangeMin) >= Number(paramRangeMax)) {
+      showToast("Minimum value must be less than maximum value", "error");
       return;
     }
     if (paramType === "radio" && !paramRadio) {
@@ -951,13 +1022,17 @@ async function saveItem() {
         if (isParameters) {
           item.initial = paramInitial;
           item.type = paramType;
-          item.rangeDefinition = paramType === "range" ? paramRange : undefined;
+          item.rangeMin = paramType === "range" ? Number(paramRangeMin) : undefined;
+          item.rangeMax = paramType === "range" ? Number(paramRangeMax) : undefined;
+          // Keep legacy rangeDefinition for backward compatibility
+          item.rangeDefinition = paramType === "range" ? `${paramRangeMin}-${paramRangeMax}` : undefined;
           item.radioOptions = paramType === "radio" ? paramRadio : undefined;
           item.checkboxOptions =
             paramType === "checkbox" ? paramCheckbox : undefined;
           item.unit = paramUnit;
-          item.quantity = paramQuantity ? Number(paramQuantity) : undefined;
+          item.numberOfSamples = paramQuantity ? Number(paramQuantity) : 1;
           item.requirePhoto = paramPhoto;
+          item.photoMode = paramPhotoMode;
         }
         item.updatedAt = new Date().toISOString();
       }
@@ -985,14 +1060,20 @@ async function saveItem() {
         coordinates: isLocations ? locationCoord : undefined,
         initial: isParameters ? paramInitial : undefined,
         type: isParameters ? paramType : undefined,
+        rangeMin:
+          isParameters && paramType === "range" ? Number(paramRangeMin) : undefined,
+        rangeMax:
+          isParameters && paramType === "range" ? Number(paramRangeMax) : undefined,
         rangeDefinition:
-          isParameters && paramType === "range" ? paramRange : undefined,
+          isParameters && paramType === "range" ? `${paramRangeMin}-${paramRangeMax}` : undefined,
         radioOptions:
           isParameters && paramType === "radio" ? paramRadio : undefined,
         checkboxOptions:
           isParameters && paramType === "checkbox" ? paramCheckbox : undefined,
         unit: isParameters ? paramUnit : undefined,
+        numberOfSamples: isParameters && paramQuantity ? Number(paramQuantity) : 1,
         requirePhoto: isParameters ? paramPhoto : undefined,
+        photoMode: isParameters ? paramPhotoMode : undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

@@ -197,6 +197,24 @@ async function saveItemToGoogleDrive(category, item) {
   }
 }
 
+// Save multiple items to Google Drive (bulk)
+async function saveItemsToGoogleDrive(category, items) {
+  try {
+    if (!Array.isArray(items)) {
+      return saveItemToGoogleDrive(category, items);
+    }
+    
+    // Save each item sequentially
+    for (const item of items) {
+      await saveItemToGoogleDrive(category, item);
+    }
+    return true;
+  } catch (error) {
+    console.error(`Error saving items to Google Drive:`, error);
+    throw error;
+  }
+}
+
 // Find file by name in a folder
 async function findFile(fileName, parentFolderId) {
   try {

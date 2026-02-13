@@ -78,79 +78,176 @@ async function initializeTrials(options = {}) {
 
 // Render trials list
 function renderTrials() {
-  const container = document.getElementById("trialList");
+  const activeContainer = document.getElementById("trialList");
+  const archivedContainer = document.getElementById("archivedTrialList");
+  const archivedPanel = document.getElementById("archivedTrialManagementPanel");
+  
+  // Separate active and archived trials
+  const activeTrials = trialState.trials.filter(t => !t.archived);
+  const archivedTrials = trialState.trials.filter(t => t.archived);
 
-  if (trialState.trials.length === 0) {
-    container.classList.add("empty-trial")
-    container.innerHTML = `
-            <div class="empty-state">
-                <span class="material-symbols-rounded">science</span>
-                <p>No trials yet. Create your first trial to get started.</p>
-            </div>
-        `;
+  if (activeTrials.length === 0 && archivedTrials.length === 0) {
+    activeContainer.classList.add("empty-trial");
+    activeContainer.innerHTML = `
+      <div class="empty-state">
+        <span class="material-symbols-rounded">science</span>
+        <p>No trials yet. Create your first trial to get started.</p>
+      </div>
+    `;
+    if (archivedPanel) archivedPanel.style.display = "none";
     return;
   } else {
-    container.classList.remove("empty-trial");
+    activeContainer.classList.remove("empty-trial");
+  }
+  
+  const renderTrialItem = (trial) => {
+    const startDate = trial.plantingStart
+      ? formatMonthYear(trial.plantingStart)
+      : "-";
+    const endDate = trial.plantingEnd
+      ? formatMonthYear(trial.plantingEnd)
+      : "-";
+    const areaCount = trial.areas ? trial.areas.length : 0;
+    const progress = calculateTrialProgress(trial);
+    const progressColor = progress.percentage === 100 ? 'var(--success)' 
+                        : progress.percentage > 0 ? 'var(--warning)' 
+                        : 'var(--text-tertiary)';
+
+    return `
+      <div class="inventory-item trial-list-item" onclick="showTrialDetail('${trial.id}')">
+        <div class="trial-item-row">
+          <div class="trial-item-icon">
+            <span class="material-symbols-rounded">science</span>
+          </div>
+          <div class="item-meta">
+            <div class="item-name">${escapeHtml(trial.name)}</div>
+            <div class="item-subtext trial-meta-row">
+              <span class="material-symbols-rounded">eco</span>${escapeHtml(trial.cropName || trial.cropType || "-")}
+              <span class="meta-separator">·</span>
+              <span class="material-symbols-rounded">calendar_month</span>${startDate} — ${endDate}
+            </div>
+            <div class="item-subtext trial-meta-row">
+              <span class="material-symbols-rounded">map</span>${areaCount} area(s)
+              <span class="meta-separator">·</span>
+              <span class="material-symbols-rounded">assignment</span>${trial.parameters ? trial.parameters.length : 0} param(s)
+              <span class="meta-separator">·</span>
+              <span class="trial-progress-badge" style="color: ${progressColor}">${progress.percentage}%</span>
+            </div>
+          </div>
+        </div>
+        <div class="item-actions">
+          <button class="edit-btn" data-id="${trial.id}" title="Edit" onclick="event.stopPropagation();">
+            <span class="material-symbols-rounded">edit</span>
+          </button>
+          <button class="archive-btn" data-id="${trial.id}" title="Archive" onclick="event.stopPropagation();">
+            <span class="material-symbols-rounded">archive</span>
+          </button>
+          <button class="delete-btn" data-id="${trial.id}" title="Delete" onclick="event.stopPropagation();">
+            <span class="material-symbols-rounded">delete</span>
+          </button>
+        </div>
+      </div>
+    `;
+  };
+
+  const renderArchivedTrialItem = (trial) => {
+    const startDate = trial.plantingStart
+      ? formatMonthYear(trial.plantingStart)
+      : "-";
+    const endDate = trial.plantingEnd
+      ? formatMonthYear(trial.plantingEnd)
+      : "-";
+    const areaCount = trial.areas ? trial.areas.length : 0;
+    const progress = calculateTrialProgress(trial);
+    const progressColor = progress.percentage === 100 ? 'var(--success)' 
+                        : progress.percentage > 0 ? 'var(--warning)' 
+                        : 'var(--text-tertiary)';
+
+    return `
+      <div class="inventory-item trial-list-item trial-archived" onclick="showTrialDetail('${trial.id}')">
+        <div class="trial-item-row">
+          <div class="trial-item-icon">
+            <span class="material-symbols-rounded">science</span>
+          </div>
+          <div class="item-meta">
+            <div class="item-name">${escapeHtml(trial.name)}</div>
+            <div class="item-subtext trial-meta-row">
+              <span class="material-symbols-rounded">eco</span>${escapeHtml(trial.cropName || trial.cropType || "-")}
+              <span class="meta-separator">·</span>
+              <span class="material-symbols-rounded">calendar_month</span>${startDate} — ${endDate}
+            </div>
+            <div class="item-subtext trial-meta-row">
+              <span class="material-symbols-rounded">map</span>${areaCount} area(s)
+              <span class="meta-separator">·</span>
+              <span class="material-symbols-rounded">assignment</span>${trial.parameters ? trial.parameters.length : 0} param(s)
+              <span class="meta-separator">·</span>
+              <span class="trial-progress-badge" style="color: ${progressColor}">${progress.percentage}%</span>
+            </div>
+          </div>
+        </div>
+        <div class="item-actions">
+          <button class="unarchive-btn" data-id="${trial.id}" title="Unarchive" onclick="event.stopPropagation();">
+            <span class="material-symbols-rounded">unarchive</span>
+          </button>
+          <button class="delete-btn" data-id="${trial.id}" title="Delete" onclick="event.stopPropagation();">
+            <span class="material-symbols-rounded">delete</span>
+          </button>
+        </div>
+      </div>
+    `;
+  };
+  
+  // Render active trials
+  if (activeTrials.length > 0) {
+    activeContainer.innerHTML = activeTrials.map(renderTrialItem).join("");
+  } else {
+    activeContainer.innerHTML = `
+      <div class="empty-state">
+        <span class="material-symbols-rounded">science</span>
+        <p>No active trials yet. Create your first trial to get started.</p>
+      </div>
+    `;
+  }
+  
+  // Render archived trials
+  if (archivedTrials.length > 0) {
+    if (archivedPanel) archivedPanel.style.display = "block";
+    archivedContainer.innerHTML = archivedTrials.map(renderArchivedTrialItem).join("");
+  } else {
+    if (archivedPanel) archivedPanel.style.display = "none";
   }
 
-  container.innerHTML = trialState.trials
-    .map((trial) => {
-      const startDate = trial.plantingStart
-        ? formatMonthYear(trial.plantingStart)
-        : "-";
-      const endDate = trial.plantingEnd
-        ? formatMonthYear(trial.plantingEnd)
-        : "-";
-      const areaCount = trial.areas ? trial.areas.length : 0;
-      const progress = calculateTrialProgress(trial);
-      const progressColor = progress.percentage === 100 ? 'var(--success)' 
-                          : progress.percentage > 0 ? 'var(--warning)' 
-                          : 'var(--text-tertiary)';
-
-      return `
-            <div class="inventory-item trial-list-item" onclick="showTrialDetail('${trial.id}')">
-                <div class="trial-item-row">
-                  <div class="trial-item-icon">
-                    <span class="material-symbols-rounded">science</span>
-                  </div>
-                  <div class="item-meta">
-                    <div class="item-name">${escapeHtml(trial.name)}</div>
-                    <div class="item-subtext trial-meta-row">
-                      <span class="material-symbols-rounded">eco</span>${escapeHtml(trial.cropName || trial.cropType || "-")}
-                      <span class="meta-separator">·</span>
-                      <span class="material-symbols-rounded">calendar_month</span>${startDate} — ${endDate}
-                    </div>
-                    <div class="item-subtext trial-meta-row">
-                      <span class="material-symbols-rounded">map</span>${areaCount} area(s)
-                      <span class="meta-separator">·</span>
-                      <span class="material-symbols-rounded">assignment</span>${trial.parameters ? trial.parameters.length : 0} param(s)
-                      <span class="meta-separator">·</span>
-                      <span class="trial-progress-badge" style="color: ${progressColor}">${progress.percentage}%</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="item-actions">
-                    <button class="edit-btn" data-id="${trial.id}" title="Edit" onclick="event.stopPropagation();">
-                        <span class="material-symbols-rounded">edit</span>
-                    </button>
-                    <button class="delete-btn" data-id="${trial.id}" title="Delete" onclick="event.stopPropagation();">
-                        <span class="material-symbols-rounded">delete</span>
-                    </button>
-                </div>
-            </div>
-        `;
-    })
-    .join("");
-
-  // Add event listeners
-  container.querySelectorAll(".edit-btn").forEach((btn) => {
+  // Add event listeners for active trials
+  activeContainer.querySelectorAll(".edit-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       openEditTrialModal(btn.dataset.id);
     });
   });
 
-  container.querySelectorAll(".delete-btn").forEach((btn) => {
+  activeContainer.querySelectorAll(".archive-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      archiveTrial(btn.dataset.id);
+    });
+  });
+
+  activeContainer.querySelectorAll(".delete-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteTrial(btn.dataset.id);
+    });
+  });
+
+  // Add event listeners for archived trials
+  archivedContainer.querySelectorAll(".unarchive-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      unarchiveTrial(btn.dataset.id);
+    });
+  });
+  
+  archivedContainer.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       deleteTrial(btn.dataset.id);
@@ -177,6 +274,18 @@ function formatMonthYear(dateString) {
     "Dec",
   ];
   return `${months[parseInt(month) - 1]} ${year}`;
+}
+
+// Toggle archived trials visibility
+function toggleArchivedTrials() {
+  const archivedPanel = document.getElementById("archivedTrialManagementPanel");
+  const archivedList = document.getElementById("archivedTrialList");
+  const toggle = document.querySelector(".archived-header-toggle");
+  
+  if (!archivedPanel) return;
+  
+  archivedList.classList.toggle("collapsed");
+  toggle.classList.toggle("collapsed");
 }
 
 // Open add trial modal
@@ -1426,6 +1535,49 @@ async function saveTrial() {
   }
 
   try {
+    // Calculate line usage across all areas
+    const lineUsage = {}; // {lineId: count}
+    trialState.currentAreas.forEach(area => {
+      if (area.layout && area.layout.lines) {
+        area.layout.lines.forEach(line => {
+          // Count how many times this line appears (lines × replications)
+          const numReps = area.layout.numReps || 1;
+          lineUsage[line.id] = (lineUsage[line.id] || 0) + numReps;
+        });
+      }
+    });
+
+    // Validate line availability (only for new trials, not edits)
+    if (!trialState.editingTrialId) {
+      const insufficientLines = [];
+      for (const [lineId, neededQty] of Object.entries(lineUsage)) {
+        const lineItem = inventoryState.items.lines.find(l => l.id === lineId);
+        if (lineItem) {
+          const availableQty = lineItem.quantity || 0;
+          if (availableQty < neededQty) {
+            insufficientLines.push({
+              name: lineItem.name,
+              available: availableQty,
+              needed: neededQty
+            });
+          }
+        }
+      }
+
+      if (insufficientLines.length > 0) {
+        const errorMsg = insufficientLines.map(l => 
+          `• ${l.name}: Available ${l.available}, Needed ${l.needed}`
+        ).join('\n');
+        
+        showAlert(
+          `Insufficient line quantity:\n\n${errorMsg}\n\nPlease adjust line quantities or remove lines from trial layout.`,
+          "error",
+          "Insufficient Lines"
+        );
+        return;
+      }
+    }
+
     // Get location coordinates
     let locationCoords = "";
     if (locationEl) {
@@ -1437,11 +1589,15 @@ async function saveTrial() {
     }
 
     let trial;
+    let oldLineUsage = {}; // Track old usage for edits
 
     if (trialState.editingTrialId) {
       // Update existing trial
       trial = trialState.trials.find((t) => t.id === trialState.editingTrialId);
       if (trial) {
+        // Store old line usage to restore quantities
+        oldLineUsage = trial.consumedLines || {};
+        
         trial.name = name;
         trial.description = description;
         trial.plantingStart = plantingStart;
@@ -1453,7 +1609,12 @@ async function saveTrial() {
         trial.locationCoordinates = locationCoords;
         trial.parameters = selectedParams;
         trial.areas = trialState.currentAreas;
+        trial.consumedLines = lineUsage;
         trial.updatedAt = new Date().toISOString();
+        
+        // Restore old quantities then consume new
+        restoreLineQuantities(oldLineUsage);
+        consumeLineQuantities(lineUsage);
       }
     } else {
       // Create new trial
@@ -1470,11 +1631,27 @@ async function saveTrial() {
         locationCoordinates: locationCoords,
         parameters: selectedParams,
         areas: trialState.currentAreas,
+        consumedLines: lineUsage,
+        archived: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       trialState.trials.push(trial);
+      
+      // Consume line quantities
+      consumeLineQuantities(lineUsage);
     }
+
+    // Save inventory state (lines quantities changed)
+    if (typeof saveLocalCache === "function") {
+      saveLocalCache("inventory", { items: inventoryState.items });
+    }
+    
+    // Sync inventory to Drive
+    enqueueSync({
+      label: "Save Lines",
+      run: () => saveItemsToGoogleDrive("Lines", inventoryState.items.lines)
+    });
 
     // Save to Google Drive
     enqueueSync({
@@ -1499,40 +1676,250 @@ async function saveTrial() {
   }
 }
 
+// Consume line quantities
+function consumeLineQuantities(lineUsage) {
+  for (const [lineId, qty] of Object.entries(lineUsage)) {
+    const lineItem = inventoryState.items.lines.find(l => l.id === lineId);
+    if (lineItem) {
+      lineItem.quantity = Math.max(0, (lineItem.quantity || 0) - qty);
+    }
+  }
+}
+
+// Restore line quantities
+function restoreLineQuantities(lineUsage) {
+  for (const [lineId, qty] of Object.entries(lineUsage)) {
+    const lineItem = inventoryState.items.lines.find(l => l.id === lineId);
+    if (lineItem) {
+      lineItem.quantity = (lineItem.quantity || 0) + qty;
+    }
+  }
+}
+
+// Show delete trial modal with restore option
+function showDeleteTrialModal(trial, linesList, callback) {
+  const modal = document.createElement('div');
+  modal.className = 'confirm-modal active';
+  modal.id = 'deleteTrialModal';
+  
+  modal.innerHTML = `
+    <div class="confirm-modal-content">
+      <div class="confirm-modal-header">
+        <span class="material-symbols-rounded">delete</span>
+        <h3>Delete Trial</h3>
+      </div>
+      <div class="confirm-modal-body">
+        <p>Are you sure you want to delete trial "<strong>${escapeHtml(trial.name)}</strong>"?</p>
+        <p>This action cannot be undone.</p>
+        ${linesList !== 'No lines to restore' ? `
+          <div class="delete-trial-restore-section">
+            <label class="delete-trial-restore-label">
+              <input type="checkbox" id="deleteTrialRestoreCheckbox" checked>
+              <span>Restore line quantities</span>
+            </label>
+            <div class="delete-trial-lines-list">
+              ${linesList}
+            </div>
+            <small class="form-hint">If unchecked, line quantities will remain consumed.</small>
+          </div>
+        ` : ''}
+      </div>
+      <div class="confirm-modal-footer">
+        <button class="btn btn-secondary" id="deleteTrialCancelBtn">Cancel</button>
+        <button class="btn btn-primary btn-danger" id="deleteTrialConfirmBtn">Delete Trial</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  const cancelBtn = modal.querySelector('#deleteTrialCancelBtn');
+  const confirmBtn = modal.querySelector('#deleteTrialConfirmBtn');
+  const restoreCheckbox = modal.querySelector('#deleteTrialRestoreCheckbox');
+  
+  const cleanup = () => {
+    modal.remove();
+  };
+  
+  cancelBtn.addEventListener('click', cleanup);
+  
+  confirmBtn.addEventListener('click', () => {
+    const shouldRestore = restoreCheckbox ? restoreCheckbox.checked : false;
+    cleanup();
+    callback(shouldRestore);
+  });
+  
+  // Close on backdrop click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) cleanup();
+  });
+}
+
+// Generic confirm modal
+function showConfirmModal(title, message, onConfirm, confirmButtonText = "Confirm", confirmButtonClass = "btn-primary") {
+  const modal = document.createElement('div');
+  modal.className = 'confirm-modal active';
+  modal.id = 'genericConfirmModal';
+  
+  modal.innerHTML = `
+    <div class="confirm-modal-content">
+      <div class="confirm-modal-header">
+        <h3>${escapeHtml(title)}</h3>
+      </div>
+      <div class="confirm-modal-body">
+        <p>${escapeHtml(message)}</p>
+      </div>
+      <div class="confirm-modal-footer">
+        <button class="btn btn-secondary" id="confirmModalCancelBtn">Cancel</button>
+        <button class="btn ${confirmButtonClass}" id="confirmModalConfirmBtn">${escapeHtml(confirmButtonText)}</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  const cancelBtn = modal.querySelector('#confirmModalCancelBtn');
+  const confirmBtn = modal.querySelector('#confirmModalConfirmBtn');
+  
+  const cleanup = () => {
+    modal.remove();
+  };
+  
+  cancelBtn.addEventListener('click', cleanup);
+  
+  confirmBtn.addEventListener('click', () => {
+    cleanup();
+    onConfirm();
+  });
+  
+  // Close on backdrop click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) cleanup();
+  });
+}
+
 // Delete trial
 function deleteTrial(trialId) {
-  showConfirmModal(
-    "Delete Trial",
-    "Are you sure you want to delete this trial? This action cannot be undone.",
-    async () => {
-      try {
-        const trialIndex = trialState.trials.findIndex((t) => t.id === trialId);
-        const removedTrial = trialState.trials[trialIndex];
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial) return;
+  
+  const consumedLines = trial.consumedLines || {};
+  const linesList = Object.keys(consumedLines).length > 0 
+    ? Object.entries(consumedLines).map(([lineId, qty]) => {
+        const lineItem = inventoryState.items.lines.find(l => l.id === lineId);
+        return lineItem ? `• ${lineItem.name}: ${qty} units` : null;
+      }).filter(Boolean).join('\n')
+    : 'No lines to restore';
+  
+  // Show custom modal with restore option
+  showDeleteTrialModal(trial, linesList, (restoreLines) => {
+    try {
+      const trialIndex = trialState.trials.findIndex((t) => t.id === trialId);
+      const removedTrial = trialState.trials[trialIndex];
 
-        if (trialIndex >= 0) {
-          trialState.trials.splice(trialIndex, 1);
-        }
-
-        // Delete from Google Drive
-        enqueueSync({
-          label: `Delete Trial: ${removedTrial?.name || trialId}`,
-          run: () => deleteTrialFromGoogleDrive(trialId),
-        });
-
-        // Render trials
-        renderTrials();
-
+      if (trialIndex >= 0) {
+        trialState.trials.splice(trialIndex, 1);
+      }
+      
+      // Restore line quantities if user chose to
+      if (restoreLines && removedTrial.consumedLines) {
+        restoreLineQuantities(removedTrial.consumedLines);
+        
+        // Save inventory state
         if (typeof saveLocalCache === "function") {
-          saveLocalCache("trials", { trials: trialState.trials });
+          saveLocalCache("inventory", { items: inventoryState.items });
         }
         
-        showToast("Trial deleted", "success");
+        // Sync inventory to Drive
+        enqueueSync({
+          label: "Save Lines",
+          run: () => saveItemsToGoogleDrive("Lines", inventoryState.items.lines)
+        });
+      }
+
+      // Delete from Google Drive
+      enqueueSync({
+        label: `Delete Trial: ${removedTrial?.name || trialId}`,
+        run: () => deleteTrialFromGoogleDrive(trialId),
+      });
+
+      // Render trials
+      renderTrials();
+
+      if (typeof saveLocalCache === "function") {
+        saveLocalCache("trials", { trials: trialState.trials });
+      }
+      
+      showAlert(restoreLines ? "Trial deleted and line quantities restored" : "Trial deleted", "success");
+    } catch (error) {
+      console.error("Error deleting trial:", error);
+      showAlert("Error deleting trial. Please try again.", "error");
+    }
+  });
+}
+
+// Archive trial
+function archiveTrial(trialId) {
+  showConfirmModal(
+    "Archive Trial",
+    "Are you sure you want to archive this trial? You can unarchive it later.",
+    () => {
+      try {
+        const trial = trialState.trials.find(t => t.id === trialId);
+        if (trial) {
+          trial.archived = true;
+          trial.archivedAt = new Date().toISOString();
+          
+          // Save to Google Drive
+          enqueueSync({
+            label: `Archive Trial: ${trial.name}`,
+            run: () => saveTrialToGoogleDrive(trial),
+          });
+
+          // Render trials
+          renderTrials();
+
+          if (typeof saveLocalCache === "function") {
+            saveLocalCache("trials", { trials: trialState.trials });
+          }
+          
+          showAlert("Trial archived", "success");
+        }
       } catch (error) {
-        console.error("Error deleting trial:", error);
-        showToast("Error deleting trial. Please try again.", "error");
+        console.error("Error archiving trial:", error);
+        showAlert("Error archiving trial. Please try again.", "error");
       }
     }
   );
+}
+
+// Unarchive trial
+function unarchiveTrial(trialId) {
+  try {
+    const trial = trialState.trials.find(t => t.id === trialId);
+    if (trial) {
+      trial.archived = false;
+      trial.archivedAt = undefined;
+      
+      // Save to Google Drive
+      enqueueSync({
+        label: `Unarchive Trial: ${trial.name}`,
+        run: () => saveTrialToGoogleDrive(trial),
+      });
+
+      // Render trials
+      renderTrials();
+
+      if (typeof saveLocalCache === "function") {
+        saveLocalCache("trials", { trials: trialState.trials });
+      }
+      
+      showAlert("Trial unarchived", "success");
+    }
+  } catch (error) {
+    console.error("Error unarchiving trial:", error);
+    showAlert("Error unarchiving trial. Please try again.", "error");
+  }
 }
 
 // Load trials from Google Drive
@@ -1747,12 +2134,17 @@ function createAreaLayoutingForm(area, areaIndex) {
 
   let linesHTML = matchingLines
     .map(
-      (line, idx) => `
-        <label class="layouting-line-item">
-            <input type="checkbox" name="area${areaIndex}_lines" value="${line.id}" data-line-name="${line.name}">
+      (line, idx) => {
+        const qty = line.quantity !== undefined ? line.quantity : '∞';
+        const qtyClass = line.quantity !== undefined && line.quantity <= 0 ? 'line-qty-empty' : '';
+        return `
+        <label class="layouting-line-item ${qtyClass}">
+            <input type="checkbox" name="area${areaIndex}_lines" value="${line.id}" data-line-name="${line.name}" ${line.quantity !== undefined && line.quantity <= 0 ? 'disabled' : ''}>
             <span>${escapeHtml(line.name)}</span>
+            <span class="line-quantity-badge ${qtyClass}">${qty}</span>
         </label>
-    `,
+    `;
+      },
     )
     .join("");
 
@@ -2323,17 +2715,21 @@ function renderRunTrialNavTree() {
         isAreaOpen && runTrialState.currentParamId === param.id;
       const paramClass = isParamOpen ? "" : "collapsed";
       
-      // Count completed lines in this param for this area
+      const numberOfSamples = param.numberOfSamples || 1;
+      
+      // Count completed samples in this param for this area
       let paramCompleted = 0;
       let paramTotal = 0;
       area.layout.result.forEach((rep, repIndex) => {
         rep.forEach((row) => {
           row.forEach((cell) => {
             if (cell) {
-              paramTotal += 1;
-              const lineKey = `${cell.id}_${repIndex}`;
-              if (hasResponse(areaIndex, param.id, lineKey)) {
-                paramCompleted += 1;
+              paramTotal += numberOfSamples;
+              for (let sampleIndex = 0; sampleIndex < numberOfSamples; sampleIndex++) {
+                const lineKey = `${cell.id}_${repIndex}_${sampleIndex}`;
+                if (hasResponse(areaIndex, param.id, lineKey)) {
+                  paramCompleted += 1;
+                }
               }
             }
           });
@@ -2365,14 +2761,24 @@ function renderRunTrialNavTree() {
           });
         });
 
-        // Check if all lines in rep are completed
+        // Check if all lines in rep are completed (all samples)
         const allCompleted = linesInRep.every((cell) => {
-          const lineKey = `${cell.id}_${repIndex}`;
-          return hasResponse(areaIndex, param.id, lineKey);
+          for (let sampleIndex = 0; sampleIndex < numberOfSamples; sampleIndex++) {
+            const lineKey = `${cell.id}_${repIndex}_${sampleIndex}`;
+            if (!hasResponse(areaIndex, param.id, lineKey)) {
+              return false;
+            }
+          }
+          return true;
         });
         const someCompleted = linesInRep.some((cell) => {
-          const lineKey = `${cell.id}_${repIndex}`;
-          return hasResponse(areaIndex, param.id, lineKey);
+          for (let sampleIndex = 0; sampleIndex < numberOfSamples; sampleIndex++) {
+            const lineKey = `${cell.id}_${repIndex}_${sampleIndex}`;
+            if (hasResponse(areaIndex, param.id, lineKey)) {
+              return true;
+            }
+          }
+          return false;
         });
 
         html += `
@@ -2388,9 +2794,20 @@ function renderRunTrialNavTree() {
         rep.forEach((row) => {
           row.forEach((cell) => {
             if (!cell) return;
-            const lineKey = `${cell.id}_${repIndex}`;
             const uniqueKey = `${areaIndex}_${param.id}_${cell.id}_${repIndex}`;
-            const isCompleted = hasResponse(areaIndex, param.id, lineKey);
+            
+            // Check if all samples are completed
+            let allSamplesCompleted = true;
+            let someSamplesCompleted = false;
+            for (let sampleIndex = 0; sampleIndex < numberOfSamples; sampleIndex++) {
+              const lineKey = `${cell.id}_${repIndex}_${sampleIndex}`;
+              if (hasResponse(areaIndex, param.id, lineKey)) {
+                someSamplesCompleted = true;
+              } else {
+                allSamplesCompleted = false;
+              }
+            }
+            
             const isActive =
               runTrialState.currentAreaIndex === areaIndex &&
               runTrialState.currentParamId === param.id &&
@@ -2398,11 +2815,12 @@ function renderRunTrialNavTree() {
               runTrialState.currentRepIndex === repIndex;
 
             html += `
-              <div class="run-nav-line ${isCompleted ? "completed" : ""} ${isActive ? "active" : ""}"
-                   onclick="selectLine(${areaIndex}, '${param.id}', '${cell.id}', ${repIndex})"
+              <div class="run-nav-line ${allSamplesCompleted ? "completed" : ""} ${isActive ? "active" : ""}"
+                   onclick="selectLine(${areaIndex}, '${param.id}', '${cell.id}', ${repIndex}, 0)"
                    data-unique-key="${uniqueKey}">
                 <span>${escapeHtml(cell.name)}</span>
-                ${isCompleted ? '<span class="material-symbols-rounded line-status line-status-icon">check_circle</span>' : ""}
+                ${numberOfSamples > 1 ? `<span class="sample-indicator">${numberOfSamples}S</span>` : ''}
+                ${allSamplesCompleted ? '<span class="material-symbols-rounded line-status line-status-icon">check_circle</span>' : someSamplesCompleted ? '<span class="material-symbols-rounded line-status line-status-icon line-status-partial">radio_button_partial</span>' : ""}
               </div>
             `;
           });
@@ -2498,7 +2916,7 @@ function hasResponse(areaIndex, paramId, lineKey) {
 }
 
 // Select a line to answer
-function selectLine(areaIndex, paramId, lineId, repIndex) {
+function selectLine(areaIndex, paramId, lineId, repIndex, sampleIndex = 0) {
   // Save current response before switching (auto-save)
   if (runTrialState.currentAreaIndex !== null && runTrialState.currentParamId && runTrialState.currentLineId) {
     saveCurrentResponseSilent();
@@ -2508,6 +2926,7 @@ function selectLine(areaIndex, paramId, lineId, repIndex) {
   runTrialState.currentParamId = paramId;
   runTrialState.currentLineId = lineId;
   runTrialState.currentRepIndex = repIndex;
+  runTrialState.currentSampleIndex = sampleIndex;
   runTrialState.photoFiles = [];
 
   // Re-render nav tree using current selection so the correct area/param/rep is expanded
@@ -2544,6 +2963,7 @@ function renderQuestionCard() {
   const paramId = runTrialState.currentParamId;
   const lineId = runTrialState.currentLineId;
   const repIndex = runTrialState.currentRepIndex;
+  const sampleIndex = runTrialState.currentSampleIndex || 0;
 
   if (areaIndex === null || !paramId || !lineId) {
     renderEmptyQuestionState();
@@ -2553,14 +2973,19 @@ function renderQuestionCard() {
   const area = trial.areas[areaIndex];
   const param = inventoryState.items.parameters.find((p) => p.id === paramId);
   const line = area.layout.lines.find((l) => l.id === lineId);
-  const lineKey = `${lineId}_${repIndex}`;
+  
+  // Get parameter numberOfSamples to display sample indicator
+  const numberOfSamples = param.numberOfSamples || 1;
+  
+  // Response key now includes sampleIndex
+  const lineKey = `${lineId}_${repIndex}_${sampleIndex}`;
 
   if (!param || !line) {
     renderEmptyQuestionState();
     return;
   }
 
-  // Get existing response
+  // Get existing response for this sample
   const existingResponse = runTrialState.responses[areaIndex]?.[paramId]?.[lineKey] || {};
   const existingValue = existingResponse.value ?? "";
   const existingPhotos = existingResponse.photos || [];
@@ -2712,6 +3137,11 @@ function renderQuestionCard() {
       </div>
       <div class="run-question-title">${escapeHtml(line.name)}</div>
       <div class="run-question-subtitle">${escapeHtml(param.name)} (${escapeHtml(param.initial || "")})</div>
+      ${numberOfSamples > 1 ? `
+        <div class="run-sample-indicator">
+          Sample ${sampleIndex + 1} of ${numberOfSamples}
+        </div>
+      ` : ''}
     </div>
     <div class="run-question-body">
       ${inputHTML}
@@ -2719,6 +3149,19 @@ function renderQuestionCard() {
     </div>
     <div class="run-question-footer">
       <div class="run-nav-buttons">
+        ${numberOfSamples > 1 ? `
+          <div class="run-sample-nav">
+            <button class="btn btn-secondary" onclick="navigatePrevSample()" ${sampleIndex === 0 ? 'disabled' : ''}>
+              <span class="material-symbols-rounded">arrow_back</span>
+              Prev Sample
+            </button>
+            <button class="btn btn-secondary" onclick="navigateNextSample()" ${sampleIndex === numberOfSamples - 1 ? 'disabled' : ''}>
+              Next Sample
+              <span class="material-symbols-rounded">arrow_forward</span>
+            </button>
+          </div>
+          <hr class="run-nav-divider">
+        ` : ''}
         <button class="btn btn-secondary" onclick="navigatePrevLine()">
           <span class="material-symbols-rounded">arrow_back</span>
           Previous
@@ -2816,10 +3259,12 @@ function saveCurrentResponseSilent() {
   const paramId = runTrialState.currentParamId;
   const lineId = runTrialState.currentLineId;
   const repIndex = runTrialState.currentRepIndex;
+  const sampleIndex = runTrialState.currentSampleIndex || 0;
   
   if (areaIndex === null || !paramId || !lineId) return true;
   
-  const lineKey = `${lineId}_${repIndex}`;
+  // Include sampleIndex in the key
+  const lineKey = `${lineId}_${repIndex}_${sampleIndex}`;
 
   const param = inventoryState.items.parameters.find((p) => p.id === paramId);
   if (!param) return true;
@@ -2863,38 +3308,73 @@ function saveCurrentResponseSilent() {
 // Navigate to previous line
 function navigatePrevLine() {
   const lines = getAllLinesList();
+  const sampleIndex = runTrialState.currentSampleIndex || 0;
   const currentIdx = lines.findIndex(
     (l) =>
       l.areaIndex === runTrialState.currentAreaIndex &&
       l.paramId === runTrialState.currentParamId &&
       l.lineId === runTrialState.currentLineId &&
-      l.repIndex === runTrialState.currentRepIndex
+      l.repIndex === runTrialState.currentRepIndex &&
+      l.sampleIndex === sampleIndex
   );
 
   if (currentIdx > 0) {
     const prev = lines[currentIdx - 1];
-    selectLine(prev.areaIndex, prev.paramId, prev.lineId, prev.repIndex);
+    selectLine(prev.areaIndex, prev.paramId, prev.lineId, prev.repIndex, prev.sampleIndex);
+  }
+}
+
+// Navigate to next sample of the same line
+function navigatePrevSample() {
+  const sampleIndex = runTrialState.currentSampleIndex || 0;
+  if (sampleIndex > 0) {
+    selectLine(
+      runTrialState.currentAreaIndex,
+      runTrialState.currentParamId,
+      runTrialState.currentLineId,
+      runTrialState.currentRepIndex,
+      sampleIndex - 1
+    );
+  }
+}
+
+// Navigate to next sample of the same line
+function navigateNextSample() {
+  const param = inventoryState.items.parameters.find((p) => p.id === runTrialState.currentParamId);
+  const numberOfSamples = param?.numberOfSamples || 1;
+  const sampleIndex = runTrialState.currentSampleIndex || 0;
+  
+  if (sampleIndex < numberOfSamples - 1) {
+    selectLine(
+      runTrialState.currentAreaIndex,
+      runTrialState.currentParamId,
+      runTrialState.currentLineId,
+      runTrialState.currentRepIndex,
+      sampleIndex + 1
+    );
   }
 }
 
 // Navigate to next line
 function navigateNextLine() {
   const lines = getAllLinesList();
+  const sampleIndex = runTrialState.currentSampleIndex || 0;
   const currentIdx = lines.findIndex(
     (l) =>
       l.areaIndex === runTrialState.currentAreaIndex &&
       l.paramId === runTrialState.currentParamId &&
       l.lineId === runTrialState.currentLineId &&
-      l.repIndex === runTrialState.currentRepIndex
+      l.repIndex === runTrialState.currentRepIndex &&
+      l.sampleIndex === sampleIndex
   );
 
   if (currentIdx < lines.length - 1) {
     const next = lines[currentIdx + 1];
-    selectLine(next.areaIndex, next.paramId, next.lineId, next.repIndex);
+    selectLine(next.areaIndex, next.paramId, next.lineId, next.repIndex, next.sampleIndex);
   } else {
     // At last question - check if 100% complete
     const completed = lines.filter((l) => {
-      const lineKey = `${l.lineId}_${l.repIndex}`;
+      const lineKey = `${l.lineId}_${l.repIndex}_${l.sampleIndex}`;
       return hasResponse(l.areaIndex, l.paramId, lineKey);
     }).length;
     
@@ -2952,11 +3432,11 @@ function navigateToFirstLine() {
   const lines = getAllLinesList();
   if (lines.length > 0) {
     const first = lines[0];
-    selectLine(first.areaIndex, first.paramId, first.lineId, first.repIndex);
+    selectLine(first.areaIndex, first.paramId, first.lineId, first.repIndex, first.sampleIndex);
   }
 }
 
-// Get all lines as flat list
+// Get all lines as flat list (including samples for each line)
 function getAllLinesList() {
   const trial = runTrialState.currentTrial;
   const lines = [];
@@ -2969,17 +3449,25 @@ function getAllLinesList() {
     if (!area.layout?.result) return;
 
     parameters.forEach((param) => {
+      const numberOfSamples = param.numberOfSamples || 1;
+      
       area.layout.result.forEach((rep, repIndex) => {
         rep.forEach((row) => {
           row.forEach((cell) => {
             if (!cell) return;
-            lines.push({
-              areaIndex,
-              paramId: param.id,
-              lineId: cell.id,
-              lineName: cell.name,
-              repIndex,
-            });
+            
+            // Add entry for each sample
+            for (let sampleIndex = 0; sampleIndex < numberOfSamples; sampleIndex++) {
+              lines.push({
+                areaIndex,
+                paramId: param.id,
+                lineId: cell.id,
+                lineName: cell.name,
+                repIndex,
+                sampleIndex,
+                numberOfSamples,
+              });
+            }
           });
         });
       });

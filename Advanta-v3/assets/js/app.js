@@ -398,7 +398,10 @@ function navigateToView(item) {
       '.nav-subitem[data-parent="inventory"]',
     );
     if (firstSub) {
+      // clear subitem active across all parents then activate first
+      document.querySelectorAll('.nav-subitem').forEach((s) => s.classList.remove('active'));
       const category = firstSub.dataset.category;
+      firstSub.classList.add('active');
       switchCategory(category);
       syncInventoryNavState(category);
     }
@@ -407,10 +410,9 @@ function navigateToView(item) {
       '.nav-subitem[data-parent="trial"]',
     );
     if (firstSub) {
-      document
-        .querySelectorAll('.nav-subitem[data-parent="trial"]')
-        .forEach((s) => s.classList.remove("active"));
-      firstSub.classList.add("active");
+      // clear subitem active across all parents then activate first
+      document.querySelectorAll('.nav-subitem').forEach((s) => s.classList.remove('active'));
+      firstSub.classList.add('active');
       const tab = firstSub.dataset.trialTab;
       switchTrialTab(tab);
     }
@@ -419,10 +421,9 @@ function navigateToView(item) {
       '.nav-subitem[data-parent="reminder"]',
     );
     if (firstSub) {
-      document
-        .querySelectorAll('.nav-subitem[data-parent="reminder"]')
-        .forEach((s) => s.classList.remove("active"));
-      firstSub.classList.add("active");
+      // clear subitem active across all parents then activate first
+      document.querySelectorAll('.nav-subitem').forEach((s) => s.classList.remove('active'));
+      firstSub.classList.add('active');
       const tab = firstSub.dataset.reminderTab;
       switchReminderTab(tab);
     }
@@ -442,10 +443,10 @@ function navigateToSubView(item) {
   const group = item.closest(".nav-group");
   if (group) group.classList.remove("collapsed");
 
-  // Remove active from all subitems of same parent
-  document
-    .querySelectorAll(`.nav-subitem[data-parent="${parent}"]`)
-    .forEach((sub) => sub.classList.remove("active"));
+  // Remove active from all nav subitems (across parents)
+  document.querySelectorAll(`.nav-subitem`).forEach((sub) =>
+    sub.classList.remove("active"),
+  );
   item.classList.add("active");
 
   if (parent === "inventory") {
@@ -492,6 +493,8 @@ function clearNavActiveState() {
 }
 
 function syncNavActiveState(pageName) {
+  // Clear subitem active states globally first
+  document.querySelectorAll('.nav-subitem, .submenu-item, .trial-submenu-item').forEach((it) => it.classList.remove('active'));
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.classList.toggle("active", item.dataset.view === pageName);
   });
@@ -517,9 +520,17 @@ function syncNavActiveState(pageName) {
     document.querySelectorAll(".trial-submenu-item").forEach((item) => {
       item.classList.toggle("active", item.dataset.trialTab === activeTrialTab);
     });
-    document
-      .querySelectorAll('.nav-subitem[data-parent="inventory"]')
-      .forEach((item) => item.classList.remove("active"));
+    // Ensure other parents' subitems are cleared
+    document.querySelectorAll('.nav-subitem[data-parent="inventory"]').forEach((item) => item.classList.remove('active'));
+    document.querySelectorAll('.nav-subitem[data-parent="reminder"]').forEach((item) => item.classList.remove('active'));
+    return;
+  }
+
+  if (pageName === "reminder") {
+    const activeReminderTab =
+      document.querySelector('.nav-subitem[data-parent="reminder"].active')?.dataset.reminderTab ||
+      "upcoming";
+    syncReminderNavState(activeReminderTab);
     return;
   }
 
@@ -540,6 +551,27 @@ function syncInventoryNavState(category) {
   document
     .querySelectorAll('.nav-subitem[data-parent="trial"]')
     .forEach((item) => item.classList.remove("active"));
+  // also clear reminder subitems
+  document
+    .querySelectorAll('.nav-subitem[data-parent="reminder"]')
+    .forEach((item) => item.classList.remove("active"));
+}
+
+function syncReminderNavState(tabName) {
+  document
+    .querySelectorAll('.nav-subitem[data-parent="reminder"]')
+    .forEach((item) => {
+      item.classList.toggle("active", item.dataset.reminderTab === tabName);
+    });
+  // Clear other parents' subitems
+  document
+    .querySelectorAll('.nav-subitem[data-parent="inventory"]')
+    .forEach((item) => item.classList.remove("active"));
+  document
+    .querySelectorAll('.nav-subitem[data-parent="trial"]')
+    .forEach((item) => item.classList.remove("active"));
+  document.querySelectorAll(".submenu-item").forEach((item) => item.classList.remove("active"));
+  document.querySelectorAll(".trial-submenu-item").forEach((item) => item.classList.remove("active"));
 }
 
 // Initialize app
@@ -939,9 +971,7 @@ function switchReminderTab(tabName) {
   if (content) content.classList.add("active");
 
   // Update sidebar subnav
-  document.querySelectorAll('.nav-subitem[data-parent="reminder"]').forEach((item) => {
-    item.classList.toggle("active", item.dataset.reminderTab === tabName);
-  });
+  syncReminderNavState(tabName);
 }
 
 // Show sync error alert with retry/login options
@@ -1488,7 +1518,8 @@ async function syncDownFromDrive() {
               task.label && task.label.includes(remoteItem.id)
             );
 
-            if (remoteDate > localDate && hasPendingChanges) {
+            // Conflict ONLY if: we have pending local changes AND remote is newer
+            if (hasPendingChanges && remoteDate > localDate) {
               // Conflict detected
               conflicts.push({
                 category: cat,
@@ -1499,7 +1530,7 @@ async function syncDownFromDrive() {
                 remoteModified: remoteDate.toLocaleString(),
               });
             } else if (remoteDate > localDate) {
-              // Remote is newer and no pending changes - update local
+              // Remote is newer and no pending changes - safe to update local
               const idx = localItems.findIndex(item => item.id === remoteItem.id);
               if (idx >= 0) localItems[idx] = remoteItem;
             }
@@ -1542,7 +1573,8 @@ async function syncDownFromDrive() {
             task.label && task.label.includes(remoteTrial.id)
           );
 
-          if (remoteDate > localDate && hasPendingChanges) {
+          // Conflict ONLY if: remote is newer AND we have pending local changes
+          if (hasPendingChanges && remoteDate > localDate) {
             conflicts.push({
               category: "trials",
               localItem: localTrial,
@@ -1552,6 +1584,7 @@ async function syncDownFromDrive() {
               remoteModified: remoteDate.toLocaleString(),
             });
           } else if (remoteDate > localDate) {
+            // No pending changes, safe to overwrite with newer remote
             const idx = trialState.trials.findIndex(t => t.id === remoteTrial.id);
             if (idx >= 0) trialState.trials[idx] = remoteTrial;
           }
@@ -1632,10 +1665,12 @@ function showConflictModal(conflict) {
       </div>
     `;
 
+    modal.classList.remove("hidden");
     modal.classList.add("active");
 
     const handleKeepLocal = () => {
       modal.classList.remove("active");
+      modal.classList.add("hidden");
       cleanup();
       resolve(true); // Continue to next conflict
     };
@@ -1661,6 +1696,7 @@ function showConflictModal(conflict) {
       }
 
       modal.classList.remove("active");
+      modal.classList.add("hidden");
       cleanup();
       resolve(true);
     };

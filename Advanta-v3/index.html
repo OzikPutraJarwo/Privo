@@ -142,18 +142,15 @@
               <span id="syncQueueCount" class="sync-badge">0</span>
             </button>
             <div class="user-menu" id="userMenu">
-              <button class="user-menu-trigger" id="userMenuTrigger">
+              <button class="user-menu-trigger" id="userMenuTrigger" aria-haspopup="true" aria-expanded="false">
                 <div id="userAvatar" class="user-avatar"></div>
-                <div class="user-menu-text">
-                  <span id="userName" class="user-name"></span>
-                  <span id="userEmail" class="user-email"></span>
-                </div>
                 <span class="material-symbols-rounded">expand_more</span>
               </button>
               <div class="user-dropdown" id="userDropdown">
                 <div class="user-dropdown-header">
                   <div id="userDropdownName" class="user-name"></div>
                   <div id="userDropdownEmail" class="user-email"></div>
+                  <div id="tokenCountdown" class="token-countdown">--:--:--</div>
                 </div>
                 <div class="user-dropdown-menu">
                   <button class="user-dropdown-item" id="exportDataBtn">
@@ -290,8 +287,22 @@
                 </div>
 
                 <div class="inventory-list" id="trialList">
-                  <!-- Trials will be populated here -->
+                  <!-- Active trials will be populated here -->
                 </div>
+              </div>
+
+              <!-- Archived Trials Container -->
+              <div class="inventory-container" id="archivedTrialManagementPanel" style="display: none;">
+                <div class="inventory-header archived-header">
+                  <button class="archived-header-toggle" onclick="toggleArchivedTrials()" title="Toggle archived trials">
+                    <span class="material-symbols-rounded">expand_more</span>
+                    <h3>Archived Trials</h3>
+                  </button>
+                </div>
+                <div class="inventory-list" id="archivedTrialList">
+                  <!-- Archived trials will be populated here -->
+                </div>
+              </div>
 
                 <!-- Trial Detail Modal -->
                 <div id="trialDetailModal" class="library-preview-modal">
@@ -768,12 +779,17 @@
                 <option value="radio">Radio</option>
                 <option value="checkbox">Checkbox</option>
                 <option value="date">Date</option>
+                <option value="formula">Formula</option>
               </select>
             </div>
             <div class="form-group hidden" id="paramRangeGroup">
               <label for="paramRange">Range Definition</label>
-              <input type="text" id="paramRange" placeholder="e.g., 1-100 or 1-10">
-              <small class="form-hint">Format: min-max (e.g., 1-100)</small>
+              <div class="range-input-group">
+                <input type="number" id="paramRangeMin" placeholder="Min" step="any">
+                <span class="range-separator">-</span>
+                <input type="number" id="paramRangeMax" placeholder="Max" step="any">
+              </div>
+              <small class="form-hint">Enter minimum and maximum values</small>
             </div>
             <div class="form-group hidden" id="paramRadioGroup">
               <label for="paramRadio">Radio Options</label>
@@ -790,14 +806,28 @@
               <input type="text" id="paramUnit" placeholder="Enter unit (e.g., kg, cm, °C)">
             </div>
             <div class="form-group hidden" id="paramQuantityGroup">
-              <label for="paramQuantity">Quantity</label>
-              <input type="number" id="paramQuantity" placeholder="Enter quantity" min="0" step="1">
+              <label for="paramQuantity">Number of Samples</label>
+              <input type="number" id="paramQuantity" placeholder="Enter number of samples" min="1" step="1" value="1">
+              <small class="form-hint">How many samples per line during run trial</small>
             </div>
             <div class="form-group hidden" id="paramPhotoGroup">
               <label class="param-photo-label">
                 <input type="checkbox" id="paramPhoto" class="param-photo-checkbox">
                 <span>Require Photo Upload</span>
               </label>
+              <div class="form-group hidden" id="paramPhotoModeGroup" style="margin-top: 0.75rem;">
+                <label style="font-size: 0.875rem; margin-bottom: 0.5rem;">Photo Mode</label>
+                <div class="radio-group">
+                  <label class="radio-label">
+                    <input type="radio" name="photoMode" value="per-sample" checked>
+                    <span>Per Sample - Each sample requires photo(s)</span>
+                  </label>
+                  <label class="radio-label">
+                    <input type="radio" name="photoMode" value="per-line">
+                    <span>Per Line - One photo per line (all samples)</span>
+                  </label>
+                </div>
+              </div>
             </div>
           </form>
         </div>
@@ -890,7 +920,7 @@
     <input type="file" id="importFileInput" accept=".adv" class="hidden">
 
     <!-- Sync Conflict Modal -->
-    <div id="syncConflictModal" class="modal-overlay">
+    <div id="syncConflictModal" class="modal-overlay hidden">
       <div class="modal-container modal-medium">
         <div class="modal-header">
           <span class="material-symbols-rounded modal-icon error-icon">warning</span>

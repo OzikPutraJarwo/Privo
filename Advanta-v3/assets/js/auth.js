@@ -21,6 +21,7 @@ let currentUser = null;
 let accessToken = null;
 let tokenExpiresAt = null;
 let tokenRefreshTimer = null;
+let tokenCountdownTimer = null;
 
 // Token refresh interval: 50 minutes (tokens expire at ~60min)
 const TOKEN_REFRESH_INTERVAL = 50 * 60 * 1000;
@@ -75,6 +76,8 @@ function handleAuthResponse(response) {
 
     // Start auto-refresh timer
     scheduleTokenRefresh();
+    // Start countdown UI update
+    startTokenCountdown();
 
     // If this was a silent refresh, resolve promise and return
     if (_silentRefreshResolve) {
@@ -132,6 +135,48 @@ function scheduleTokenRefresh() {
   }, timeUntilRefresh);
 
   console.log("Token refresh scheduled in", Math.round(timeUntilRefresh / 60000), "min");
+  // Update the realtime countdown displayed in the user dropdown
+  startTokenCountdown();
+}
+
+// Start updating the token countdown every second
+function startTokenCountdown() {
+  stopTokenCountdown();
+  const el = document.getElementById("tokenCountdown");
+  if (!el) return;
+
+  function update() {
+    if (!tokenExpiresAt) {
+      el.textContent = "--:--:--";
+      return;
+    }
+
+    const remaining = tokenExpiresAt - Date.now();
+    if (remaining <= 0) {
+      el.textContent = "00:00:00";
+      return;
+    }
+
+    el.textContent = formatRemainingTime(remaining);
+  }
+
+  update();
+  tokenCountdownTimer = setInterval(update, 1000);
+}
+
+function stopTokenCountdown() {
+  if (tokenCountdownTimer) {
+    clearInterval(tokenCountdownTimer);
+    tokenCountdownTimer = null;
+  }
+}
+
+function formatRemainingTime(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `Auto relogin in: ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
 }
 
 // Silently refresh the token without user interaction
@@ -240,6 +285,10 @@ function logout() {
     clearTimeout(tokenRefreshTimer);
     tokenRefreshTimer = null;
   }
+  // Stop countdown updates and clear UI
+  stopTokenCountdown();
+  const countdownEl = document.getElementById("tokenCountdown");
+  if (countdownEl) countdownEl.textContent = "--:--:--";
 
   // Clear data
   gapi.client.setToken(null);
@@ -317,6 +366,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           // Token still valid, use it and schedule refresh
           showView("app");
           scheduleTokenRefresh();
+          // Start countdown UI update based on stored expiry
+          startTokenCountdown();
           initializeApp();
         } else {
           // Token expired, try silent refresh
