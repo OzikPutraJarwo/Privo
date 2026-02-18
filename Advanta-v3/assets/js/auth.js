@@ -302,14 +302,8 @@ function logout() {
     clearLocalCache();
   }
 
-  // Reset to login view
-  document.getElementById("loginView").classList.add("active");
-  document.getElementById("appView").classList.remove("active");
-
-  // Reset setupEventListeners flag so they can be re-attached on next login
-  if (typeof setupEventListeners === "function") {
-    setupEventListeners.initialized = false;
-  }
+  // Reload page to ensure clean state and remove all event listeners
+  window.location.reload();
 }
 
 function getCurrentUser() {

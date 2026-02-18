@@ -2603,14 +2603,9 @@ function setupRunTrialEventListeners() {
   if (setupRunTrialEventListeners.initialized) return;
   setupRunTrialEventListeners.initialized = true;
   const backBtn = document.getElementById("runTrialBackBtn");
-  const saveBtn = document.getElementById("runTrialSaveBtn");
 
   if (backBtn) {
     backBtn.addEventListener("click", exitRunTrial);
-  }
-
-  if (saveBtn) {
-    saveBtn.addEventListener("click", saveRunTrialProgress);
   }
   
   // Add keyboard navigation for run trial (arrow keys)
@@ -2808,21 +2803,42 @@ function renderRunTrialNavTree() {
               }
             }
             
-            const isActive =
-              runTrialState.currentAreaIndex === areaIndex &&
-              runTrialState.currentParamId === param.id &&
-              runTrialState.currentLineId === cell.id &&
-              runTrialState.currentRepIndex === repIndex;
+            const isLineOpen =
+              isRepOpen &&
+              runTrialState.currentLineId === cell.id;
+            const lineClass = isLineOpen ? "" : "collapsed";
 
             html += `
-              <div class="run-nav-line ${allSamplesCompleted ? "completed" : ""} ${isActive ? "active" : ""}"
-                   onclick="selectLine(${areaIndex}, '${param.id}', '${cell.id}', ${repIndex}, 0)"
-                   data-unique-key="${uniqueKey}">
-                <span>${escapeHtml(cell.name)}</span>
-                ${numberOfSamples > 1 ? `<span class="sample-indicator">${numberOfSamples}S</span>` : ''}
-                ${allSamplesCompleted ? '<span class="material-symbols-rounded line-status line-status-icon">check_circle</span>' : someSamplesCompleted ? '<span class="material-symbols-rounded line-status line-status-icon line-status-partial">radio_button_partial</span>' : ""}
-              </div>
+              <div class="run-nav-line ${lineClass} ${allSamplesCompleted ? "completed" : ""}" data-area-index="${areaIndex}" data-param-id="${param.id}" data-line-id="${cell.id}" data-rep-index="${repIndex}">
+                <div class="run-nav-line-header" onclick="toggleNavLine(${areaIndex}, '${param.id}', '${cell.id}', ${repIndex})">
+                  <span class="material-symbols-rounded expand-icon">expand_more</span>
+                  <span>${escapeHtml(cell.name)}</span>
+                  ${allSamplesCompleted ? '<span class="material-symbols-rounded line-status line-status-icon">check_circle</span>' : someSamplesCompleted ? '<span class="material-symbols-rounded line-status line-status-icon line-status-partial">radio_button_partial</span>' : ""}
+                </div>
             `;
+
+            // Always render samples (whether 1 or more)
+            html += '<div class="run-nav-samples">';
+            for (let sampleIndex = 0; sampleIndex < numberOfSamples; sampleIndex++) {
+              const lineKey = `${cell.id}_${repIndex}_${sampleIndex}`;
+              const isSampleCompleted = hasResponse(areaIndex, param.id, lineKey);
+              const isSampleActive =
+                runTrialState.currentAreaIndex === areaIndex &&
+                runTrialState.currentParamId === param.id &&
+                runTrialState.currentLineId === cell.id &&
+                runTrialState.currentRepIndex === repIndex &&
+                runTrialState.currentSampleIndex === sampleIndex;
+
+              html += `
+                <div class="run-nav-sample ${isSampleCompleted ? "completed" : ""} ${isSampleActive ? "active" : ""}"
+                     onclick="selectLine(${areaIndex}, '${param.id}', '${cell.id}', ${repIndex}, ${sampleIndex})">
+                  <span>${sampleIndex + 1}</span>
+                </div>
+              `;
+            }
+            html += '</div>';
+
+            html += '</div>';
           });
         });
 
@@ -2899,17 +2915,49 @@ function toggleNavRep(areaIndex, paramId, repIndex) {
   if (rep) rep.classList.toggle("collapsed");
 }
 
+// Toggle line collapse
+function toggleNavLine(areaIndex, paramId, lineId, repIndex) {
+  const line = document.querySelector(
+    `.run-nav-line[data-area-index="${areaIndex}"][data-param-id="${paramId}"][data-line-id="${lineId}"][data-rep-index="${repIndex}"]`
+  );
+  if (line) line.classList.toggle("collapsed");
+}
+
 // Check if response exists
 function hasResponse(areaIndex, paramId, lineKey) {
   const response = runTrialState.responses[areaIndex]?.[paramId]?.[lineKey];
-  if (!response) return false;
-
+  
   const param = inventoryState.items.parameters.find((p) => p.id === paramId);
-  const hasValue = response.value !== undefined && response.value !== "";
-  const hasPhotos = response.photos?.length > 0;
-
+  const hasValue = response?.value !== undefined && response?.value !== "";
+  
+  // Check photos from photoKey (not lineKey)
+  let hasPhotos = false;
   if (param?.requirePhoto) {
-    return hasPhotos;
+    const photoMode = param.photoMode || "per-sample";
+    // Extract repIndex and sampleIndex from lineKey
+    // lineKey format: lineId_repIndex_sampleIndex
+    // Split from the end to handle lineId with underscores
+    const parts = lineKey.split("_");
+    const sampleIndex = parts[parts.length - 1];
+    const repIndex = parts[parts.length - 2];
+    const lineId = parts.slice(0, parts.length - 2).join("_");
+    
+    let photoKey;
+    if (photoMode === "per-line") {
+      // Per-line: photoKey = lineId_repIndex
+      photoKey = `${lineId}_${repIndex}`;
+    } else {
+      // Per-sample: photoKey = lineId_repIndex_sampleIndex (same as lineKey)
+      photoKey = lineKey;
+    }
+    
+    const photoResponse = runTrialState.responses[areaIndex]?.[paramId]?.[photoKey];
+    hasPhotos = photoResponse?.photos?.length > 0;
+  }
+
+  // If photo is required, both value and photo must exist
+  if (param?.requirePhoto) {
+    return hasValue && hasPhotos;
   }
 
   return hasValue || hasPhotos;
@@ -2917,9 +2965,11 @@ function hasResponse(areaIndex, paramId, lineKey) {
 
 // Select a line to answer
 function selectLine(areaIndex, paramId, lineId, repIndex, sampleIndex = 0) {
-  // Save current response before switching (auto-save)
+  // Save current response before switching (auto-save) only if there are changes
   if (runTrialState.currentAreaIndex !== null && runTrialState.currentParamId && runTrialState.currentLineId) {
-    saveCurrentResponseSilent();
+    if (hasResponseChanges()) {
+      saveCurrentResponseSilent();
+    }
   }
 
   runTrialState.currentAreaIndex = areaIndex;
@@ -2927,7 +2977,6 @@ function selectLine(areaIndex, paramId, lineId, repIndex, sampleIndex = 0) {
   runTrialState.currentLineId = lineId;
   runTrialState.currentRepIndex = repIndex;
   runTrialState.currentSampleIndex = sampleIndex;
-  runTrialState.photoFiles = [];
 
   // Re-render nav tree using current selection so the correct area/param/rep is expanded
   renderRunTrialNavTree();
@@ -2988,7 +3037,17 @@ function renderQuestionCard() {
   // Get existing response for this sample
   const existingResponse = runTrialState.responses[areaIndex]?.[paramId]?.[lineKey] || {};
   const existingValue = existingResponse.value ?? "";
-  const existingPhotos = existingResponse.photos || [];
+  
+  // Get photos from photoKey (not lineKey)
+  const photoMode = param.photoMode || "per-sample";
+  const photoKey = photoMode === "per-line" 
+    ? `${lineId}_${repIndex}` 
+    : `${lineId}_${repIndex}_${sampleIndex}`;
+  const existingPhotos = runTrialState.responses[areaIndex]?.[paramId]?.[photoKey]?.photos || [];
+  
+  // Store current state for change detection
+  runTrialState.lastSavedValue = existingValue;
+  runTrialState.lastSavedPhotosCount = existingPhotos.length;
 
   let inputHTML = "";
 
@@ -3100,15 +3159,27 @@ function renderQuestionCard() {
   // Photo upload section
   let photoHTML = "";
   if (param.requirePhoto) {
+    // Determine photo key based on photoMode
+    const photoMode = param.photoMode || "per-sample";
+    const photoKey = photoMode === "per-line" 
+      ? `${lineId}_${repIndex}` // Per-line: same for all samples
+      : `${lineId}_${repIndex}_${sampleIndex}`; // Per-sample: unique per sample
+    
+    // Get photos from appropriate key
+    const photoResponse = runTrialState.responses[areaIndex]?.[paramId]?.[photoKey] || {};
+    const photoList = photoResponse.photos || [];
+    
+    const modeLabel = photoMode === "per-line" ? "(1 photo for all samples)" : "(per sample)";
+    
     photoHTML = `
       <div class="run-photo-section">
         <div class="run-photo-label">
           <span class="material-symbols-rounded">photo_camera</span>
-          Photo Upload
+          Photo Upload ${numberOfSamples > 1 ? `<span class="run-photo-mode-hint">${modeLabel}</span>` : ''}
           <span class="run-photo-required">* Required</span>
         </div>
         <div class="run-photo-upload" id="runPhotoContainer">
-          ${existingPhotos
+          ${photoList
             .map(
               (photo, idx) => `
             <div class="run-photo-preview" data-index="${idx}">
@@ -3162,14 +3233,16 @@ function renderQuestionCard() {
           </div>
           <hr class="run-nav-divider">
         ` : ''}
-        <button class="btn btn-secondary" onclick="navigatePrevLine()">
-          <span class="material-symbols-rounded">arrow_back</span>
-          Previous
-        </button>
-        <button class="btn btn-secondary" onclick="navigateNextLine()">
-          Next
-          <span class="material-symbols-rounded">arrow_forward</span>
-        </button>
+        <div class="run-line-nav">
+          <button class="btn btn-secondary" onclick="navigatePrevLine()">
+            <span class="material-symbols-rounded">arrow_back</span>
+            Previous Line
+          </button>
+          <button class="btn btn-secondary" onclick="navigateNextLine()">
+            Next Line
+            <span class="material-symbols-rounded">arrow_forward</span>
+          </button>
+        </div>
       </div>
     </div>
   `;
@@ -3225,23 +3298,46 @@ function handlePhotoUpload(event) {
   const reader = new FileReader();
   reader.onload = (e) => {
     const photoData = e.target.result;
-    runTrialState.photoFiles.push(photoData);
-
-    // Add preview
-    const container = document.getElementById("runPhotoContainer");
-    const addBtn = container.querySelector(".run-photo-add");
-    const idx = runTrialState.photoFiles.length - 1;
-
-    const preview = document.createElement("div");
-    preview.className = "run-photo-preview";
-    preview.dataset.index = idx;
-    preview.innerHTML = `
-      <img src="${photoData}" alt="Photo ${idx + 1}">
-      <button class="run-photo-remove" onclick="removePhoto(${idx})">
-        <span class="material-symbols-rounded">close</span>
-      </button>
-    `;
-    container.insertBefore(preview, addBtn);
+    
+    // Get current context
+    const areaIndex = runTrialState.currentAreaIndex;
+    const paramId = runTrialState.currentParamId;
+    const lineId = runTrialState.currentLineId;
+    const repIndex = runTrialState.currentRepIndex;
+    const sampleIndex = runTrialState.currentSampleIndex || 0;
+    
+    if (areaIndex === null || !paramId || !lineId) return;
+    
+    const param = inventoryState.items.parameters.find((p) => p.id === paramId);
+    if (!param) return;
+    
+    // Determine photo key based on photoMode
+    const photoMode = param.photoMode || "per-sample";
+    const photoKey = photoMode === "per-line" 
+      ? `${lineId}_${repIndex}` 
+      : `${lineId}_${repIndex}_${sampleIndex}`;
+    
+    // Initialize response structure
+    if (!runTrialState.responses[areaIndex]) {
+      runTrialState.responses[areaIndex] = {};
+    }
+    if (!runTrialState.responses[areaIndex][paramId]) {
+      runTrialState.responses[areaIndex][paramId] = {};
+    }
+    if (!runTrialState.responses[areaIndex][paramId][photoKey]) {
+      runTrialState.responses[areaIndex][paramId][photoKey] = {
+        value: "",
+        photos: [],
+        timestamp: new Date().toISOString(),
+      };
+    }
+    
+    // Add photo to response
+    runTrialState.responses[areaIndex][paramId][photoKey].photos.push(photoData);
+    runTrialState.responses[areaIndex][paramId][photoKey].timestamp = new Date().toISOString();
+    
+    // Re-render to show the new photo
+    renderQuestionCard();
   };
   reader.readAsDataURL(file);
   event.target.value = "";
@@ -3249,8 +3345,77 @@ function handlePhotoUpload(event) {
 
 // Remove photo
 function removePhoto(idx) {
-  runTrialState.photoFiles.splice(idx, 1);
+  const areaIndex = runTrialState.currentAreaIndex;
+  const paramId = runTrialState.currentParamId;
+  const lineId = runTrialState.currentLineId;
+  const repIndex = runTrialState.currentRepIndex;
+  const sampleIndex = runTrialState.currentSampleIndex || 0;
+  
+  if (areaIndex === null || !paramId || !lineId) return;
+  
+  const param = inventoryState.items.parameters.find((p) => p.id === paramId);
+  if (!param) return;
+  
+  // Determine photo key based on photoMode
+  const photoMode = param.photoMode || "per-sample";
+  const photoKey = photoMode === "per-line" 
+    ? `${lineId}_${repIndex}` 
+    : `${lineId}_${repIndex}_${sampleIndex}`;
+  
+  // Get current photos from response
+  const response = runTrialState.responses[areaIndex]?.[paramId]?.[photoKey];
+  if (response && response.photos) {
+    // Remove photo at index
+    response.photos.splice(idx, 1);
+    
+    // Update timestamp
+    response.timestamp = new Date().toISOString();
+    
+    // If no photos left, we can keep the empty array or remove the response
+    // Let's keep it to maintain the structure
+  }
+  
   renderQuestionCard();
+}
+
+// Check if current response has changes from last saved state
+function hasResponseChanges() {
+  const areaIndex = runTrialState.currentAreaIndex;
+  const paramId = runTrialState.currentParamId;
+  const lineId = runTrialState.currentLineId;
+  const repIndex = runTrialState.currentRepIndex;
+  const sampleIndex = runTrialState.currentSampleIndex || 0;
+  
+  if (areaIndex === null || !paramId || !lineId) return false;
+  
+  const param = inventoryState.items.parameters.find((p) => p.id === paramId);
+  if (!param) return false;
+
+  // Get current value
+  let currentValue = "";
+  if (param.type === "radio") {
+    const checked = document.querySelector('input[name="runRadio"]:checked');
+    currentValue = checked ? checked.value : "";
+  } else if (param.type === "checkbox") {
+    const checked = document.querySelectorAll('input[name="runCheckbox"]:checked');
+    currentValue = Array.from(checked).map((c) => c.value).join(",");
+  } else {
+    const input = document.getElementById("runInputValue");
+    currentValue = input ? input.value : "";
+  }
+  
+  // Get current photos count
+  const photoMode = param.photoMode || "per-sample";
+  const photoKey = photoMode === "per-line" 
+    ? `${lineId}_${repIndex}` 
+    : `${lineId}_${repIndex}_${sampleIndex}`;
+  const currentPhotosCount = runTrialState.responses[areaIndex]?.[paramId]?.[photoKey]?.photos?.length || 0;
+  
+  // Compare with last saved state
+  const valueChanged = currentValue !== (runTrialState.lastSavedValue || "");
+  const photosChanged = currentPhotosCount !== (runTrialState.lastSavedPhotosCount || 0);
+  
+  return valueChanged || photosChanged;
 }
 
 // Save current response silently (for auto-save)
@@ -3263,11 +3428,11 @@ function saveCurrentResponseSilent() {
   
   if (areaIndex === null || !paramId || !lineId) return true;
   
-  // Include sampleIndex in the key
-  const lineKey = `${lineId}_${repIndex}_${sampleIndex}`;
-
   const param = inventoryState.items.parameters.find((p) => p.id === paramId);
   if (!param) return true;
+
+  // Response key includes sampleIndex
+  const lineKey = `${lineId}_${repIndex}_${sampleIndex}`;
 
   // Get value based on input type
   let value = "";
@@ -3282,14 +3447,35 @@ function saveCurrentResponseSilent() {
     value = input ? input.value : "";
   }
 
-  // Get photos
-  const existingPhotos = runTrialState.responses[areaIndex]?.[paramId]?.[lineKey]?.photos || [];
-  const photos = [...existingPhotos, ...runTrialState.photoFiles];
+  // Handle photos based on photoMode (photos are already saved in handlePhotoUpload)
+  let photos = [];
+  if (param.requirePhoto) {
+    const photoMode = param.photoMode || "per-sample";
+    const photoKey = photoMode === "per-line" 
+      ? `${lineId}_${repIndex}` // Per-line: same key for all samples
+      : `${lineId}_${repIndex}_${sampleIndex}`; // Per-sample: unique key
+    
+    // Just get existing photos, don't append photoFiles (already saved)
+    photos = runTrialState.responses[areaIndex]?.[paramId]?.[photoKey]?.photos || [];
+    
+    // Ensure photo key exists in response structure
+    if (!runTrialState.responses[areaIndex]) {
+      runTrialState.responses[areaIndex] = {};
+    }
+    if (!runTrialState.responses[areaIndex][paramId]) {
+      runTrialState.responses[areaIndex][paramId] = {};
+    }
+    
+    // Update photo key timestamp if it exists
+    if (runTrialState.responses[areaIndex][paramId][photoKey]) {
+      runTrialState.responses[areaIndex][paramId][photoKey].timestamp = new Date().toISOString();
+    }
+  }
 
   // Skip if nothing to save
   if (!value && photos.length === 0) return true;
 
-  // Save response
+  // Save response at lineKey (always includes sampleIndex)
   if (!runTrialState.responses[areaIndex]) {
     runTrialState.responses[areaIndex] = {};
   }
@@ -3298,34 +3484,63 @@ function saveCurrentResponseSilent() {
   }
   runTrialState.responses[areaIndex][paramId][lineKey] = {
     value,
-    photos,
+    photos: param.requirePhoto ? [] : photos, // Don't duplicate photos in lineKey if using photoKey
     timestamp: new Date().toISOString(),
   };
 
   return true;
 }
 
-// Navigate to previous line
+// Navigate to previous line (skip all samples, go directly to previous line)
 function navigatePrevLine() {
+  // Auto-save current response only if there are changes
+  if (hasResponseChanges()) {
+    saveCurrentResponseSilent();
+    autoSaveProgress();
+  }
+  
   const lines = getAllLinesList();
-  const sampleIndex = runTrialState.currentSampleIndex || 0;
-  const currentIdx = lines.findIndex(
+  const currentLineId = runTrialState.currentLineId;
+  const currentRepIndex = runTrialState.currentRepIndex;
+  
+  // Find first sample of current line
+  const currentLineFirstSampleIdx = lines.findIndex(
     (l) =>
       l.areaIndex === runTrialState.currentAreaIndex &&
       l.paramId === runTrialState.currentParamId &&
-      l.lineId === runTrialState.currentLineId &&
-      l.repIndex === runTrialState.currentRepIndex &&
-      l.sampleIndex === sampleIndex
+      l.lineId === currentLineId &&
+      l.repIndex === currentRepIndex &&
+      l.sampleIndex === 0
   );
-
-  if (currentIdx > 0) {
-    const prev = lines[currentIdx - 1];
-    selectLine(prev.areaIndex, prev.paramId, prev.lineId, prev.repIndex, prev.sampleIndex);
+  
+  if (currentLineFirstSampleIdx > 0) {
+    // Go to previous entry (which is the last sample of previous line)
+    const prev = lines[currentLineFirstSampleIdx - 1];
+    // But we want first sample of that previous line, so find it
+    const prevLineFirstSampleIdx = lines.findIndex(
+      (l) =>
+        l.areaIndex === prev.areaIndex &&
+        l.paramId === prev.paramId &&
+        l.lineId === prev.lineId &&
+        l.repIndex === prev.repIndex &&
+        l.sampleIndex === 0
+    );
+    
+    if (prevLineFirstSampleIdx >= 0) {
+      const target = lines[prevLineFirstSampleIdx];
+      selectLine(target.areaIndex, target.paramId, target.lineId, target.repIndex, 0);
+    }
   }
 }
 
-// Navigate to next sample of the same line
+// Navigate to previous sample of the same line
 function navigatePrevSample() {
+  // Auto-save current response only if there are changes
+  if (hasResponseChanges()) {
+    saveCurrentResponseSilent();
+    autoSaveProgress();
+  }
+  
   const sampleIndex = runTrialState.currentSampleIndex || 0;
   if (sampleIndex > 0) {
     selectLine(
@@ -3340,6 +3555,12 @@ function navigatePrevSample() {
 
 // Navigate to next sample of the same line
 function navigateNextSample() {
+  // Auto-save current response only if there are changes
+  if (hasResponseChanges()) {
+    saveCurrentResponseSilent();
+    autoSaveProgress();
+  }
+  
   const param = inventoryState.items.parameters.find((p) => p.id === runTrialState.currentParamId);
   const numberOfSamples = param?.numberOfSamples || 1;
   const sampleIndex = runTrialState.currentSampleIndex || 0;
@@ -3355,22 +3576,37 @@ function navigateNextSample() {
   }
 }
 
-// Navigate to next line
+// Navigate to next line (skip all samples, go directly to next line)
 function navigateNextLine() {
+  // Auto-save current response only if there are changes
+  if (hasResponseChanges()) {
+    saveCurrentResponseSilent();
+    autoSaveProgress();
+  }
+  
   const lines = getAllLinesList();
-  const sampleIndex = runTrialState.currentSampleIndex || 0;
-  const currentIdx = lines.findIndex(
+  const currentLineId = runTrialState.currentLineId;
+  const currentRepIndex = runTrialState.currentRepIndex;
+  const currentParamId = runTrialState.currentParamId;
+  const currentAreaIndex = runTrialState.currentAreaIndex;
+  
+  // Find last sample of current line
+  const param = inventoryState.items.parameters.find((p) => p.id === currentParamId);
+  const numberOfSamples = param?.numberOfSamples || 1;
+  
+  const currentLineLastSampleIdx = lines.findIndex(
     (l) =>
-      l.areaIndex === runTrialState.currentAreaIndex &&
-      l.paramId === runTrialState.currentParamId &&
-      l.lineId === runTrialState.currentLineId &&
-      l.repIndex === runTrialState.currentRepIndex &&
-      l.sampleIndex === sampleIndex
+      l.areaIndex === currentAreaIndex &&
+      l.paramId === currentParamId &&
+      l.lineId === currentLineId &&
+      l.repIndex === currentRepIndex &&
+      l.sampleIndex === numberOfSamples - 1
   );
-
-  if (currentIdx < lines.length - 1) {
-    const next = lines[currentIdx + 1];
-    selectLine(next.areaIndex, next.paramId, next.lineId, next.repIndex, next.sampleIndex);
+  
+  if (currentLineLastSampleIdx >= 0 && currentLineLastSampleIdx < lines.length - 1) {
+    // Next entry after last sample of current line is first sample of next line
+    const next = lines[currentLineLastSampleIdx + 1];
+    selectLine(next.areaIndex, next.paramId, next.lineId, next.repIndex, 0);
   } else {
     // At last question - check if 100% complete
     const completed = lines.filter((l) => {
@@ -3522,6 +3758,79 @@ async function saveRunTrialProgress() {
   updateRunTrialProgress();
   
   // Show success feedback
+  if (typeof showSuccessMessage === "function") {
+    showSuccessMessage("Progress saved");
+  }
+}
+
+// Auto save in background (without feedback message)
+let autoSaveInProgress = false;
+
+async function autoSaveProgress() {
+  if (autoSaveInProgress) return; // Prevent multiple simultaneous saves
+  
+  const trial = runTrialState.currentTrial;
+  if (!trial) return;
+  
+  autoSaveInProgress = true;
+  
+  // Update icon to saving state
+  const saveIcon = document.querySelector('.run-save-icon');
+  const saveIconSymbol = saveIcon?.querySelector('.material-symbols-rounded');
+  if (saveIcon) {
+    saveIcon.classList.add('saving');
+    saveIcon.disabled = true;
+  }
+  if (saveIconSymbol) {
+    saveIconSymbol.textContent = 'cached';
+  }
+  
+  try {
+    // Update trial with responses
+    trial.responses = runTrialState.responses;
+    trial.updatedAt = new Date().toISOString();
+
+    // Update in state
+    const idx = trialState.trials.findIndex((t) => t.id === trial.id);
+    if (idx !== -1) {
+      trialState.trials[idx] = trial;
+    }
+
+    if (typeof saveLocalCache === "function") {
+      saveLocalCache("trials", { trials: trialState.trials });
+    }
+
+    // Save to Drive in background
+    enqueueSync({
+      label: `Auto-save: ${trial.name}`,
+      run: () => saveTrialResponsesToDrive(trial),
+    });
+
+    // Update nav and progress display
+    renderRunTrialNavTree();
+    updateRunTrialProgress();
+  } finally {
+    // Remove saving state after short delay
+    setTimeout(() => {
+      autoSaveInProgress = false;
+      if (saveIcon) {
+        saveIcon.classList.remove('saving');
+        saveIcon.disabled = false;
+      }
+      if (saveIconSymbol) {
+        saveIconSymbol.textContent = 'save';
+      }
+    }, 500);
+  }
+}
+
+// Manual save with feedback
+async function manualSaveProgress() {
+  if (autoSaveInProgress) return;
+  
+  await autoSaveProgress();
+  
+  // Show success feedback for manual saves
   if (typeof showSuccessMessage === "function") {
     showSuccessMessage("Progress saved");
   }
