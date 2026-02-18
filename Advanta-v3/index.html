@@ -138,7 +138,7 @@
               <span class="material-symbols-rounded">cloud_download</span>
             </button>
             <button id="syncStatusBtn" class="sync-status" aria-label="Sync status" title="Synced">
-              <span class="material-symbols-rounded">sync</span>
+              <span class="material-symbols-rounded">cached</span>
               <span id="syncQueueCount" class="sync-badge">0</span>
             </button>
             <div class="user-menu" id="userMenu">
@@ -174,7 +174,6 @@
 
         <!-- Content Area -->
         <div class="content">
-          <!-- Dashboard View -->
           <div id="dashboardContent" class="page-content active">
             <div class="dashboard-grid">
               <div class="dashboard-card">
@@ -214,7 +213,7 @@
                 </div>
               </div>
             </div>
-
+        
             <!-- Trial Progress Section -->
             <div class="dashboard-section">
               <div class="dashboard-section-header">
@@ -228,8 +227,7 @@
               </div>
             </div>
           </div>
-
-          <!-- Inventory View -->
+        
           <div id="inventoryContent" class="page-content">
             <!-- Sub-menu Navigation -->
             <div class="submenu-nav">
@@ -246,7 +244,7 @@
                 <span>Parameters</span>
               </button>
             </div>
-
+        
             <!-- Inventory Content -->
             <div class="inventory-container">
               <div class="inventory-header">
@@ -256,14 +254,13 @@
                   <span>Add New Item</span>
                 </button>
               </div>
-
+        
               <div class="inventory-list" id="inventoryList">
                 <!-- Items will be populated here -->
               </div>
             </div>
           </div>
-
-          <!-- Trial View -->
+        
           <div id="trialContent" class="page-content">
             <div class="submenu-nav" id="trialSubmenu">
               <button class="trial-submenu-item active" data-trial-tab="management">
@@ -275,7 +272,7 @@
                 <span>Run Trial</span>
               </button>
             </div>
-
+        
             <div id="trialManagementContent" class="trial-tab-content active">
               <div class="inventory-container" id="trialManagementPanel">
                 <div class="inventory-header">
@@ -285,12 +282,12 @@
                     <span>Create New Trial</span>
                   </button>
                 </div>
-
+        
                 <div class="inventory-list" id="trialList">
                   <!-- Active trials will be populated here -->
                 </div>
               </div>
-
+        
               <!-- Archived Trials Container -->
               <div class="inventory-container" id="archivedTrialManagementPanel" style="display: none;">
                 <div class="inventory-header archived-header">
@@ -303,281 +300,281 @@
                   <!-- Archived trials will be populated here -->
                 </div>
               </div>
-
-                <!-- Trial Detail Modal -->
-                <div id="trialDetailModal" class="library-preview-modal">
-                  <div class="library-preview-modal-content">
-                    <div class="library-detail-header">
-                      <div class="library-detail-info">
-                        <h3 id="trialDetailTitle">Trial Details</h3>
-                        <p id="trialDetailMeta" class="library-detail-meta"></p>
-                      </div>
-                      <div class="library-detail-actions">
-                        <button class="btn btn-secondary" id="trialDetailEditBtn" onclick="editTrialFromDetail()">
-                          <span class="material-symbols-rounded">edit</span>
-                          <span>Edit</span>
-                        </button>
-                        <button class="btn btn-secondary btn-text-danger" id="trialDetailDeleteBtn" onclick="deleteTrialFromDetail()">
-                          <span class="material-symbols-rounded">delete</span>
-                          <span>Delete</span>
-                        </button>
-                        <button class="btn btn-secondary" onclick="closeTrialDetailModal()">
-                          <span class="material-symbols-rounded">close</span>
-                        </button>
-                      </div>
+        
+              <!-- Trial Detail Modal -->
+              <div id="trialDetailModal" class="library-preview-modal">
+                <div class="library-preview-modal-content">
+                  <div class="library-detail-header">
+                    <div class="library-detail-info">
+                      <h3 id="trialDetailTitle">Trial Details</h3>
+                      <p id="trialDetailMeta" class="library-detail-meta"></p>
                     </div>
-                    <div id="trialDetailBody" class="library-preview trial-detail-body">
-                      <!-- Content dynamically populated by showTrialDetail() -->
+                    <div class="library-detail-actions">
+                      <button class="btn btn-secondary" id="trialDetailEditBtn" onclick="editTrialFromDetail()">
+                        <span class="material-symbols-rounded">edit</span>
+                        <span>Edit</span>
+                      </button>
+                      <button class="btn btn-secondary btn-text-danger" id="trialDetailDeleteBtn"
+                        onclick="deleteTrialFromDetail()">
+                        <span class="material-symbols-rounded">delete</span>
+                        <span>Delete</span>
+                      </button>
+                      <button class="btn btn-secondary" onclick="closeTrialDetailModal()">
+                        <span class="material-symbols-rounded">close</span>
+                      </button>
                     </div>
                   </div>
-                </div>
-              </div>
-
-              <div id="trialEditor" class="trial-editor">
-                <div class="modal-content trial-editor-content">
-                  <div class="modal-header">
-                    <h3 id="trialModalTitle">Create New Trial</h3>
-                    <button class="modal-close" id="trialModalClose">&times;</button>
-                  </div>
-
-                  <div class="trial-section-nav">
-                    <div class="section-nav-item active" data-section="general">
-                      <div class="section-nav-number">1</div>
-                      <div class="section-nav-text">General</div>
-                    </div>
-                    <div class="section-nav-item" data-section="location">
-                      <div class="section-nav-number">2</div>
-                      <div class="section-nav-text">Location</div>
-                    </div>
-                    <div class="section-nav-item" data-section="layouting">
-                      <div class="section-nav-number">3</div>
-                      <div class="section-nav-text">Layouting</div>
-                    </div>
-                  </div>
-
-                  <div class="modal-body modal-body-scrollable">
-                    <form id="trialForm">
-                      <div class="trial-section active" id="trialSectionGeneral">
-                        <h4 class="trial-form-section-title">General Information</h4>
-                        <div class="form-group">
-                          <label for="trialName">Trial Name</label>
-                          <input type="text" id="trialName" placeholder="Enter trial name" required>
-                        </div>
-                        <div class="form-group">
-                          <label for="trialDescription">Description</label>
-                          <textarea id="trialDescription" placeholder="Enter trial description" rows="3"></textarea>
-                        </div>
-                        <div class="form-group">
-                          <label>Planting Window</label>
-                          <div class="form-grid-2">
-                            <div>
-                              <input type="month" id="trialPlantingStart" placeholder="Start date" required>
-                              <small class="form-hint">Start month</small>
-                            </div>
-                            <div>
-                              <input type="month" id="trialPlantingEnd" placeholder="End date" required>
-                              <small class="form-hint">End month</small>
-                            </div>
-                          </div>
-                        </div>
-                        <div class="form-group">
-                          <label for="trialCrops">Crops</label>
-                          <select id="trialCrops" required>
-                            <option value="">Select crop</option>
-                          </select>
-                        </div>
-                        <div class="form-group">
-                          <label for="trialType">Trial Type</label>
-                          <select id="trialType" required>
-                            <option value="">Select trial type</option>
-                            <option value="Parent Test">Parent Test</option>
-                          </select>
-                        </div>
-                        <div class="form-group">
-                          <label for="parameterSearch">Observation Parameters</label>
-                          <input type="text" id="parameterSearch" placeholder="Search parameters...">
-                          <div id="parameterList">
-                            <!-- Parameter checkboxes will be populated here -->
-                          </div>
-                          <small class="form-hint-block">
-                            <span id="selectedParamCount">0</span> parameter(s) selected
-                          </small>
-                        </div>
-                      </div>
-
-                      <div class="trial-section" id="trialSectionLocation">
-                        <h4 class="trial-form-section-title">Location & Area Drawing</h4>
-                        <div class="form-group">
-                          <label>Draw Trial Areas</label>
-                          <div id="trialMap">
-                          </div>
-                          <div class="drawing-btn-group">
-                            <button type="button" class="btn btn-secondary" id="startDrawingBtn">
-                              <span class="material-symbols-rounded">draw</span>
-                              <span>Start Drawing Area</span>
-                            </button>
-                            <button type="button" class="btn btn-secondary" id="saveAreaBtn" disabled>
-                              <span class="material-symbols-rounded">save</span>
-                              <span>Save Area</span>
-                            </button>
-                            <button type="button" class="btn btn-secondary" id="clearDrawingBtn">
-                              <span class="material-symbols-rounded">delete</span>
-                              <span>Clear Points</span>
-                            </button>
-                          </div>
-
-                          <!-- Zone Information Panel -->
-                          <div id="zoneInfoPanel" class="hidden">
-                            <div class="zone-stats">
-                              <div>
-                                <span class="zone-stat-label">Points:</span>
-                                <span id="pointCount" class="zone-stat-value">0</span>
-                              </div>
-                              <div>
-                                <span class="zone-stat-label">Area:</span>
-                                <span id="zoneArea" class="zone-stat-value">0</span> ha
-                              </div>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-secondary" id="undoPointBtn">
-                              <span class="material-symbols-rounded">undo</span>
-                              <span>Undo</span>
-                            </button>
-                          </div>
-
-                          <div id="areaNameDialog" class="hidden">
-                            <label for="areaNameInput" class="area-name-label">Enter Area Name:</label>
-                            <div class="area-name-actions">
-                              <input type="text" id="areaNameInput" placeholder="e.g., Area 1" class="area-name-input">
-                              <button type="button" class="btn btn-primary" id="confirmAreaNameBtn">Confirm</button>
-                              <button type="button" class="btn btn-secondary" id="cancelAreaNameBtn">Cancel</button>
-                            </div>
-                          </div>
-
-                          <div id="areasList" class="hidden">
-                            <strong class="areas-title">Saved Areas:</strong>
-                            <div id="areasListContainer">
-                              <!-- Saved areas will be listed here -->
-                            </div>
-                          </div>
-                          <small class="form-hint-block">
-                            Click on map to draw polygon (minimum 3 points).
-                          </small>
-                        </div>
-                      </div>
-
-                      <div class="trial-section" id="trialSectionLayouting">
-                        <h4 class="trial-section-title">Trial Layouting</h4>
-                        <div id="layoutingAreasContainer" class="layouting-areas">
-                          <!-- Areas will be rendered here -->
-                        </div>
-                      </div>
-                    </form>
-                  </div>
-
-                  <div class="modal-footer modal-footer-spaced">
-                    <button class="btn btn-secondary" id="trialModalCancelBtn">Cancel</button>
-                    <div class="modal-footer-actions">
-                      <button class="btn btn-secondary hidden" id="trialPrevBtn">Previous</button>
-                      <button class="btn btn-primary" id="trialNextBtn">Next</button>
-                      <button class="btn btn-primary hidden" id="trialModalSaveBtn">Save Trial</button>
-                    </div>
+                  <div id="trialDetailBody" class="library-preview trial-detail-body">
+                    <!-- Content dynamically populated by showTrialDetail() -->
                   </div>
                 </div>
               </div>
             </div>
-
-            <div id="trialRunContent" class="trial-tab-content">
-              <!-- Trial Selection -->
-              <div id="runTrialSelection" class="run-trial-section">
-                <div class="run-trial-header">
-                  <h3>Select Trial to Run</h3>
-                  <p>Choose a trial from your saved trials to start data collection</p>
+        
+            <div id="trialEditor" class="trial-editor">
+              <div class="modal-content trial-editor-content">
+                <div class="modal-header">
+                  <h3 id="trialModalTitle">Create New Trial</h3>
+                  <button class="modal-close" id="trialModalClose">&times;</button>
                 </div>
-                <div id="runTrialList" class="run-trial-list">
-                  <!-- Trial cards will be populated here -->
-                </div>
-              </div>
-
-              <!-- Run Trial Interface -->
-              <div id="runTrialInterface" class="run-trial-section hidden">
-                <div id="runTrialShell" class="run-trial-shell">
-                  <div class="run-trial-topbar">
-                    <button class="btn btn-secondary btn-icon" id="runTrialBackBtn">
-                      <span class="material-symbols-rounded">arrow_back</span>
-                    </button>
-                    <div class="run-trial-info">
-                      <h3 id="runTrialName">Trial Name</h3>
-                      <span id="runTrialProgress" class="run-trial-progress">0 / 0 completed</span>
-                    </div>
-                    <div class="run-trial-actions">
-                      <button class="btn btn-secondary mobile-nav-toggle" onclick="openMobileNav()">
-                        <span class="material-symbols-rounded">menu</span>
-                        <span class="btn-text">Navigation</span>
-                      </button>
-                      <button class="btn btn-secondary" onclick="showViewProgress()">
-                        <span class="material-symbols-rounded">analytics</span>
-                        <span class="btn-text">View Progress</span>
-                      </button>
-                      <button class="btn btn-primary" id="runTrialSaveBtn">
-                        <span class="material-symbols-rounded">save</span>
-                        <span class="btn-text">Save Progress</span>
-                      </button>
-                    </div>
+        
+                <div class="trial-section-nav">
+                  <div class="section-nav-item active" data-section="general">
+                    <div class="section-nav-number">1</div>
+                    <div class="section-nav-text">General</div>
                   </div>
-
-                  <div class="run-trial-container">
-                    <!-- Mobile Nav Overlay -->
-                    <div id="mobileNavOverlay" class="mobile-nav-overlay" onclick="closeMobileNav()"></div>
-
-                    <!-- Navigation Sidebar -->
-                    <div class="run-trial-nav">
-                      <div class="mobile-nav-header">
-                        <span>Navigation</span>
-                        <button class="btn-icon-close" onclick="closeMobileNav()">
-                          <span class="material-symbols-rounded">close</span>
-                        </button>
+                  <div class="section-nav-item" data-section="location">
+                    <div class="section-nav-number">2</div>
+                    <div class="section-nav-text">Location</div>
+                  </div>
+                  <div class="section-nav-item" data-section="layouting">
+                    <div class="section-nav-number">3</div>
+                    <div class="section-nav-text">Layouting</div>
+                  </div>
+                </div>
+        
+                <div class="modal-body modal-body-scrollable">
+                  <form id="trialForm">
+                    <div class="trial-section active" id="trialSectionGeneral">
+                      <h4 class="trial-form-section-title">General Information</h4>
+                      <div class="form-group">
+                        <label for="trialName">Trial Name</label>
+                        <input type="text" id="trialName" placeholder="Enter trial name" required>
                       </div>
-                      <div id="runTrialNavTree" class="run-nav-tree">
-                        <!-- Navigation tree will be generated here -->
+                      <div class="form-group">
+                        <label for="trialDescription">Description</label>
+                        <textarea id="trialDescription" placeholder="Enter trial description" rows="3"></textarea>
                       </div>
-                    </div>
-
-                    <!-- Question/Answer Area -->
-                    <div class="run-trial-content">
-                      <div id="runTrialQuestion" class="run-question-card">
-                        <!-- Question content will be rendered here -->
-                        <div class="run-empty-state">
-                          <span class="material-symbols-rounded">touch_app</span>
-                          <p>Select a line from the navigation to start recording data</p>
+                      <div class="form-group">
+                        <label>Planting Window</label>
+                        <div class="form-grid-2">
+                          <div>
+                            <input type="month" id="trialPlantingStart" placeholder="Start date" required>
+                            <small class="form-hint">Start month</small>
+                          </div>
+                          <div>
+                            <input type="month" id="trialPlantingEnd" placeholder="End date" required>
+                            <small class="form-hint">End month</small>
+                          </div>
                         </div>
                       </div>
+                      <div class="form-group">
+                        <label for="trialCrops">Crops</label>
+                        <select id="trialCrops" required>
+                          <option value="">Select crop</option>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label for="trialType">Trial Type</label>
+                        <select id="trialType" required>
+                          <option value="">Select trial type</option>
+                          <option value="Parent Test">Parent Test</option>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label for="parameterSearch">Observation Parameters</label>
+                        <input type="text" id="parameterSearch" placeholder="Search parameters...">
+                        <div id="parameterList">
+                          <!-- Parameter checkboxes will be populated here -->
+                        </div>
+                        <small class="form-hint-block">
+                          <span id="selectedParamCount">0</span> parameter(s) selected
+                        </small>
+                      </div>
                     </div>
-                  </div>
+        
+                    <div class="trial-section" id="trialSectionLocation">
+                      <h4 class="trial-form-section-title">Location & Area Drawing</h4>
+                      <div class="form-group">
+                        <label>Draw Trial Areas</label>
+                        <div id="trialMap">
+                        </div>
+                        <div class="drawing-btn-group">
+                          <button type="button" class="btn btn-secondary" id="startDrawingBtn">
+                            <span class="material-symbols-rounded">draw</span>
+                            <span>Start Drawing Area</span>
+                          </button>
+                          <button type="button" class="btn btn-secondary" id="saveAreaBtn" disabled>
+                            <span class="material-symbols-rounded">save</span>
+                            <span>Save Area</span>
+                          </button>
+                          <button type="button" class="btn btn-secondary" id="clearDrawingBtn">
+                            <span class="material-symbols-rounded">delete</span>
+                            <span>Clear Points</span>
+                          </button>
+                        </div>
+        
+                        <!-- Zone Information Panel -->
+                        <div id="zoneInfoPanel" class="hidden">
+                          <div class="zone-stats">
+                            <div>
+                              <span class="zone-stat-label">Points:</span>
+                              <span id="pointCount" class="zone-stat-value">0</span>
+                            </div>
+                            <div>
+                              <span class="zone-stat-label">Area:</span>
+                              <span id="zoneArea" class="zone-stat-value">0</span> ha
+                            </div>
+                          </div>
+                          <button type="button" class="btn btn-sm btn-secondary" id="undoPointBtn">
+                            <span class="material-symbols-rounded">undo</span>
+                            <span>Undo</span>
+                          </button>
+                        </div>
+        
+                        <div id="areaNameDialog" class="hidden">
+                          <label for="areaNameInput" class="area-name-label">Enter Area Name:</label>
+                          <div class="area-name-actions">
+                            <input type="text" id="areaNameInput" placeholder="e.g., Area 1" class="area-name-input">
+                            <button type="button" class="btn btn-primary" id="confirmAreaNameBtn">Confirm</button>
+                            <button type="button" class="btn btn-secondary" id="cancelAreaNameBtn">Cancel</button>
+                          </div>
+                        </div>
+        
+                        <div id="areasList" class="hidden">
+                          <strong class="areas-title">Saved Areas:</strong>
+                          <div id="areasListContainer">
+                            <!-- Saved areas will be listed here -->
+                          </div>
+                        </div>
+                        <small class="form-hint-block">
+                          Click on map to draw polygon (minimum 3 points).
+                        </small>
+                      </div>
+                    </div>
+        
+                    <div class="trial-section" id="trialSectionLayouting">
+                      <h4 class="trial-section-title">Trial Layouting</h4>
+                      <div id="layoutingAreasContainer" class="layouting-areas">
+                        <!-- Areas will be rendered here -->
+                      </div>
+                    </div>
+                  </form>
                 </div>
-              </div>
-
-              <!-- View Progress Modal -->
-              <div id="viewProgressModal" class="view-progress-modal">
-                <div class="view-progress-container">
-                  <div class="view-progress-header">
-                    <h3>View Progress</h3>
-                    <button class="btn-icon-close" onclick="closeViewProgress()">
-                      <span class="material-symbols-rounded">close</span>
-                    </button>
-                  </div>
-                  <div class="view-progress-body">
-                    <div id="viewProgressContent" class="view-progress-content">
-                      <!-- Progress layout will be rendered here -->
-                    </div>
-                    <div id="lineProgressDetail" class="line-progress-detail">
-                      <!-- Line detail will be shown here -->
-                    </div>
+        
+                <div class="modal-footer modal-footer-spaced">
+                  <button class="btn btn-secondary" id="trialModalCancelBtn">Cancel</button>
+                  <div class="modal-footer-actions">
+                    <button class="btn btn-secondary hidden" id="trialPrevBtn">Previous</button>
+                    <button class="btn btn-primary" id="trialNextBtn">Next</button>
+                    <button class="btn btn-primary hidden" id="trialModalSaveBtn">Save Trial</button>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-
+        
+          <div id="trialRunContent" class="page-content trial-tab-content">
+            <!-- Trial Selection -->
+            <div id="runTrialSelection" class="run-trial-section">
+              <div class="run-trial-header">
+                <h3>Select Trial to Run</h3>
+                <p>Choose a trial from your saved trials to start data collection</p>
+              </div>
+              <div id="runTrialList" class="run-trial-list">
+                <!-- Trial cards will be populated here -->
+              </div>
+            </div>
+        
+            <!-- Run Trial Interface -->
+            <div id="runTrialInterface" class="run-trial-section hidden">
+              <div id="runTrialShell" class="run-trial-shell">
+                <div class="run-trial-topbar">
+                  <button class="btn btn-secondary btn-icon" id="runTrialBackBtn">
+                    <span class="material-symbols-rounded">arrow_back</span>
+                  </button>
+                  <div class="run-trial-info">
+                    <h3 id="runTrialName">Trial Name</h3>
+                    <span id="runTrialProgress" class="run-trial-progress">0 / 0 completed</span>
+                  </div>
+                  <div class="run-trial-actions">
+                    <button class="btn btn-secondary mobile-nav-toggle" onclick="openMobileNav()">
+                      <span class="material-symbols-rounded">menu</span>
+                      <span class="btn-text">Navigation</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="showViewProgress()">
+                      <span class="material-symbols-rounded">analytics</span>
+                      <span class="btn-text">View Progress</span>
+                    </button>
+                    <button class="btn btn-primary" id="runTrialSaveBtn">
+                      <span class="material-symbols-rounded">save</span>
+                      <span class="btn-text">Save Progress</span>
+                    </button>
+                  </div>
+                </div>
+        
+                <div class="run-trial-container">
+                  <!-- Mobile Nav Overlay -->
+                  <div id="mobileNavOverlay" class="mobile-nav-overlay" onclick="closeMobileNav()"></div>
+        
+                  <!-- Navigation Sidebar -->
+                  <div class="run-trial-nav">
+                    <div class="mobile-nav-header">
+                      <span>Navigation</span>
+                      <button class="btn-icon-close" onclick="closeMobileNav()">
+                        <span class="material-symbols-rounded">close</span>
+                      </button>
+                    </div>
+                    <div id="runTrialNavTree" class="run-nav-tree">
+                      <!-- Navigation tree will be generated here -->
+                    </div>
+                  </div>
+        
+                  <!-- Question/Answer Area -->
+                  <div class="run-trial-content">
+                    <div id="runTrialQuestion" class="run-question-card">
+                      <!-- Question content will be rendered here -->
+                      <div class="run-empty-state">
+                        <span class="material-symbols-rounded">touch_app</span>
+                        <p>Select a line from the navigation to start recording data</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+        
+            <!-- View Progress Modal -->
+            <div id="viewProgressModal" class="view-progress-modal">
+              <div class="view-progress-container">
+                <div class="view-progress-header">
+                  <h3>View Progress</h3>
+                  <button class="btn-icon-close" onclick="closeViewProgress()">
+                    <span class="material-symbols-rounded">close</span>
+                  </button>
+                </div>
+                <div class="view-progress-body">
+                  <div id="viewProgressContent" class="view-progress-content">
+                    <!-- Progress layout will be rendered here -->
+                  </div>
+                  <div id="lineProgressDetail" class="line-progress-detail">
+                    <!-- Line detail will be shown here -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        
           <div id="libraryContent" class="page-content">
             <div class="inventory-container">
               <div class="inventory-header">
@@ -613,12 +610,12 @@
                   </button>
                 </div>
               </div>
-
+        
               <div class="inventory-list" id="libraryList">
                 <!-- Library items will be populated here -->
               </div>
             </div>
-
+        
             <div id="libraryPreviewModal" class="library-preview-modal">
               <div class="library-preview-modal-content">
                 <div id="libraryDetail" class="library-detail">
@@ -652,8 +649,7 @@
               </div>
             </div>
           </div>
-
-          <!-- Reminder View -->
+        
           <div id="reminderContent" class="page-content">
             <div class="submenu-nav" id="reminderSubmenu">
               <button class="submenu-item active" data-reminder-tab="observation">
@@ -665,7 +661,7 @@
                 <span>Agronomy</span>
               </button>
             </div>
-
+        
             <div id="reminderObservationContent" class="reminder-tab-content active">
               <div class="empty-state">
                 <span class="material-symbols-rounded">schedule</span>
@@ -673,7 +669,7 @@
                 <p>Observation reminders are under development</p>
               </div>
             </div>
-
+        
             <div id="reminderAgronomyContent" class="reminder-tab-content">
               <div class="empty-state">
                 <span class="material-symbols-rounded">schedule</span>
@@ -682,6 +678,7 @@
               </div>
             </div>
           </div>
+        </div>
         </div>
       </main>
     </div>
@@ -842,7 +839,7 @@
     <div id="syncPanel" class="sync-panel">
       <div class="sync-panel-header">
         <div class="sync-panel-title">
-          <span class="material-symbols-rounded">sync</span>
+          <span class="material-symbols-rounded">cached</span>
           <span>Sync Queue</span>
         </div>
         <button id="syncPanelClose" class="sync-panel-close" aria-label="Close">

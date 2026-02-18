@@ -223,12 +223,12 @@ function updateSyncUI() {
     btn.classList.remove("syncing", "error", "synced");
     if (syncState.status === "syncing") {
       btn.classList.add("syncing");
-      iconSpan.textContent = "sync";
+      iconSpan.textContent = "cached";
       btn.setAttribute("aria-label", "Syncing...");
       btn.setAttribute("title", "Syncing...");
     } else if (syncState.status === "error") {
       btn.classList.add("error");
-      iconSpan.textContent = "sync";
+      iconSpan.textContent = "cached";
       btn.setAttribute("aria-label", "Sync error");
       btn.setAttribute("title", "Sync error - Click to retry or re-login");
     } else {
@@ -309,6 +309,14 @@ window.addEventListener("beforeunload", (event) => {
     event.returnValue = "";
   }
 });
+
+function isRunTrialVisible() {
+  const interfaceEl = document.getElementById("runTrialInterface");
+  return (
+    document.body.classList.contains("run-trial-active") ||
+    (interfaceEl && !interfaceEl.classList.contains("hidden"))
+  );
+}
 
 // Show specific view
 function showView(viewName) {
@@ -529,7 +537,7 @@ function syncNavActiveState(pageName) {
   if (pageName === "reminder") {
     const activeReminderTab =
       document.querySelector('.nav-subitem[data-parent="reminder"].active')?.dataset.reminderTab ||
-      "upcoming";
+      "observation";
     syncReminderNavState(activeReminderTab);
     return;
   }
@@ -706,6 +714,7 @@ function setupEventListeners() {
     userMenuTrigger.addEventListener("click", (e) => {
       e.stopPropagation();
       userDropdown.classList.toggle("active");
+      userMenuTrigger.classList.toggle("active");
     });
 
     // Close dropdown when clicking outside
@@ -715,6 +724,7 @@ function setupEventListeners() {
         !userMenuTrigger.contains(e.target)
       ) {
         userDropdown.classList.remove("active");
+        userMenuTrigger.classList.remove("active");
       }
     });
   }
@@ -735,7 +745,7 @@ function setupEventListeners() {
       e.preventDefault();
       
       // Check if in run trial mode
-      const isInRunTrialMode = document.body.classList.contains("run-trial-active");
+      const isInRunTrialMode = isRunTrialVisible();
       if (isInRunTrialMode) {
         showExitRunTrialConfirmation(() => {
           navigateToView(item);
@@ -753,7 +763,7 @@ function setupEventListeners() {
       e.preventDefault();
       
       // Check if in run trial mode
-      const isInRunTrialMode = document.body.classList.contains("run-trial-active");
+      const isInRunTrialMode = isRunTrialVisible();
       if (isInRunTrialMode) {
         showExitRunTrialConfirmation(() => {
           navigateToSubView(item);
@@ -820,6 +830,9 @@ function setupEventListeners() {
     item.addEventListener("click", (e) => {
       e.preventDefault();
       const category = item.dataset.category;
+      if (!category) {
+        return;
+      }
       switchCategory(category);
       syncInventoryNavState(category);
     });
