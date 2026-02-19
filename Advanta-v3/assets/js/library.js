@@ -8,6 +8,7 @@ let libraryState = {
   activeFilter: "all",
   sortBy: "modifiedTime",
   sortDir: "desc",
+  uploading: {}, // Track upload progress by file name: { filename: { progress: 0-100 } }
 };
 
 async function initializeLibrary(options = {}) {
@@ -73,7 +74,9 @@ function setupLibraryEvents() {
   const downloadBtn = document.getElementById("libraryDownloadBtn");
   const closeBtn = document.getElementById("libraryCloseBtn");
   const searchInput = document.getElementById("librarySearchInput");
-  const filterBtns = document.querySelectorAll(".library-filter-btn");
+  const filterTrigger = document.getElementById("libraryFilterTrigger");
+  const filterDropdown = document.getElementById("libraryFilterDropdown");
+  const filterItems = document.querySelectorAll(".library-filter-item");
   const sortBySelect = document.getElementById("librarySortBy");
   const sortDirSelect = document.getElementById("librarySortDir");
 
@@ -111,13 +114,33 @@ function setupLibraryEvents() {
     });
   }
 
-  // Filter functionality
-  filterBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      filterBtns.forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      libraryState.activeFilter = btn.dataset.filter;
+  // Filter dropdown functionality
+  if (filterTrigger && filterDropdown) {
+    filterTrigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      filterDropdown.classList.toggle("active");
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+      if (
+        !filterDropdown.contains(e.target) &&
+        !filterTrigger.contains(e.target)
+      ) {
+        filterDropdown.classList.remove("active");
+      }
+    });
+  }
+
+  // Filter item selection
+  filterItems.forEach((item) => {
+    item.addEventListener("click", () => {
+      filterItems.forEach((i) => i.classList.remove("active"));
+      item.classList.add("active");
+      libraryState.activeFilter = item.dataset.filter;
       renderLibraryList();
+      // Keep dropdown open for better UX
+      // filterDropdown.classList.remove("active");
     });
   });
 
@@ -196,8 +219,18 @@ function renderLibraryList() {
   const container = document.getElementById("libraryList");
   if (!container) return;
 
+  // Combine items with uploading files
+  const allItems = [...libraryState.items];
+  const uploadingItems = Object.entries(libraryState.uploading).map(
+    ([fileName, data]) => ({
+      name: fileName,
+      isUploading: true,
+      progress: data.progress,
+    })
+  );
+
   // Filter items based on search and filter
-  let filteredItems = libraryState.items.filter((file) => {
+  let filteredItems = allItems.filter((file) => {
     // Search filter
     if (libraryState.searchQuery) {
       if (!file.name.toLowerCase().includes(libraryState.searchQuery)) {
@@ -242,7 +275,10 @@ function renderLibraryList() {
     }
   });
 
-  if (filteredItems.length === 0) {
+  // Combine filtered items with uploading items at the top
+  const displayItems = [...uploadingItems, ...filteredItems];
+
+  if (displayItems.length === 0) {
     const emptyMessage =
       libraryState.items.length === 0
         ? "No files yet. Upload your first document to the library."
@@ -262,8 +298,33 @@ function renderLibraryList() {
   // Reset grid to normal when showing items
   container.classList.remove('library-grid-empty');
 
-  container.innerHTML = filteredItems
+  container.innerHTML = displayItems
     .map((file) => {
+      if (file.isUploading) {
+        // Render uploading item with progress
+        const progress = Math.round(file.progress || 0);
+        const circumference = 2 * Math.PI * 18;
+        const strokeDashoffset = circumference - (progress / 100) * circumference;
+
+        return `
+          <div class="library-item" data-uploading="${file.name}">
+              <div class="library-item-icon uploading">
+                  <div class="upload-progress-circle">
+                      <svg width="40" height="40" viewBox="0 0 40 40">
+                          <circle class="progress-ring" cx="20" cy="20" r="18" 
+                                  style="stroke-dasharray: ${circumference}; stroke-dashoffset: ${strokeDashoffset}"></circle>
+                      </svg>
+                      <div class="upload-progress-text">${progress}%</div>
+                  </div>
+              </div>
+              <div class="library-item-info">
+                  <div class="library-item-name">${escapeHtml(file.name)}</div>
+                  <div class="library-item-meta">Uploading...</div>
+              </div>
+          </div>
+        `;
+      }
+
       const sizeLabel = file.size ? formatFileSize(Number(file.size)) : "-";
       const dateLabel = file.modifiedTime
         ? new Date(file.modifiedTime).toLocaleDateString()
@@ -349,24 +410,61 @@ async function uploadLibraryFile(file) {
     closeDelimiter,
   ]);
 
-  const response = await fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${getAccessToken()}`,
-        "Content-Type": `multipart/related; boundary=${boundary}`,
-      },
-      body,
-    },
-  );
+  // Track upload progress
+  libraryState.uploading[file.name] = { progress: 0 };
+  renderLibraryList();
 
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Upload failed");
-  }
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
 
-  return response.json();
+    // Track upload progress
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        const percentComplete = Math.round((e.loaded / e.total) * 100);
+        libraryState.uploading[file.name].progress = percentComplete;
+        renderLibraryList();
+      }
+    });
+
+    xhr.addEventListener("load", async () => {
+      if (xhr.status === 200) {
+        delete libraryState.uploading[file.name];
+        try {
+          const result = JSON.parse(xhr.responseText);
+          resolve(result);
+        } catch (e) {
+          reject(new Error("Failed to parse response"));
+        }
+      } else {
+        delete libraryState.uploading[file.name];
+        reject(new Error(`Upload failed with status ${xhr.status}`));
+      }
+    });
+
+    xhr.addEventListener("error", () => {
+      delete libraryState.uploading[file.name];
+      reject(new Error("Upload error"));
+    });
+
+    xhr.addEventListener("abort", () => {
+      delete libraryState.uploading[file.name];
+      reject(new Error("Upload aborted"));
+    });
+
+    xhr.open(
+      "POST",
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
+    );
+    xhr.setRequestHeader(
+      "Authorization",
+      `Bearer ${getAccessToken()}`
+    );
+    xhr.setRequestHeader(
+      "Content-Type",
+      `multipart/related; boundary=${boundary}`
+    );
+    xhr.send(body);
+  });
 }
 
 async function openLibraryDetail(fileId) {
@@ -417,7 +515,7 @@ function renderLibraryPreview(file, url) {
   preview.innerHTML = `
         <div class="library-preview-fallback">
             <p>Preview not available for this file type.</p>
-            <a href="${url}" download="${escapeHtml(file.name)}" class="btn btn-primary library-download-btn">Download</a>
+            <!--<a href="${url}" download="${escapeHtml(file.name)}" class="btn btn-primary library-download-btn">Download</a>-->
         </div>
     `;
 }

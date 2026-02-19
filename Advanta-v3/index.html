@@ -392,10 +392,72 @@
                         </select>
                       </div>
                       <div class="form-group">
+                        <label for="trialRowsPerPlot">Number of Rows per Plot</label>
+                        <input type="number" id="trialRowsPerPlot" min="0" step="1" placeholder="e.g., 4">
+                      </div>
+                      <div class="form-group">
+                        <label for="trialPlotLength">Plot Length (m)</label>
+                        <input type="number" id="trialPlotLength" min="0" step="0.01" placeholder="e.g., 5">
+                      </div>
+                      <div class="form-group">
+                        <label>Plant Spacing (cm)</label>
+                        <div class="form-grid-3 plant-spacing-grid">
+                          <div>
+                            <input type="number" id="trialPlantSpacingWidth" min="0" step="0.01" placeholder="Width">
+                            <small class="form-hint">Width</small>
+                          </div>
+                          <div class="form-grid-separator">×</div>
+                          <div>
+                            <input type="number" id="trialPlantSpacingHeight" min="0" step="0.01" placeholder="Height">
+                            <small class="form-hint">Height</small>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="trialPlotArea">Plot Area (m²)</label>
+                        <input type="text" id="trialPlotArea" readonly placeholder="Auto-calculated">
+                      </div>
+                      <div class="form-group">
+                        <label for="trialExpectedPlants">Expected Number of Plants per Plot</label>
+                        <input type="text" id="trialExpectedPlants" readonly placeholder="Auto-calculated">
+                      </div>
+                      <div class="form-group">
+                        <label for="trialPopulationHa">Population per Hectare</label>
+                        <input type="text" id="trialPopulationHa" readonly placeholder="Auto-calculated">
+                      </div>
+                      <div class="form-group">
                         <label for="parameterSearch">Observation Parameters</label>
-                        <input type="text" id="parameterSearch" placeholder="Search parameters...">
-                        <div id="parameterList">
-                          <!-- Parameter checkboxes will be populated here -->
+                        <div class="dual-picklist">
+                          <div class="picklist-column">
+                            <div class="picklist-header">Available Parameters</div>
+                            <div class="picklist-search">
+                              <span class="material-symbols-rounded">search</span>
+                              <input type="text" id="parameterSearch" placeholder="Search parameters...">
+                            </div>
+                            <div id="parameterAvailableList" class="picklist-list" data-list="available">
+                              <!-- Available parameters populated here -->
+                            </div>
+                          </div>
+                          <div class="picklist-controls">
+                            <button type="button" class="picklist-control-btn" id="parameterMoveRight" title="Add">
+                              <span class="material-symbols-rounded">arrow_forward</span>
+                            </button>
+                            <button type="button" class="picklist-control-btn" id="parameterMoveUp" title="Move up">
+                              <span class="material-symbols-rounded">arrow_upward</span>
+                            </button>
+                            <button type="button" class="picklist-control-btn" id="parameterMoveDown" title="Move down">
+                              <span class="material-symbols-rounded">arrow_downward</span>
+                            </button>
+                            <button type="button" class="picklist-control-btn danger" id="parameterRemove" title="Remove">
+                              <span class="material-symbols-rounded">delete</span>
+                            </button>
+                          </div>
+                          <div class="picklist-column">
+                            <div class="picklist-header">Selected Parameters</div>
+                            <div id="parameterSelectedList" class="picklist-list" data-list="selected">
+                              <!-- Selected parameters populated here -->
+                            </div>
+                          </div>
                         </div>
                         <small class="form-hint-block">
                           <span id="selectedParamCount">0</span> parameter(s) selected
@@ -405,6 +467,13 @@
         
                     <div class="trial-section" id="trialSectionLocation">
                       <h4 class="trial-form-section-title">Location & Area Drawing</h4>
+                      <div class="form-group">
+                        <label for="trialLocation">Location (from Inventory)</label>
+                        <select id="trialLocation">
+                          <option value="">Select location to focus map</option>
+                        </select>
+                        <small class="form-hint">Optional, used to zoom the map quickly.</small>
+                      </div>
                       <div class="form-group">
                         <label>Draw Trial Areas</label>
                         <div id="trialMap">
@@ -505,7 +574,7 @@
                   </button>
                   <div class="run-trial-info">
                     <h3 id="runTrialName">Trial Name</h3>
-                    <span id="runTrialProgress" class="run-trial-progress">0 / 0 completed</span>
+                    <!--<span id="runTrialProgress" class="run-trial-progress">0 / 0 completed</span>-->
                   </div>
                   <div class="run-trial-actions">
                     <button class="btn btn-secondary mobile-nav-toggle" onclick="openMobileNav()">
@@ -553,6 +622,25 @@
               </div>
             </div>
         
+            <!-- Photo Preview Modal -->
+            <div id="photoPreviewModal" class="modal-overlay hidden">
+              <div class="modal-content photo-preview-modal">
+                <button class="modal-close" onclick="closePhotoPreview()">
+                  <span class="material-symbols-rounded">close</span>
+                </button>
+                <img id="photoPreviewImage" src="" alt="Photo Preview" class="photo-preview-image">
+                <div class="photo-preview-controls">
+                  <button class="btn btn-secondary" id="prevPhotoBtn" onclick="navigatePhotos('prev')">
+                    <span class="material-symbols-rounded">arrow_back</span>
+                  </button>
+                  <span id="photoCounter" class="photo-counter">1 / 1</span>
+                  <button class="btn btn-secondary" id="nextPhotoBtn" onclick="navigatePhotos('next')">
+                    <span class="material-symbols-rounded">arrow_forward</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+        
             <!-- View Progress Modal -->
             <div id="viewProgressModal" class="view-progress-modal">
               <div class="view-progress-container">
@@ -583,12 +671,34 @@
                     <span class="material-symbols-rounded">search</span>
                     <input type="text" id="librarySearchInput" placeholder="Search files...">
                   </div>
-                  <div class="library-filter">
-                    <button class="library-filter-btn active" data-filter="all">All</button>
-                    <button class="library-filter-btn" data-filter="pdf">PDF</button>
-                    <button class="library-filter-btn" data-filter="image">Images</button>
-                    <button class="library-filter-btn" data-filter="video">Videos</button>
-                    <button class="library-filter-btn" data-filter="other">Other</button>
+                  <div class="library-filter-container">
+                    <button class="library-filter-trigger" id="libraryFilterTrigger" aria-haspopup="true" aria-expanded="false">
+                      <span class="material-symbols-rounded">filter_alt</span>
+                    </button>
+                    <div class="library-filter-dropdown" id="libraryFilterDropdown">
+                      <div class="library-filter-menu">
+                        <button class="library-filter-item active" data-filter="all">
+                          <span class="filter-check"></span>
+                          All files
+                        </button>
+                        <button class="library-filter-item" data-filter="pdf">
+                          <span class="filter-check"></span>
+                          PDF
+                        </button>
+                        <button class="library-filter-item" data-filter="image">
+                          <span class="filter-check"></span>
+                          Images
+                        </button>
+                        <button class="library-filter-item" data-filter="video">
+                          <span class="filter-check"></span>
+                          Videos
+                        </button>
+                        <button class="library-filter-item" data-filter="other">
+                          <span class="filter-check"></span>
+                          Other
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   <div class="library-sort">
                     <select id="librarySortBy" class="library-sort-select">

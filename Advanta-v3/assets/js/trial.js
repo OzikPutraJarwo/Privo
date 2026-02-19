@@ -280,11 +280,13 @@ function formatMonthYear(dateString) {
 function toggleArchivedTrials() {
   const archivedPanel = document.getElementById("archivedTrialManagementPanel");
   const archivedList = document.getElementById("archivedTrialList");
+  const toggleHead = document.querySelector(".inventory-header.archived-header");
   const toggle = document.querySelector(".archived-header-toggle");
   
   if (!archivedPanel) return;
   
   archivedList.classList.toggle("collapsed");
+  toggleHead.classList.toggle("collapsed");
   toggle.classList.toggle("collapsed");
 }
 
@@ -308,6 +310,9 @@ function openAddTrialModal() {
 
   // Populate parameters
   populateTrialParameters();
+
+  // Setup calculation listeners and reset calculated fields
+  setupTrialGeneralCalculations();
 
   // Reset areas list
   document.getElementById("areasList").classList.add("hidden");
@@ -347,6 +352,10 @@ function openEditTrialModal(trialId) {
     trial.plantingStart || "";
   document.getElementById("trialPlantingEnd").value = trial.plantingEnd || "";
   document.getElementById("trialType").value = trial.trialType || "";
+  document.getElementById("trialRowsPerPlot").value = trial.rowsPerPlot ?? "";
+  document.getElementById("trialPlotLength").value = trial.plotLength ?? "";
+  document.getElementById("trialPlantSpacingWidth").value = trial.plantSpacingWidth ?? "";
+  document.getElementById("trialPlantSpacingHeight").value = trial.plantSpacingHeight ?? "";
 
   // Populate dropdowns
   populateTrialCrops();
@@ -357,6 +366,9 @@ function openEditTrialModal(trialId) {
   if (trialLocationSelect) trialLocationSelect.value = trial.locationId || "";
 
   populateTrialParameters(trial.parameters);
+
+  // Setup calculation listeners and refresh calculated fields
+  setupTrialGeneralCalculations();
 
   // Load areas
   trialState.currentAreas = trial.areas || [];
@@ -385,14 +397,20 @@ function closeTrialModal() {
 function toggleTrialEditor(show) {
   const editor = document.getElementById("trialEditor");
   const panel = document.getElementById("trialManagementPanel");
+  const archive = document.getElementById("archivedTrialManagementPanel");
+  const submenu = document.getElementById("trialSubmenu");
   if (!editor || !panel) return;
 
   if (show) {
     editor.classList.add("active");
     panel.classList.add("hidden");
+    archive.classList.add("hidden");
+    if (submenu) submenu.classList.add("hidden");
   } else {
     editor.classList.remove("active");
     panel.classList.remove("hidden");
+    archive.classList.remove("hidden");
+    if (submenu) submenu.classList.remove("hidden");
   }
 }
 
@@ -538,9 +556,7 @@ function validateGeneralSection() {
   const plantingEnd = document.getElementById("trialPlantingEnd").value;
   const cropId = document.getElementById("trialCrops").value;
   const trialType = document.getElementById("trialType").value;
-  const selectedParams = document.querySelectorAll(
-    '#parameterList input[type=\"checkbox\"]:checked',
-  ).length;
+  const selectedParams = getSelectedParameterIds().length;
 
   if (!name) {
     showToast("Please enter trial name", "error");
@@ -635,60 +651,334 @@ function handleLocationChange(e) {
 
 // Populate parameters with search
 function populateTrialParameters(selectedIds = []) {
-  const container = document.getElementById("parameterList");
+  const availableList = document.getElementById("parameterAvailableList");
+  const selectedList = document.getElementById("parameterSelectedList");
   const searchInput = document.getElementById("parameterSearch");
+  const moveRightBtn = document.getElementById("parameterMoveRight");
+  const moveUpBtn = document.getElementById("parameterMoveUp");
+  const moveDownBtn = document.getElementById("parameterMoveDown");
+  const removeBtn = document.getElementById("parameterRemove");
   const parameters = inventoryState.items.parameters || [];
+  if (!availableList || !selectedList || !searchInput) return;
 
-  function renderParameters(searchTerm = "") {
-    const filtered = parameters.filter(
-      (param) =>
+  trialState.selectedParametersOrder = Array.isArray(selectedIds)
+    ? [...selectedIds]
+    : [];
+
+  const setSelection = (listEl, id) => {
+    listEl.querySelectorAll(".picklist-item").forEach((item) => {
+      item.classList.toggle("selected", item.dataset.id === id);
+    });
+    listEl.dataset.selectedId = id || "";
+  };
+
+  const renderAvailable = (searchTerm = "") => {
+    const filtered = parameters.filter((param) => {
+      const match =
         param.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (param.initial || "").toLowerCase().includes(searchTerm.toLowerCase()),
-    );
+        (param.initial || "").toLowerCase().includes(searchTerm.toLowerCase());
+      return match && !trialState.selectedParametersOrder.includes(param.id);
+    });
 
     if (filtered.length === 0) {
-      container.innerHTML =
+      availableList.innerHTML =
         '<p class="param-no-results">No parameters found</p>';
       return;
     }
 
-    container.innerHTML = filtered
-      .map((param) => {
-        const isChecked = selectedIds.includes(param.id);
+    availableList.innerHTML = filtered
+      .map(
+        (param) => `
+          <div class="picklist-item" draggable="true" data-id="${param.id}">
+            <div class="picklist-item-title">${escapeHtml(param.name)}</div>
+            <div class="picklist-item-meta">
+              ${escapeHtml(param.initial || "")} · ${escapeHtml(param.type || "")} · ${escapeHtml(param.unit || "")}
+            </div>
+          </div>
+        `,
+      )
+      .join("");
+
+    availableList.querySelectorAll(".picklist-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        setSelection(availableList, item.dataset.id);
+        setSelection(selectedList, "");
+      });
+      item.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", item.dataset.id);
+        e.dataTransfer.setData("source", "available");
+        item.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+      });
+      item.addEventListener("dragend", (e) => {
+        item.classList.remove("dragging");
+        document.querySelectorAll(".picklist-item.drag-over").forEach(el => el.classList.remove("drag-over"));
+      });
+    });
+  };
+
+  const renderSelected = () => {
+    if (trialState.selectedParametersOrder.length === 0) {
+      selectedList.innerHTML =
+        '<p class="param-no-results">No parameters selected</p>';
+      return;
+    }
+
+    selectedList.innerHTML = trialState.selectedParametersOrder
+      .map((id) => {
+        const param = parameters.find((p) => p.id === id);
+        if (!param) return "";
         return `
-                <label class="param-checkbox-label">
-                    <input type="checkbox" value="${param.id}" ${isChecked ? "checked" : ""} 
-                           class="param-checkbox-input" 
-                           onchange="updateSelectedParamCount()">
-                    <div class="param-checkbox-info">
-                        <div class="param-checkbox-name">${escapeHtml(param.name)}</div>
-                        <div class="param-checkbox-meta">
-                            ${escapeHtml(param.initial || "")} · ${escapeHtml(param.type || "")} · ${escapeHtml(param.unit || "")}
-                        </div>
-                    </div>
-                </label>
-            `;
+          <div class="picklist-item" draggable="true" data-id="${param.id}">
+            <div class="picklist-item-title">${escapeHtml(param.name)}</div>
+            <div class="picklist-item-meta">
+              ${escapeHtml(param.initial || "")} · ${escapeHtml(param.type || "")} · ${escapeHtml(param.unit || "")}
+            </div>
+          </div>
+        `;
       })
       .join("");
 
+    selectedList.querySelectorAll(".picklist-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        setSelection(selectedList, item.dataset.id);
+        setSelection(availableList, "");
+      });
+      item.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", item.dataset.id);
+        e.dataTransfer.setData("source", "selected");
+        item.classList.add("dragging");
+      });
+      item.addEventListener("dragend", (e) => {
+        item.classList.remove("dragging");
+        document.querySelectorAll(".picklist-item.drag-over").forEach(el => el.classList.remove("drag-over"));
+      });
+      item.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        const draggedId = e.dataTransfer.getData("text/plain");
+        const source = e.dataTransfer.getData("source");
+        if (source === "selected" && draggedId !== item.dataset.id) {
+          item.classList.add("drag-over");
+          e.dataTransfer.dropEffect = "move";
+        }
+      });
+      item.addEventListener("dragleave", (e) => {
+        if (e.target === item) {
+          item.classList.remove("drag-over");
+        }
+      });
+      item.addEventListener("drop", (e) => {
+        e.preventDefault();
+        item.classList.remove("drag-over");
+        const draggedId = e.dataTransfer.getData("text/plain");
+        const source = e.dataTransfer.getData("source");
+        if (!draggedId) return;
+        if (source === "selected") {
+          const fromIndex = trialState.selectedParametersOrder.indexOf(draggedId);
+          const toIndex = trialState.selectedParametersOrder.indexOf(item.dataset.id);
+          if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
+            const [moved] = trialState.selectedParametersOrder.splice(fromIndex, 1);
+            trialState.selectedParametersOrder.splice(toIndex, 0, moved);
+            renderSelected();
+          }
+        } else if (source === "available") {
+          if (!trialState.selectedParametersOrder.includes(draggedId)) {
+            const toIndex = trialState.selectedParametersOrder.indexOf(item.dataset.id);
+            trialState.selectedParametersOrder.splice(toIndex, 0, draggedId);
+            renderSelected();
+            renderAvailable(searchInput.value);
+            updateSelectedParamCount();
+          }
+        }
+      });
+    });
+  };
+
+  const addSelectedFromAvailable = () => {
+    const selectedId = availableList.dataset.selectedId;
+    if (!selectedId) return;
+    if (!trialState.selectedParametersOrder.includes(selectedId)) {
+      trialState.selectedParametersOrder.push(selectedId);
+      renderSelected();
+      renderAvailable(searchInput.value);
+      updateSelectedParamCount();
+    }
+  };
+
+  const removeSelectedFromSelected = () => {
+    const selectedId = selectedList.dataset.selectedId;
+    if (!selectedId) return;
+    trialState.selectedParametersOrder = trialState.selectedParametersOrder.filter(
+      (id) => id !== selectedId,
+    );
+    renderSelected();
+    renderAvailable(searchInput.value);
     updateSelectedParamCount();
-  }
+  };
+
+  const moveSelected = (direction) => {
+    const selectedId = selectedList.dataset.selectedId;
+    if (!selectedId) return;
+    const currentIndex = trialState.selectedParametersOrder.indexOf(selectedId);
+    if (currentIndex === -1) return;
+    const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= trialState.selectedParametersOrder.length) return;
+    const [moved] = trialState.selectedParametersOrder.splice(currentIndex, 1);
+    trialState.selectedParametersOrder.splice(newIndex, 0, moved);
+    renderSelected();
+    setSelection(selectedList, selectedId);
+  };
+
+  const handleListDrop = (targetList) => (e) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData("text/plain");
+    const source = e.dataTransfer.getData("source");
+    if (!draggedId) return;
+
+    if (targetList === "selected") {
+      if (!trialState.selectedParametersOrder.includes(draggedId)) {
+        trialState.selectedParametersOrder.push(draggedId);
+        renderSelected();
+        renderAvailable(searchInput.value);
+        updateSelectedParamCount();
+      }
+    }
+
+    if (targetList === "available" && source === "selected") {
+      trialState.selectedParametersOrder = trialState.selectedParametersOrder.filter(
+        (id) => id !== draggedId,
+      );
+      renderSelected();
+      renderAvailable(searchInput.value);
+      updateSelectedParamCount();
+    }
+  };
+
+  availableList.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    availableList.classList.add("drag-over-list");
+  });
+  availableList.addEventListener("dragleave", (e) => {
+    if (e.target === availableList) {
+      availableList.classList.remove("drag-over-list");
+    }
+  });
+  availableList.addEventListener("drop", handleListDrop("available"));
+  
+  selectedList.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    selectedList.classList.add("drag-over-list");
+  });
+  selectedList.addEventListener("dragleave", (e) => {
+    if (e.target === selectedList) {
+      selectedList.classList.remove("drag-over-list");
+    }
+  });
+  selectedList.addEventListener("drop", handleListDrop("selected"));
+
+  moveRightBtn?.addEventListener("click", addSelectedFromAvailable);
+  moveUpBtn?.addEventListener("click", () => moveSelected("up"));
+  moveDownBtn?.addEventListener("click", () => moveSelected("down"));
+  removeBtn?.addEventListener("click", removeSelectedFromSelected);
 
   // Initial render
-  renderParameters();
+  renderAvailable();
+  renderSelected();
+  updateSelectedParamCount();
 
   // Search listener
   searchInput.removeEventListener("input", searchInput._searchHandler);
-  searchInput._searchHandler = (e) => renderParameters(e.target.value);
+  searchInput._searchHandler = (e) => renderAvailable(e.target.value);
   searchInput.addEventListener("input", searchInput._searchHandler);
 }
 
 // Update selected parameter count
 function updateSelectedParamCount() {
-  const checkboxes = document.querySelectorAll(
-    '#parameterList input[type="checkbox"]:checked',
+  const count = getSelectedParameterIds().length;
+  const countEl = document.getElementById("selectedParamCount");
+  if (countEl) countEl.textContent = count;
+}
+
+function getSelectedParameterIds() {
+  return Array.isArray(trialState.selectedParametersOrder)
+    ? trialState.selectedParametersOrder
+    : [];
+}
+
+function setupTrialGeneralCalculations() {
+  const inputs = [
+    document.getElementById("trialRowsPerPlot"),
+    document.getElementById("trialPlotLength"),
+    document.getElementById("trialPlantSpacingWidth"),
+    document.getElementById("trialPlantSpacingHeight"),
+  ].filter(Boolean);
+
+  inputs.forEach((input) => {
+    input.removeEventListener("input", updateTrialGeneralCalculations);
+    input.addEventListener("input", updateTrialGeneralCalculations);
+  });
+
+  updateTrialGeneralCalculations();
+}
+
+function updateTrialGeneralCalculations() {
+  const rowsPerPlot = parseFloat(
+    document.getElementById("trialRowsPerPlot")?.value || "",
   );
-  document.getElementById("selectedParamCount").textContent = checkboxes.length;
+  const plotLength = parseFloat(
+    document.getElementById("trialPlotLength")?.value || "",
+  );
+  const spacingWidthCm = parseFloat(
+    document.getElementById("trialPlantSpacingWidth")?.value || "",
+  );
+  const spacingHeightCm = parseFloat(
+    document.getElementById("trialPlantSpacingHeight")?.value || "",
+  );
+
+  const plotAreaEl = document.getElementById("trialPlotArea");
+  const expectedPlantsEl = document.getElementById("trialExpectedPlants");
+  const populationEl = document.getElementById("trialPopulationHa");
+
+  if (!plotAreaEl || !expectedPlantsEl || !populationEl) return;
+
+  const widthM = Number.isFinite(spacingWidthCm) ? spacingWidthCm / 100 : NaN;
+  const heightM = Number.isFinite(spacingHeightCm) ? spacingHeightCm / 100 : NaN;
+
+  const canCalcArea =
+    Number.isFinite(rowsPerPlot) &&
+    Number.isFinite(plotLength) &&
+    Number.isFinite(widthM) &&
+    rowsPerPlot > 0 &&
+    plotLength > 0 &&
+    widthM > 0;
+
+  const canCalcExpected =
+    Number.isFinite(rowsPerPlot) &&
+    Number.isFinite(plotLength) &&
+    Number.isFinite(heightM) &&
+    rowsPerPlot > 0 &&
+    plotLength > 0 &&
+    heightM > 0;
+
+  const canCalcPopulation =
+    Number.isFinite(widthM) &&
+    Number.isFinite(heightM) &&
+    widthM > 0 &&
+    heightM > 0;
+
+  plotAreaEl.value = canCalcArea
+    ? (rowsPerPlot * plotLength * widthM).toFixed(2)
+    : "";
+
+  expectedPlantsEl.value = canCalcExpected
+    ? Math.round((plotLength / heightM) * rowsPerPlot).toString()
+    : "";
+
+  populationEl.value = canCalcPopulation
+    ? (10000 / (widthM * heightM)).toFixed(2)
+    : "";
 }
 
 // Initialize trial map
@@ -706,8 +996,8 @@ function initializeTrialMap(centerCoords = null) {
   if (!mapContainer) return;
 
   // Default center (Indonesia)
-  let center = [-6.2, 106.8];
-  let zoom = 5;
+  let center = [-2.5, 118.0];
+  let zoom = 4;
 
   if (centerCoords) {
     const parsed = parseCoordinates(centerCoords);
@@ -738,9 +1028,17 @@ function initializeTrialMap(centerCoords = null) {
       attribution: "&copy; OpenStreetMap contributors, &copy; CartoDB",
       maxNativeZoom: 19,
       maxZoom: 25,
-      pane: "shadowPane",
     },
   ).addTo(trialMapInstance);
+
+  // Fit Indonesia bounds when no specific location is provided
+  if (!centerCoords) {
+    const indonesiaBounds = L.latLngBounds([
+      [-11.0, 95.0],
+      [6.5, 141.0],
+    ]);
+    trialMapInstance.fitBounds(indonesiaBounds, { padding: [20, 20] });
+  }
 
   // Setup drawing controls
   setupTrialMapDrawing();
@@ -1358,9 +1656,11 @@ function renderAreasList() {
                     <div class="area-list-info">
                         <strong>Address:</strong> ${escapeHtml(address)}
                     </div>
+                    <!--
                     <div class="area-list-info">
                         <strong>Points:</strong> ${area.coordinates.length}
                     </div>
+                    -->
                     <details class="area-list-details">
                         <summary>View Coordinates</summary>
                         <div class="area-list-coords">
@@ -1500,13 +1800,54 @@ async function saveTrial() {
   const cropName =
     cropSelect.options[cropSelect.selectedIndex].dataset.name || "";
   const trialType = document.getElementById("trialType").value;
+  const rowsPerPlot = parseFloat(
+    document.getElementById("trialRowsPerPlot").value || "",
+  );
+  const plotLength = parseFloat(
+    document.getElementById("trialPlotLength").value || "",
+  );
+  const plantSpacingWidth = parseFloat(
+    document.getElementById("trialPlantSpacingWidth").value || "",
+  );
+  const plantSpacingHeight = parseFloat(
+    document.getElementById("trialPlantSpacingHeight").value || "",
+  );
+  const widthM = Number.isFinite(plantSpacingWidth)
+    ? plantSpacingWidth / 100
+    : NaN;
+  const heightM = Number.isFinite(plantSpacingHeight)
+    ? plantSpacingHeight / 100
+    : NaN;
+  const plotArea =
+    Number.isFinite(rowsPerPlot) &&
+    Number.isFinite(plotLength) &&
+    Number.isFinite(widthM) &&
+    rowsPerPlot > 0 &&
+    plotLength > 0 &&
+    widthM > 0
+      ? rowsPerPlot * plotLength * widthM
+      : null;
+  const expectedPlantsPerPlot =
+    Number.isFinite(rowsPerPlot) &&
+    Number.isFinite(plotLength) &&
+    Number.isFinite(heightM) &&
+    rowsPerPlot > 0 &&
+    plotLength > 0 &&
+    heightM > 0
+      ? (plotLength / heightM) * rowsPerPlot
+      : null;
+  const populationPerHa =
+    Number.isFinite(widthM) &&
+    Number.isFinite(heightM) &&
+    widthM > 0 &&
+    heightM > 0
+      ? 10000 / (widthM * heightM)
+      : null;
   const locationEl = document.getElementById("trialLocation");
   const locationId = locationEl ? locationEl.value : (trialState.editingTrialId ? trialState.trials.find(t => t.id === trialState.editingTrialId)?.locationId : "");
 
   // Get selected parameters
-  const selectedParams = Array.from(
-    document.querySelectorAll('#parameterList input[type="checkbox"]:checked'),
-  ).map((cb) => cb.value);
+  const selectedParams = getSelectedParameterIds();
 
   // Validation
   if (!name) {
@@ -1605,6 +1946,17 @@ async function saveTrial() {
         trial.cropId = cropId;
         trial.cropName = cropName;
         trial.trialType = trialType;
+        trial.rowsPerPlot = Number.isFinite(rowsPerPlot) ? rowsPerPlot : null;
+        trial.plotLength = Number.isFinite(plotLength) ? plotLength : null;
+        trial.plantSpacingWidth = Number.isFinite(plantSpacingWidth)
+          ? plantSpacingWidth
+          : null;
+        trial.plantSpacingHeight = Number.isFinite(plantSpacingHeight)
+          ? plantSpacingHeight
+          : null;
+        trial.plotArea = plotArea;
+        trial.expectedPlantsPerPlot = expectedPlantsPerPlot;
+        trial.populationPerHa = populationPerHa;
         trial.locationId = locationId;
         trial.locationCoordinates = locationCoords;
         trial.parameters = selectedParams;
@@ -1627,6 +1979,17 @@ async function saveTrial() {
         cropId: cropId,
         cropName: cropName,
         trialType: trialType,
+        rowsPerPlot: Number.isFinite(rowsPerPlot) ? rowsPerPlot : null,
+        plotLength: Number.isFinite(plotLength) ? plotLength : null,
+        plantSpacingWidth: Number.isFinite(plantSpacingWidth)
+          ? plantSpacingWidth
+          : null,
+        plantSpacingHeight: Number.isFinite(plantSpacingHeight)
+          ? plantSpacingHeight
+          : null,
+        plotArea: plotArea,
+        expectedPlantsPerPlot: expectedPlantsPerPlot,
+        populationPerHa: populationPerHa,
         locationId: locationId,
         locationCoordinates: locationCoords,
         parameters: selectedParams,
@@ -2133,24 +2496,23 @@ function createAreaLayoutingForm(area, areaIndex) {
   areaDiv.dataset.areaIndex = areaIndex;
 
   let linesHTML = matchingLines
-    .map(
-      (line, idx) => {
-        const qty = line.quantity !== undefined ? line.quantity : '∞';
-        const qtyClass = line.quantity !== undefined && line.quantity <= 0 ? 'line-qty-empty' : '';
-        return `
-        <label class="layouting-line-item ${qtyClass}">
-            <input type="checkbox" name="area${areaIndex}_lines" value="${line.id}" data-line-name="${line.name}" ${line.quantity !== undefined && line.quantity <= 0 ? 'disabled' : ''}>
-            <span>${escapeHtml(line.name)}</span>
-            <span class="line-quantity-badge ${qtyClass}">${qty}</span>
-        </label>
-    `;
-      },
-    )
+    .map((line) => {
+      const qty = line.quantity !== undefined ? line.quantity : "∞";
+      const qtyClass =
+        line.quantity !== undefined && line.quantity <= 0
+          ? "line-qty-empty"
+          : "";
+      return `
+        <div class="picklist-item ${qtyClass}" data-id="${line.id}" data-name="${escapeHtml(line.name)}" data-disabled="${line.quantity !== undefined && line.quantity <= 0}">
+          <span>${escapeHtml(line.name)}</span>
+          <span class="line-quantity-badge ${qtyClass}">${qty}</span>
+        </div>
+      `;
+    })
     .join("");
 
   if (matchingLines.length === 0) {
-    linesHTML =
-      '<p class="layouting-empty">No lines available for this crop.</p>';
+    linesHTML = '<p class="layouting-empty">No lines available for this crop.</p>';
   }
 
   areaDiv.innerHTML = `
@@ -2164,24 +2526,49 @@ function createAreaLayoutingForm(area, areaIndex) {
         </div>
         
         <div class="layouting-grid">
-            <div class="layouting-lines">
-                <label class="layouting-label">
-                    Select Lines
-                    <span class="layouting-hint"> (matching ${escapeHtml(selectedCropName)})</span>
-                </label>
-                <div class="layouting-search">
-                    <span class="material-symbols-rounded">search</span>
-                    <input 
-                        type="text" 
-                        class="area-line-search" 
-                        placeholder="Search lines..." 
-                        data-area-index="${areaIndex}"
-                    >
+          <div class="layouting-lines">
+            <label class="layouting-label">
+              Select Lines
+              <span class="layouting-hint"> (matching ${escapeHtml(selectedCropName)})</span>
+            </label>
+            <div class="dual-picklist">
+              <div class="picklist-column">
+                <div class="picklist-header">Available Lines</div>
+                <div class="picklist-search">
+                  <span class="material-symbols-rounded">search</span>
+                  <input 
+                    type="text" 
+                    class="area-line-search" 
+                    placeholder="Search lines..." 
+                    data-area-index="${areaIndex}"
+                  >
                 </div>
-                <div class="area-lines-list layouting-lines-list" data-area-index="${areaIndex}">
-                    ${linesHTML}
+                <div class="area-lines-list layouting-lines-list picklist-list" data-area-index="${areaIndex}" data-list="available">
+                  ${linesHTML}
                 </div>
+              </div>
+              <div class="picklist-controls">
+                <button type="button" class="picklist-control-btn" data-action="add" data-area-index="${areaIndex}" title="Add">
+                  <span class="material-symbols-rounded">arrow_forward</span>
+                </button>
+                <button type="button" class="picklist-control-btn" data-action="up" data-area-index="${areaIndex}" title="Move up">
+                  <span class="material-symbols-rounded">arrow_upward</span>
+                </button>
+                <button type="button" class="picklist-control-btn" data-action="down" data-area-index="${areaIndex}" title="Move down">
+                  <span class="material-symbols-rounded">arrow_downward</span>
+                </button>
+                <button type="button" class="picklist-control-btn danger" data-action="remove" data-area-index="${areaIndex}" title="Remove">
+                  <span class="material-symbols-rounded">delete</span>
+                </button>
+              </div>
+              <div class="picklist-column">
+                <div class="picklist-header">Selected Lines</div>
+                <div class="area-selected-lines picklist-list" data-area-index="${areaIndex}" data-list="selected">
+                  <!-- Selected lines populated here -->
+                </div>
+              </div>
             </div>
+          </div>
 
             <div class="layouting-controls">
                 <div class="layouting-field">
@@ -2233,18 +2620,211 @@ function createAreaLayoutingForm(area, areaIndex) {
         </div>
     `;
 
-  // Add search functionality
   const searchInput = areaDiv.querySelector(".area-line-search");
-  const linesList = areaDiv.querySelector(".area-lines-list");
+  const availableList = areaDiv.querySelector(".area-lines-list");
+  const selectedList = areaDiv.querySelector(".area-selected-lines");
+  const controlButtons = areaDiv.querySelectorAll(
+    `.picklist-control-btn[data-area-index="${areaIndex}"]`,
+  );
 
-  searchInput.addEventListener("input", (e) => {
-    const query = e.target.value.toLowerCase();
-    const labels = linesList.querySelectorAll("label");
-    labels.forEach((label) => {
-      const text = label.textContent.toLowerCase();
-      label.classList.toggle("hidden", !text.includes(query));
+  let selectedLineIds = Array.isArray(area.layout?.lines)
+    ? area.layout.lines.map((line) => line.id)
+    : [];
+
+  const setSelection = (listEl, id) => {
+    listEl.querySelectorAll(".picklist-item").forEach((item) => {
+      item.classList.toggle("selected", item.dataset.id === id);
     });
+    listEl.dataset.selectedId = id || "";
+  };
+
+  const renderAvailable = (searchTerm = "") => {
+    if (!availableList) return;
+    const filtered = matchingLines.filter((line) => {
+      const match = line.name
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      return match && !selectedLineIds.includes(line.id);
+    });
+
+    if (filtered.length === 0) {
+      availableList.innerHTML =
+        '<p class="layouting-empty">No lines available for this crop.</p>';
+      return;
+    }
+
+    availableList.innerHTML = filtered
+      .map((line) => {
+        const qty = line.quantity !== undefined ? line.quantity : "∞";
+        const qtyClass =
+          line.quantity !== undefined && line.quantity <= 0
+            ? "line-qty-empty"
+            : "";
+        const disabled = line.quantity !== undefined && line.quantity <= 0;
+        return `
+          <div class="picklist-item ${qtyClass} ${disabled ? "disabled" : ""}" draggable="${!disabled}" data-id="${line.id}" data-name="${escapeHtml(line.name)}" data-disabled="${disabled}">
+            <span>${escapeHtml(line.name)}</span>
+            <span class="line-quantity-badge ${qtyClass}">${qty}</span>
+          </div>
+        `;
+      })
+      .join("");
+
+    availableList.querySelectorAll(".picklist-item").forEach((item) => {
+      if (item.dataset.disabled === "true") return;
+      item.addEventListener("click", () => {
+        setSelection(availableList, item.dataset.id);
+        setSelection(selectedList, "");
+      });
+      item.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", item.dataset.id);
+        e.dataTransfer.setData("source", "available");
+      });
+    });
+  };
+
+  const renderSelected = () => {
+    if (!selectedList) return;
+    if (selectedLineIds.length === 0) {
+      selectedList.innerHTML =
+        '<p class="layouting-empty">No lines selected</p>';
+      return;
+    }
+
+    selectedList.innerHTML = selectedLineIds
+      .map((id) => {
+        const line = matchingLines.find((l) => l.id === id);
+        if (!line) return "";
+        const qty = line.quantity !== undefined ? line.quantity : "∞";
+        const qtyClass =
+          line.quantity !== undefined && line.quantity <= 0
+            ? "line-qty-empty"
+            : "";
+        return `
+          <div class="picklist-item" draggable="true" data-id="${line.id}" data-name="${escapeHtml(line.name)}">
+            <span>${escapeHtml(line.name)}</span>
+            <span class="line-quantity-badge ${qtyClass}">${qty}</span>
+          </div>
+        `;
+      })
+      .join("");
+
+    selectedList.querySelectorAll(".picklist-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        setSelection(selectedList, item.dataset.id);
+        setSelection(availableList, "");
+      });
+      item.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", item.dataset.id);
+        e.dataTransfer.setData("source", "selected");
+      });
+      item.addEventListener("dragover", (e) => e.preventDefault());
+      item.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const draggedId = e.dataTransfer.getData("text/plain");
+        const source = e.dataTransfer.getData("source");
+        if (!draggedId) return;
+        if (source === "selected") {
+          const fromIndex = selectedLineIds.indexOf(draggedId);
+          const toIndex = selectedLineIds.indexOf(item.dataset.id);
+          if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
+            const [moved] = selectedLineIds.splice(fromIndex, 1);
+            selectedLineIds.splice(toIndex, 0, moved);
+            renderSelected();
+            autoGenerateLayout();
+          }
+        } else if (source === "available") {
+          if (!selectedLineIds.includes(draggedId)) {
+            const toIndex = selectedLineIds.indexOf(item.dataset.id);
+            selectedLineIds.splice(toIndex, 0, draggedId);
+            renderSelected();
+            renderAvailable(searchInput.value);
+            autoGenerateLayout();
+          }
+        }
+      });
+    });
+  };
+
+  const addSelectedFromAvailable = () => {
+    const selectedId = availableList?.dataset.selectedId;
+    if (!selectedId) return;
+    if (!selectedLineIds.includes(selectedId)) {
+      selectedLineIds.push(selectedId);
+      renderSelected();
+      renderAvailable(searchInput.value);
+      autoGenerateLayout();
+    }
+  };
+
+  const removeSelectedFromSelected = () => {
+    const selectedId = selectedList?.dataset.selectedId;
+    if (!selectedId) return;
+    selectedLineIds = selectedLineIds.filter((id) => id !== selectedId);
+    renderSelected();
+    renderAvailable(searchInput.value);
+    autoGenerateLayout();
+  };
+
+  const moveSelected = (direction) => {
+    const selectedId = selectedList?.dataset.selectedId;
+    if (!selectedId) return;
+    const currentIndex = selectedLineIds.indexOf(selectedId);
+    if (currentIndex === -1) return;
+    const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= selectedLineIds.length) return;
+    const [moved] = selectedLineIds.splice(currentIndex, 1);
+    selectedLineIds.splice(newIndex, 0, moved);
+    renderSelected();
+    setSelection(selectedList, selectedId);
+    autoGenerateLayout();
+  };
+
+  const handleListDrop = (targetList) => (e) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData("text/plain");
+    const source = e.dataTransfer.getData("source");
+    if (!draggedId) return;
+
+    if (targetList === "selected") {
+      if (!selectedLineIds.includes(draggedId)) {
+        selectedLineIds.push(draggedId);
+        renderSelected();
+        renderAvailable(searchInput.value);
+        autoGenerateLayout();
+      }
+    }
+
+    if (targetList === "available" && source === "selected") {
+      selectedLineIds = selectedLineIds.filter((id) => id !== draggedId);
+      renderSelected();
+      renderAvailable(searchInput.value);
+      autoGenerateLayout();
+    }
+  };
+
+  if (availableList) {
+    availableList.addEventListener("dragover", (e) => e.preventDefault());
+    availableList.addEventListener("drop", handleListDrop("available"));
+  }
+  if (selectedList) {
+    selectedList.addEventListener("dragover", (e) => e.preventDefault());
+    selectedList.addEventListener("drop", handleListDrop("selected"));
+  }
+
+  controlButtons.forEach((btn) => {
+    const action = btn.dataset.action;
+    if (action === "add") btn.addEventListener("click", addSelectedFromAvailable);
+    if (action === "remove") btn.addEventListener("click", removeSelectedFromSelected);
+    if (action === "up") btn.addEventListener("click", () => moveSelected("up"));
+    if (action === "down") btn.addEventListener("click", () => moveSelected("down"));
   });
+
+  if (searchInput) {
+    searchInput.addEventListener("input", (e) => {
+      renderAvailable(e.target.value);
+    });
+  }
 
   // Auto-generate layout on input change with debounce
   let layoutDebounceTimer;
@@ -2269,10 +2849,8 @@ function createAreaLayoutingForm(area, areaIndex) {
     .querySelector(".area-randomization")
     .addEventListener("change", autoGenerateLayout);
 
-  // Add listener to line checkboxes
-  areaDiv.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
-    checkbox.addEventListener("change", autoGenerateLayout);
-  });
+  renderAvailable();
+  renderSelected();
 
   // If editing and layout exists, pre-populate form
   if (area.layout && area.layout.lines) {
@@ -2288,14 +2866,6 @@ function createAreaLayoutingForm(area, areaIndex) {
     if (randomizationSelect)
       randomizationSelect.value = area.layout.randomization || "normal";
 
-    // Check the selected lines
-    area.layout.lines.forEach((line) => {
-      const checkbox = areaDiv.querySelector(
-        `input[name="area${areaIndex}_lines"][value="${line.id}"]`,
-      );
-      if (checkbox) checkbox.checked = true;
-    });
-
     // Render existing layout result
     if (area.layout.result) {
       renderLayoutResult(areaIndex, area.layout.result);
@@ -2310,13 +2880,13 @@ function generateLayoutForArea(areaIndex) {
   const areaDiv = document.querySelector(`[data-area-index="${areaIndex}"]`);
   if (!areaDiv) return;
 
-  // Get selected lines
-  const selectedCheckboxes = areaDiv.querySelectorAll(
-    `input[name="area${areaIndex}_lines"]:checked`,
+  // Get selected lines from picklist (ordered)
+  const selectedItems = areaDiv.querySelectorAll(
+    ".area-selected-lines .picklist-item",
   );
-  const selectedLines = Array.from(selectedCheckboxes).map((cb) => ({
-    id: cb.value,
-    name: cb.dataset.lineName,
+  const selectedLines = Array.from(selectedItems).map((item) => ({
+    id: item.dataset.id,
+    name: item.dataset.name || item.textContent.trim(),
   }));
 
   const resultContainer = document.querySelector(
@@ -2449,13 +3019,14 @@ function renderLayoutResult(areaIndex, layouts) {
   layouts.forEach((grid, repIndex) => {
     html += `
             <div class="layouting-table-wrap">
+                <div class="layouting-table-title">Replication ${repIndex + 1}</div>
                 <table class="layouting-table">
                     <tbody>
                         ${grid
                           .map(
                             (row, rowIdx) => `
                             <tr>
-                                <td class="layouting-row-header">R${rowIdx + 1}</td>
+                                <td class="layouting-row-header">Range ${rowIdx + 1}</td>
                                 ${row
                                   .map(
                                     (cell) => `
@@ -2520,8 +3091,9 @@ function renderRunTrialList() {
   const header = document.querySelector("#runTrialSelection .run-trial-header");
   if (!container) return;
 
+  // Filter out archived trials from the run trial list
   const runnableTrials = trialState.trials.filter(
-    (t) => t.areas && t.areas.length > 0 && t.areas.some((a) => a.layout?.result)
+    (t) => !t.archived && t.areas && t.areas.length > 0 && t.areas.some((a) => a.layout?.result)
   );
 
   if (runnableTrials.length === 0) {
@@ -2555,7 +3127,12 @@ function renderRunTrialList() {
         <div class="run-trial-card" data-trial-id="${trial.id}">
           <div class="run-trial-card-header">
             <div class="run-trial-card-icon">
-              <span class="material-symbols-rounded">play_circle</span>
+              <svg class="progress-circle" width="64" height="64" viewBox="0 0 64 64">
+                <circle cx="32" cy="32" r="28" class="progress-circle-bg"></circle>
+                <circle cx="32" cy="32" r="28" class="progress-circle-fill" 
+                        style="stroke-dasharray: ${progressPercent * 1.75} 175; stroke: ${getProgressGradientColor(progressPercent)}"></circle>
+                <text x="32" y="37" class="progress-circle-text" text-anchor="middle">${progressPercent}%</text>
+              </svg>
             </div>
             <div class="run-trial-card-body">
               <div class="run-trial-card-title">${escapeHtml(trial.name)}</div>
@@ -2566,6 +3143,7 @@ function renderRunTrialList() {
               <div class="run-trial-status-percent">${progressPercent}%</div>
             </div>
           </div>
+          <!--
           <div class="run-trial-card-stats">
             <div class="run-trial-stat">
               <span class="material-symbols-rounded">location_on</span>
@@ -2584,6 +3162,7 @@ function renderRunTrialList() {
               ${progress.completed}/${progress.total}
             </div>
           </div>
+          -->
         </div>
       `;
     })
@@ -2605,7 +3184,7 @@ function setupRunTrialEventListeners() {
   const backBtn = document.getElementById("runTrialBackBtn");
 
   if (backBtn) {
-    backBtn.addEventListener("click", exitRunTrial);
+    backBtn.addEventListener("click", confirmExitRunTrial);
   }
   
   // Add keyboard navigation for run trial (arrow keys)
@@ -2673,6 +3252,28 @@ function exitRunTrial() {
   document.body.classList.remove("run-trial-active", "sidebar-collapsed");
 
   renderRunTrialList();
+}
+
+function confirmExitRunTrial() {
+  const doExit = () => {
+    if (hasResponseChanges()) {
+      saveCurrentResponseSilent();
+      autoSaveProgress();
+    }
+    exitRunTrial();
+  };
+
+  if (typeof showConfirmModal === "function") {
+    showConfirmModal(
+      "Exit Run Trial",
+      "Are you sure you want to exit? Current progress will be saved automatically.",
+      doExit,
+      "Exit",
+      "btn-primary",
+    );
+  } else if (window.confirm("Are you sure you want to exit? Current progress will be saved automatically.")) {
+    doExit();
+  }
 }
 
 // Render navigation tree
@@ -2965,32 +3566,63 @@ function hasResponse(areaIndex, paramId, lineKey) {
 
 // Select a line to answer
 function selectLine(areaIndex, paramId, lineId, repIndex, sampleIndex = 0) {
-  // Save current response before switching (auto-save) only if there are changes
-  if (runTrialState.currentAreaIndex !== null && runTrialState.currentParamId && runTrialState.currentLineId) {
-    if (hasResponseChanges()) {
-      saveCurrentResponseSilent();
+  const isLineChange =
+    runTrialState.currentAreaIndex !== null &&
+    (runTrialState.currentAreaIndex !== areaIndex ||
+      runTrialState.currentParamId !== paramId ||
+      runTrialState.currentLineId !== lineId ||
+      runTrialState.currentRepIndex !== repIndex);
+
+  const proceed = () => {
+    if (
+      runTrialState.currentAreaIndex !== null &&
+      runTrialState.currentParamId &&
+      runTrialState.currentLineId
+    ) {
+      if (hasResponseChanges()) {
+        saveCurrentResponseSilent();
+        autoSaveProgress();
+      }
     }
+
+    runTrialState.currentAreaIndex = areaIndex;
+    runTrialState.currentParamId = paramId;
+    runTrialState.currentLineId = lineId;
+    runTrialState.currentRepIndex = repIndex;
+    runTrialState.currentSampleIndex = sampleIndex;
+
+    // Re-render nav tree using current selection so the correct area/param/rep is expanded
+    renderRunTrialNavTree();
+    updateRunTrialProgress();
+    
+    // Update dashboard progress in real-time
+    if (typeof renderDashboardTrialProgress === 'function') {
+      renderDashboardTrialProgress();
+    }
+
+    // Close mobile nav if open
+    closeMobileNav();
+
+    renderQuestionCard();
+  };
+
+  if (isLineChange && runTrialState.currentLineId) {
+    if (typeof showConfirmModal === "function") {
+      showConfirmModal(
+        "Change Line",
+        "Are you sure you want to move to another line? Current progress will be saved automatically.",
+        proceed,
+        "Proceed",
+        "btn-primary",
+      );
+    } else if (window.confirm("Are you sure you want to move to another line? Current progress will be saved automatically.")) {
+      proceed();
+    }
+    return;
   }
 
-  runTrialState.currentAreaIndex = areaIndex;
-  runTrialState.currentParamId = paramId;
-  runTrialState.currentLineId = lineId;
-  runTrialState.currentRepIndex = repIndex;
-  runTrialState.currentSampleIndex = sampleIndex;
+  proceed();
 
-  // Re-render nav tree using current selection so the correct area/param/rep is expanded
-  renderRunTrialNavTree();
-  updateRunTrialProgress();
-  
-  // Update dashboard progress in real-time
-  if (typeof renderDashboardTrialProgress === 'function') {
-    renderDashboardTrialProgress();
-  }
-
-  // Close mobile nav if open
-  closeMobileNav();
-
-  renderQuestionCard();
 }
 
 // Render empty question state
@@ -3182,9 +3814,9 @@ function renderQuestionCard() {
           ${photoList
             .map(
               (photo, idx) => `
-            <div class="run-photo-preview" data-index="${idx}">
+            <div class="run-photo-preview" data-index="${idx}" onclick="openPhotoPreview(${idx})">
               <img src="${photo}" alt="Photo ${idx + 1}">
-              <button class="run-photo-remove" onclick="removePhoto(${idx})">
+              <button class="run-photo-remove" onclick="removePhoto(${idx}); event.stopPropagation();">
                 <span class="material-symbols-rounded">close</span>
               </button>
             </div>
@@ -3376,6 +4008,87 @@ function removePhoto(idx) {
   }
   
   renderQuestionCard();
+}
+
+// Photo preview state
+let photoPreviewState = {
+  photos: [],
+  currentIndex: 0,
+};
+
+// Open photo preview modal
+function openPhotoPreview(photoIndex = 0) {
+  const areaIndex = runTrialState.currentAreaIndex;
+  const paramId = runTrialState.currentParamId;
+  const lineId = runTrialState.currentLineId;
+  const repIndex = runTrialState.currentRepIndex;
+  const sampleIndex = runTrialState.currentSampleIndex || 0;
+  
+  if (areaIndex === null || !paramId || !lineId) return;
+  
+  const param = inventoryState.items.parameters.find((p) => p.id === paramId);
+  if (!param) return;
+  
+  // Determine photo key based on photoMode
+  const photoMode = param.photoMode || "per-sample";
+  const photoKey = photoMode === "per-line" 
+    ? `${lineId}_${repIndex}` 
+    : `${lineId}_${repIndex}_${sampleIndex}`;
+  
+  const photos = runTrialState.responses[areaIndex]?.[paramId]?.[photoKey]?.photos || [];
+  if (photos.length === 0) return;
+  
+  photoPreviewState.photos = photos;
+  photoPreviewState.currentIndex = Math.min(photoIndex, photos.length - 1);
+  
+  // Update modal
+  const modal = document.getElementById("photoPreviewModal");
+  const image = document.getElementById("photoPreviewImage");
+  const counter = document.getElementById("photoCounter");
+  const prevBtn = document.getElementById("prevPhotoBtn");
+  const nextBtn = document.getElementById("nextPhotoBtn");
+  
+  if (modal && image && counter) {
+    image.src = photos[photoPreviewState.currentIndex];
+    counter.textContent = `${photoPreviewState.currentIndex + 1} / ${photos.length}`;
+    prevBtn.disabled = photoPreviewState.currentIndex === 0;
+    nextBtn.disabled = photoPreviewState.currentIndex === photos.length - 1;
+    modal.classList.remove("hidden");
+  }
+}
+
+// Close photo preview modal
+function closePhotoPreview() {
+  const modal = document.getElementById("photoPreviewModal");
+  if (modal) {
+    modal.classList.add("hidden");
+  }
+  photoPreviewState.photos = [];
+  photoPreviewState.currentIndex = 0;
+}
+
+// Navigate photos in preview
+function navigatePhotos(direction) {
+  const photos = photoPreviewState.photos;
+  if (photos.length === 0) return;
+  
+  if (direction === "prev" && photoPreviewState.currentIndex > 0) {
+    photoPreviewState.currentIndex--;
+  } else if (direction === "next" && photoPreviewState.currentIndex < photos.length - 1) {
+    photoPreviewState.currentIndex++;
+  }
+  
+  const image = document.getElementById("photoPreviewImage");
+  const counter = document.getElementById("photoCounter");
+  const prevBtn = document.getElementById("prevPhotoBtn");
+  const nextBtn = document.getElementById("nextPhotoBtn");
+  
+  if (image && counter) {
+    image.src = photos[photoPreviewState.currentIndex];
+    counter.textContent = `${photoPreviewState.currentIndex + 1} / ${photos.length}`;
+    prevBtn.disabled = photoPreviewState.currentIndex === 0;
+    nextBtn.disabled = photoPreviewState.currentIndex === photos.length - 1;
+  }
 }
 
 // Check if current response has changes from last saved state
@@ -3721,8 +4434,8 @@ function updateRunTrialProgress() {
     return hasResponse(l.areaIndex, l.paramId, lineKey);
   }).length;
 
-  const percentage = lines.length > 0 ? Math.round((completed / lines.length) * 100) : 0;
-  document.getElementById("runTrialProgress").textContent = `${completed} / ${lines.length} · ${percentage}%`;
+  // const percentage = lines.length > 0 ? Math.round((completed / lines.length) * 100) : 0;
+  // document.getElementById("runTrialProgress").textContent = `${completed} / ${lines.length} · ${percentage}%`;
 }
 
 // Save run trial progress
@@ -4038,17 +4751,34 @@ function calculateTrialProgress(trial) {
         row.forEach((cell) => {
           if (!cell) return;
           parameters.forEach((paramId) => {
-            total++;
-            const lineKey = `${cell.id}_${repIndex}`;
-            const response = responses[areaIndex]?.[paramId]?.[lineKey];
             const param = inventoryState.items.parameters.find((p) => p.id === paramId);
-            const hasValue = response?.value !== undefined && response?.value !== "";
-            const hasPhotos = response?.photos?.length > 0;
+            const numberOfSamples = param?.numberOfSamples || 1;
+            const photoMode = param?.photoMode || "per-sample";
 
-            if (param?.requirePhoto) {
-              if (hasPhotos) completed++;
-            } else if (hasValue || hasPhotos) {
-              completed++;
+            // For each sample in this line
+            for (let sampleIndex = 0; sampleIndex < numberOfSamples; sampleIndex++) {
+              total++;
+              
+              // Response key for this specific sample
+              const lineKey = `${cell.id}_${repIndex}_${sampleIndex}`;
+              const response = responses[areaIndex]?.[paramId]?.[lineKey];
+              const hasValue = response?.value !== undefined && response?.value !== "";
+
+              // Check photos
+              let hasPhotos = false;
+              if (param?.requirePhoto) {
+                const photoKey = photoMode === "per-line" 
+                  ? `${cell.id}_${repIndex}` 
+                  : `${cell.id}_${repIndex}_${sampleIndex}`;
+                const photoResponse = responses[areaIndex]?.[paramId]?.[photoKey];
+                hasPhotos = photoResponse?.photos?.length > 0;
+              }
+
+              if (param?.requirePhoto) {
+                if (hasValue && hasPhotos) completed++;
+              } else if (hasValue || hasPhotos) {
+                completed++;
+              }
             }
           });
         });
@@ -4061,6 +4791,29 @@ function calculateTrialProgress(trial) {
     total,
     percentage: total > 0 ? Math.round((completed / total) * 100) : 0
   };
+}
+
+// Helper: Get progress color based on percentage (red to green gradient)
+function getProgressGradientColor(percentage) {
+  if (percentage === 0) return '#999999'; // Gray for not started
+  if (percentage === 100) return '#22c55e'; // Green for completed
+  
+  // Red to Green gradient: #ef4444 (0%) -> #fbbf24 (50%) -> #22c55e (100%)
+  if (percentage <= 50) {
+    // Red to Yellow: 0% to 50%
+    const ratio = percentage / 50;
+    const r = Math.round(239 - (239 - 251) * ratio);
+    const g = Math.round(68 + (191 - 68) * ratio);
+    const b = Math.round(68 - 68 * ratio);
+    return `rgb(${r}, ${g}, ${b})`;
+  } else {
+    // Yellow to Green: 50% to 100%
+    const ratio = (percentage - 50) / 50;
+    const r = Math.round(251 - (251 - 34) * ratio);
+    const g = Math.round(191 + (197 - 191) * ratio);
+    const b = Math.round(36 + (94 - 36) * ratio);
+    return `rgb(${r}, ${g}, ${b})`;
+  }
 }
 
 function renderDashboardTrialProgress() {
@@ -4154,6 +4907,23 @@ function showTrialDetail(trialId) {
     return sum + (area.layout?.lines?.length || 0);
   }, 0) || 0;
 
+  // Calculate total samples (lines × parameters × numberOfSamples)
+  const totalSamples = trial.areas?.reduce((sum, area) => {
+    if (area.layout?.result) {
+      let count = 0;
+      // Count cells (lines)
+      area.layout.result.forEach(rep => rep.forEach(row => row.forEach(cell => { if (cell) count++; })));
+      // Multiply by number of parameters and their samples
+      const paramSampleCount = (trial.parameters || []).reduce((paramSum, paramId) => {
+        const param = inventoryState.items.parameters.find((p) => p.id === paramId);
+        const numberOfSamples = param?.numberOfSamples || 1;
+        return paramSum + numberOfSamples;
+      }, 0);
+      return sum + (count * paramSampleCount);
+    }
+    return sum;
+  }, 0) || 0;
+
   body.innerHTML = `
     <!-- Progress Bar -->
     <div class="td-section td-card">
@@ -4206,14 +4976,19 @@ function showTrialDetail(trialId) {
         <div class="td-stat-label">Areas</div>
       </div>
       <div class="td-stat-item">
+        <span class="material-symbols-rounded td-stat-icon">assignment</span>
+        <div class="td-stat-value">${paramDetails.length}</div>
+        <div class="td-stat-label">Parameters</div>
+      </div>
+      <div class="td-stat-item">
         <span class="material-symbols-rounded td-stat-icon">grass</span>
         <div class="td-stat-value">${totalLines}</div>
         <div class="td-stat-label">Lines</div>
       </div>
       <div class="td-stat-item">
-        <span class="material-symbols-rounded td-stat-icon">assignment</span>
-        <div class="td-stat-value">${paramDetails.length}</div>
-        <div class="td-stat-label">Parameters</div>
+        <span class="material-symbols-rounded td-stat-icon">pinch</span>
+        <div class="td-stat-value">${totalSamples}</div>
+        <div class="td-stat-label">Samples</div>
       </div>
       <div class="td-stat-item">
         <span class="material-symbols-rounded td-stat-icon" style="color: ${progressColor};">check_circle</span>

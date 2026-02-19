@@ -254,6 +254,7 @@ function updateSyncUI() {
 
     panel.innerHTML = syncState.queue
       .slice(-20)
+      .reverse()
       .map((item) => {
         const statusClass =
           item.status === "success"
