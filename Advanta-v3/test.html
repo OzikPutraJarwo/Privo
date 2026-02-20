@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanta v3</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Rounded" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <link rel="stylesheet" href="assets/css/styles.css">
+  </head>
+
+  <body>
+
+    <div id="trialDetailModal" class="library-preview-modal active">
+      <div class="library-preview-modal-content">
+        <div class="library-detail-header">
+          <div class="library-detail-info">
+            <h3 id="trialDetailTitle">All Param Trial</h3>
+          </div>
+          <div class="library-detail-actions">
+            <button class="btn btn-primary" id="trialDetailRunBtn" onclick="runTrialFromDetail()">
+              <span class="material-symbols-rounded">play_arrow</span>
+              <span>Run</span>
+            </button>
+            <button class="btn btn-secondary" id="trialDetailArchiveBtn" onclick="archiveTrialFromDetail()"><span
+                class="material-symbols-rounded">archive</span><span>Archive</span></button>
+            <button class="btn btn-secondary" id="trialDetailEditBtn" onclick="editTrialFromDetail()">
+              <span class="material-symbols-rounded">edit</span>
+              <span>Edit</span>
+            </button>
+            <button class="btn btn-secondary btn-text-danger" id="trialDetailDeleteBtn"
+              onclick="deleteTrialFromDetail()">
+              <span class="material-symbols-rounded">delete</span>
+              <span>Delete</span>
+            </button>
+            <button class="btn btn-secondary" onclick="closeTrialDetailModal()">
+              <span class="material-symbols-rounded">close</span>
+            </button>
+          </div>
+        </div>
+        <div id="trialDetailBody" class="library-preview trial-detail-body">
+          <!-- Progress Bar -->
+          <div class="td-section td-card">
+            <div class="td-row">
+              <div class="td-flex">
+                <span class="material-symbols-rounded td-progress-fill"
+                  style="color: var(--warning);">donut_large</span>
+                <span class="td-info-label">Trial Progress</span>
+              </div>
+              <span class="td-progress-summary" style="color: var(--warning);">4%</span>
+            </div>
+            <div class="td-progress-track">
+              <div class="td-progress-fill" style="width: 4%; background: var(--warning);"></div>
+            </div>
+            <div class="td-progress-summary">
+              <span>18 of 475 observations completed</span>
+              <span>In Progress</span>
+            </div>
+          </div>
+
+          <!-- Info Grid -->
+          <div class="td-info-grid">
+            <div class="td-info-item">
+              <span class="material-symbols-rounded td-info-icon">eco</span>
+              <div>
+                <div class="td-info-label">Crop</div>
+                <div class="td-info-value">Soybean</div>
+              </div>
+            </div>
+            <div class="td-info-item">
+              <span class="material-symbols-rounded td-info-icon">science</span>
+              <div>
+                <div class="td-info-label">Trial Type</div>
+                <div class="td-info-value">Parent Test</div>
+              </div>
+            </div>
+            <div class="td-info-item">
+              <span class="material-symbols-rounded td-info-icon">calendar_month</span>
+              <div>
+                <div class="td-info-label">Planting Window</div>
+                <div class="td-info-value">Feb 2026 — Jun 2026</div>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- Description -->
+          <div class="td-section td-card">
+            <div class="td-section-header">
+              <span class="material-symbols-rounded td-section-icon">description</span>
+              <span class="td-desc-label">Description</span>
+            </div>
+            <p class="td-description">Example of Description</p>
+          </div>
+
+
+          <!-- Plot Specifications Section (if available) -->
+
+          <div class="td-section td-card">
+            <div class="td-section-header">
+              <span class="material-symbols-rounded td-section-icon">square_foot</span>
+              <span class="td-section-title">Plot Specifications</span>
+            </div>
+            <div class="td-plot-specs-grid">
+
+              <div class="td-spec-item">
+                <span class="material-symbols-rounded">view_agenda</span>
+                <div>
+                  <div class="td-spec-label">Rows per Plot</div>
+                  <div class="td-spec-value">4 rows</div>
+                </div>
+              </div>
+
+
+              <div class="td-spec-item">
+                <span class="material-symbols-rounded">straighten</span>
+                <div>
+                  <div class="td-spec-label">Plot Length</div>
+                  <div class="td-spec-value">5 m</div>
+                </div>
+              </div>
+
+
+              <div class="td-spec-item">
+                <span class="material-symbols-rounded">space_dashboard</span>
+                <div>
+                  <div class="td-spec-label">Plant Spacing (Width)</div>
+                  <div class="td-spec-value">30 cm</div>
+                </div>
+              </div>
+
+
+              <div class="td-spec-item">
+                <span class="material-symbols-rounded">view_column</span>
+                <div>
+                  <div class="td-spec-label">Plant Spacing (Height)</div>
+                  <div class="td-spec-value">70 cm</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+
+          <!-- Parameters Section -->
+          <div class="td-section">
+            <div class="td-section-header">
+              <span class="material-symbols-rounded td-section-icon">biotech</span>
+              <span class="td-section-title">Observation Parameters</span>
+              <span class="td-section-count">4</span>
+            </div>
+
+            <div class="td-params-grid">
+
+              <div class="td-param-item">
+                <span class="material-symbols-rounded td-param-icon">radio_button_checked</span>
+                <span class="td-param-name">Stem Color</span>
+                <span class="td-param-type">radio</span>
+
+                <span class="material-symbols-rounded td-param-photo" title="Photo required">photo_camera</span>
+              </div>
+
+              <div class="td-param-item">
+                <span class="material-symbols-rounded td-param-icon">linear_scale</span>
+                <span class="td-param-name">Fruit Quality</span>
+                <span class="td-param-type">range</span>
+                <span class="td-param-unit">%</span>
+                <span class="material-symbols-rounded td-param-photo" title="Photo required">photo_camera</span>
+              </div>
+
+              <div class="td-param-item">
+                <span class="material-symbols-rounded td-param-icon">text_fields</span>
+                <span class="td-param-name">Plant Height</span>
+                <span class="td-param-type">text</span>
+                <span class="td-param-unit">cm</span>
+
+              </div>
+
+              <div class="td-param-item">
+                <span class="material-symbols-rounded td-param-icon">radio_button_checked</span>
+                <span class="td-param-name">Leaf Color</span>
+                <span class="td-param-type">radio</span>
+
+                <span class="material-symbols-rounded td-param-photo" title="Photo required">photo_camera</span>
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- Trial Areas Section -->
+          <div>
+            <div class="td-section-header">
+              <span class="material-symbols-rounded td-section-icon">map</span>
+              <span class="td-section-title">Trial Areas</span>
+              <span class="td-section-count">2</span>
+            </div>
+            <div id="trialDetailAreaMaps" class="td-area-maps-grid">
+              <div class="td-area-card">
+                <div id="detailAreaMap0" class="td-area-map leaflet-container leaflet-touch" tabindex="0"
+                  style="position: relative;">
+                  <div class="leaflet-pane leaflet-map-pane" style="transform: translate3d(0px, 0px, 0px);">
+                    <div class="leaflet-pane leaflet-tile-pane">
+                      <div class="leaflet-layer " style="z-index: 1;">
+                        <div class="leaflet-tile-container leaflet-zoom-animated"
+                          style="z-index: 25; transform: translate3d(0px, 0px, 0px) scale(1);"><img alt=""
+                            src="https://tiles.stadiamaps.com/tiles/alidade_satellite/20/852180/547548.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(97px, -95px, 0px);"><img alt=""
+                            src="https://tiles.stadiamaps.com/tiles/alidade_satellite/20/852180/547549.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(97px, 161px, 0px);"><img alt=""
+                            src="https://tiles.stadiamaps.com/tiles/alidade_satellite/20/852179/547548.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(-159px, -95px, 0px);"><img alt=""
+                            src="https://tiles.stadiamaps.com/tiles/alidade_satellite/20/852181/547548.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(353px, -95px, 0px);"><img alt=""
+                            src="https://tiles.stadiamaps.com/tiles/alidade_satellite/20/852179/547549.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(-159px, 161px, 0px);"><img alt=""
+                            src="https://tiles.stadiamaps.com/tiles/alidade_satellite/20/852181/547549.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(353px, 161px, 0px);"></div>
+                      </div>
+                    </div>
+                    <div class="leaflet-pane leaflet-overlay-pane"><svg pointer-events="none"
+                        class="leaflet-zoom-animated" width="668" height="300" viewBox="-56 -25 668 300"
+                        style="transform: translate3d(-56px, -25px, 0px);">
+                        <g>
+                          <path class="leaflet-interactive" stroke="#2563eb" stroke-opacity="1" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" fill="#3b82f6" fill-opacity="0.3"
+                            fill-rule="evenodd" d="M254 57L340 99L325 148L340 160L329 182L309 174L304 192L218 157z">
+                          </path>
+                        </g>
+                      </svg></div>
+                    <div class="leaflet-pane leaflet-shadow-pane">
+                      <div class="leaflet-layer " style="z-index: 1;">
+                        <div class="leaflet-tile-container leaflet-zoom-animated"
+                          style="z-index: 25; transform: translate3d(0px, 0px, 0px) scale(1);"><img alt=""
+                            src="https://a.basemaps.cartocdn.com/light_only_labels/20/852180/547548.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(97px, -95px, 0px);"><img alt=""
+                            src="https://b.basemaps.cartocdn.com/light_only_labels/20/852180/547549.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(97px, 161px, 0px);"><img alt=""
+                            src="https://c.basemaps.cartocdn.com/light_only_labels/20/852179/547548.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(-159px, -95px, 0px);"><img alt=""
+                            src="https://b.basemaps.cartocdn.com/light_only_labels/20/852181/547548.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(353px, -95px, 0px);"><img alt=""
+                            src="https://a.basemaps.cartocdn.com/light_only_labels/20/852179/547549.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(-159px, 161px, 0px);"><img alt=""
+                            src="https://c.basemaps.cartocdn.com/light_only_labels/20/852181/547549.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(353px, 161px, 0px);"></div>
+                      </div>
+                    </div>
+                    <div class="leaflet-pane leaflet-marker-pane"></div>
+                    <div class="leaflet-pane leaflet-tooltip-pane"></div>
+                    <div class="leaflet-pane leaflet-popup-pane"></div>
+                  </div>
+                  <div class="leaflet-control-container">
+                    <div class="leaflet-top leaflet-left"></div>
+                    <div class="leaflet-top leaflet-right"></div>
+                    <div class="leaflet-bottom leaflet-left"></div>
+                    <div class="leaflet-bottom leaflet-right"></div>
+                  </div>
+                </div>
+                <div class="td-area-info">
+                  <div class="td-area-name-row">
+                    <span class="material-symbols-rounded td-area-name-icon">pentagon</span>
+                    <h5 class="td-area-name">Area 1</h5>
+                  </div>
+                  <div class="td-area-stats">
+                    <span class="td-area-stat">
+                      <span class="material-symbols-rounded">straighten</span>
+                      0.02 ha
+                    </span>
+                    <span class="td-area-stat">
+                      <span class="material-symbols-rounded">radio_button_checked</span>
+                      8 pts
+                    </span>
+                    <span class="td-area-stat">
+                      <span class="material-symbols-rounded">grass</span>
+                      10 lines
+                    </span>
+                    <span class="td-area-stat">
+                      <span class="material-symbols-rounded">repeat</span>
+                      2 rep(s)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="td-area-card">
+                <div id="detailAreaMap1" class="td-area-map leaflet-container leaflet-touch" tabindex="0"
+                  style="position: relative;">
+                  <div class="leaflet-pane leaflet-map-pane" style="transform: translate3d(0px, 0px, 0px);">
+                    <div class="leaflet-pane leaflet-tile-pane">
+                      <div class="leaflet-layer " style="z-index: 1;">
+                        <div class="leaflet-tile-container leaflet-zoom-animated"
+                          style="z-index: 25; transform: translate3d(0px, 0px, 0px) scale(1);"><img alt=""
+                            src="https://tiles.stadiamaps.com/tiles/alidade_satellite/19/426095/273770.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(71px, -252px, 0px);"><img alt=""
+                            src="https://tiles.stadiamaps.com/tiles/alidade_satellite/19/426095/273771.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(71px, 4px, 0px);"><img alt=""
+                            src="https://tiles.stadiamaps.com/tiles/alidade_satellite/19/426094/273770.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(-185px, -252px, 0px);"><img
+                            alt="" src="https://tiles.stadiamaps.com/tiles/alidade_satellite/19/426096/273770.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(327px, -252px, 0px);"><img alt=""
+                            src="https://tiles.stadiamaps.com/tiles/alidade_satellite/19/426094/273771.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(-185px, 4px, 0px);"><img alt=""
+                            src="https://tiles.stadiamaps.com/tiles/alidade_satellite/19/426096/273771.jpg"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(327px, 4px, 0px);"></div>
+                      </div>
+                    </div>
+                    <div class="leaflet-pane leaflet-overlay-pane"><svg pointer-events="none"
+                        class="leaflet-zoom-animated" width="668" height="300" viewBox="-56 -25 668 300"
+                        style="transform: translate3d(-56px, -25px, 0px);">
+                        <g>
+                          <path class="leaflet-interactive" stroke="#2563eb" stroke-opacity="1" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" fill="#3b82f6" fill-opacity="0.3"
+                            fill-rule="evenodd" d="M277 26L376 92L284 224L181 163z"></path>
+                        </g>
+                      </svg></div>
+                    <div class="leaflet-pane leaflet-shadow-pane">
+                      <div class="leaflet-layer " style="z-index: 1;">
+                        <div class="leaflet-tile-container leaflet-zoom-animated"
+                          style="z-index: 25; transform: translate3d(0px, 0px, 0px) scale(1);"><img alt=""
+                            src="https://b.basemaps.cartocdn.com/light_only_labels/19/426095/273770.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(71px, -252px, 0px);"><img alt=""
+                            src="https://c.basemaps.cartocdn.com/light_only_labels/19/426095/273771.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(71px, 4px, 0px);"><img alt=""
+                            src="https://a.basemaps.cartocdn.com/light_only_labels/19/426094/273770.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(-185px, -252px, 0px);"><img
+                            alt="" src="https://c.basemaps.cartocdn.com/light_only_labels/19/426096/273770.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(327px, -252px, 0px);"><img alt=""
+                            src="https://b.basemaps.cartocdn.com/light_only_labels/19/426094/273771.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(-185px, 4px, 0px);"><img alt=""
+                            src="https://a.basemaps.cartocdn.com/light_only_labels/19/426096/273771.png"
+                            class="leaflet-tile leaflet-tile-loaded"
+                            style="width: 256px; height: 256px; transform: translate3d(327px, 4px, 0px);"></div>
+                      </div>
+                    </div>
+                    <div class="leaflet-pane leaflet-marker-pane"></div>
+                    <div class="leaflet-pane leaflet-tooltip-pane"></div>
+                    <div class="leaflet-pane leaflet-popup-pane"></div>
+                  </div>
+                  <div class="leaflet-control-container">
+                    <div class="leaflet-top leaflet-left"></div>
+                    <div class="leaflet-top leaflet-right"></div>
+                    <div class="leaflet-bottom leaflet-left"></div>
+                    <div class="leaflet-bottom leaflet-right"></div>
+                  </div>
+                </div>
+                <div class="td-area-info">
+                  <div class="td-area-name-row">
+                    <span class="material-symbols-rounded td-area-name-icon">pentagon</span>
+                    <h5 class="td-area-name">Area 2</h5>
+                  </div>
+                  <div class="td-area-stats">
+                    <span class="td-area-stat">
+                      <span class="material-symbols-rounded">straighten</span>
+                      0.17 ha
+                    </span>
+                    <span class="td-area-stat">
+                      <span class="material-symbols-rounded">radio_button_checked</span>
+                      4 pts
+                    </span>
+                    <span class="td-area-stat">
+                      <span class="material-symbols-rounded">grass</span>
+                      15 lines
+                    </span>
+                    <span class="td-area-stat">
+                      <span class="material-symbols-rounded">repeat</span>
+                      3 rep(s)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Layout Details Section -->
+          <div class="td-section">
+            <div class="td-section-header">
+              <span class="material-symbols-rounded td-section-icon">grid_view</span>
+              <span class="td-section-title">Experimental Layout</span>
+            </div>
+            <div class="td-layout-details">
+
+              <div class="td-area-layout-card">
+                <div class="td-area-layout-header">
+                  <h4 class="td-area-layout-title">Area 1</h4>
+                  <div class="td-area-layout-meta">
+                    <span class="td-area-meta-item"><span class="material-symbols-rounded">straighten</span>0.02
+                      ha</span>
+                    <span class="td-area-meta-item"><span
+                        class="material-symbols-rounded">location_on</span>Karangtengah, Kalisongo, Kabupaten Malang,
+                      East Java, Java, 65146, Indonesia</span>
+                  </div>
+                </div>
+
+                <div class="td-layout-info-grid">
+                  <div class="td-layout-info-item">
+                    <span class="material-symbols-rounded">compare_arrows</span>
+                    <div>
+                      <div class="td-info-label">Layout Direction</div>
+                      <div class="td-info-value">Serpentine (Snake)</div>
+                    </div>
+                  </div>
+                  <div class="td-layout-info-item">
+                    <span class="material-symbols-rounded">shuffle</span>
+                    <div>
+                      <div class="td-info-label">Randomization</div>
+                      <div class="td-info-value">Rep 1 Ordered, Rest Random</div>
+                    </div>
+                  </div>
+                  <div class="td-layout-info-item">
+                    <span class="material-symbols-rounded">repeat</span>
+                    <div>
+                      <div class="td-info-label">Replications</div>
+                      <div class="td-info-value">2</div>
+                    </div>
+                  </div>
+                  <div class="td-layout-info-item">
+                    <span class="material-symbols-rounded">grid_3x3</span>
+                    <div>
+                      <div class="td-info-label">Ranges</div>
+                      <div class="td-info-value">3</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="td-lines-section">
+                  <div class="td-lines-header">Lines Used (5)</div>
+                  <div class="td-lines-list">
+
+                    <div class="td-line-item">
+                      <span class="td-line-index">1</span>
+                      <span class="td-line-name" title="UBASK5">UBASK5</span>
+                    </div>
+
+                    <div class="td-line-item">
+                      <span class="td-line-index">2</span>
+                      <span class="td-line-name" title="UBASK3">UBASK3</span>
+                    </div>
+
+                    <div class="td-line-item">
+                      <span class="td-line-index">3</span>
+                      <span class="td-line-name" title="UBASK4">UBASK4</span>
+                    </div>
+
+                    <div class="td-line-item">
+                      <span class="td-line-index">4</span>
+                      <span class="td-line-name" title="UBASK2">UBASK2</span>
+                    </div>
+
+                    <div class="td-line-item">
+                      <span class="td-line-index">5</span>
+                      <span class="td-line-name" title="UBASK1">UBASK1</span>
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+
+              <div class="td-area-layout-card">
+                <div class="td-area-layout-header">
+                  <h4 class="td-area-layout-title">Area 2</h4>
+                  <div class="td-area-layout-meta">
+                    <span class="td-area-meta-item"><span class="material-symbols-rounded">straighten</span>0.17
+                      ha</span>
+                    <span class="td-area-meta-item"><span class="material-symbols-rounded">location_on</span>Jalan
+                      Torong, Karangtengah, Kalisongo, Kabupaten Malang, East Java, Java, 65146, Indonesia</span>
+                  </div>
+                </div>
+
+                <div class="td-layout-info-grid">
+                  <div class="td-layout-info-item">
+                    <span class="material-symbols-rounded">compare_arrows</span>
+                    <div>
+                      <div class="td-info-label">Layout Direction</div>
+                      <div class="td-info-value">Straight (Top-Bottom)</div>
+                    </div>
+                  </div>
+                  <div class="td-layout-info-item">
+                    <span class="material-symbols-rounded">shuffle</span>
+                    <div>
+                      <div class="td-info-label">Randomization</div>
+                      <div class="td-info-value">Rep 1 Ordered, Rest Random</div>
+                    </div>
+                  </div>
+                  <div class="td-layout-info-item">
+                    <span class="material-symbols-rounded">repeat</span>
+                    <div>
+                      <div class="td-info-label">Replications</div>
+                      <div class="td-info-value">3</div>
+                    </div>
+                  </div>
+                  <div class="td-layout-info-item">
+                    <span class="material-symbols-rounded">grid_3x3</span>
+                    <div>
+                      <div class="td-info-label">Ranges</div>
+                      <div class="td-info-value">1</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="td-lines-section">
+                  <div class="td-lines-header">Lines Used (5)</div>
+                  <div class="td-lines-list">
+
+                    <div class="td-line-item">
+                      <span class="td-line-index">1</span>
+                      <span class="td-line-name" title="UBASK5">UBASK5</span>
+                    </div>
+
+                    <div class="td-line-item">
+                      <span class="td-line-index">2</span>
+                      <span class="td-line-name" title="UBASK3">UBASK3</span>
+                    </div>
+
+                    <div class="td-line-item">
+                      <span class="td-line-index">3</span>
+                      <span class="td-line-name" title="UBASK4">UBASK4</span>
+                    </div>
+
+                    <div class="td-line-item">
+                      <span class="td-line-index">4</span>
+                      <span class="td-line-name" title="UBASK2">UBASK2</span>
+                    </div>
+
+                    <div class="td-line-item">
+                      <span class="td-line-index">5</span>
+                      <span class="td-line-name" title="UBASK1">UBASK1</span>
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Timestamps -->
+          <div class="td-timestamps">
+
+            <div class="td-timestamp">
+              <span class="material-symbols-rounded">schedule</span>
+              Created: Feb 20, 2026
+            </div>
+
+            <div class="td-timestamp">
+              <span class="material-symbols-rounded">update</span>
+              Updated: Feb 20, 2026
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaflet Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-draw/1.0.4/leaflet.draw.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-draw/1.0.4/leaflet.draw.min.js"></script>
+
+    <!-- App Scripts -->
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/drive.js"></script>
+    <script src="assets/js/inventory.js"></script>
+    <script src="assets/js/locations.js"></script>
+    <script src="assets/js/trial.js"></script>
+    <script src="assets/js/library.js"></script>
+    <script src="assets/js/app.js"></script>
+  </body>
+
+</html>

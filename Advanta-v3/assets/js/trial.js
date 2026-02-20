@@ -86,173 +86,85 @@ function renderTrials() {
   const activeTrials = trialState.trials.filter(t => !t.archived);
   const archivedTrials = trialState.trials.filter(t => t.archived);
 
+  const renderTrialCard = (trial) => {
+    const progress = calculateTrialProgress(trial);
+    const progressPercent = progress.percentage;
+    const hasLayout = trial.areas && trial.areas.length > 0 && trial.areas.some(a => a.layout?.result);
+
+    return `
+      <div class="run-trial-card" data-trial-id="${trial.id}" onclick="showTrialDetail('${trial.id}')">
+        <div class="run-trial-card-header">
+          <div class="run-trial-card-icon">
+            <svg class="progress-circle" width="64" height="64" viewBox="0 0 64 64">
+              <circle cx="32" cy="32" r="28" class="progress-circle-bg"></circle>
+              <circle cx="32" cy="32" r="28" class="progress-circle-fill"
+                      style="stroke-dasharray: ${progressPercent * 1.75} 175; stroke: ${getProgressGradientColor(progressPercent)}"></circle>
+              <text x="32" y="37" class="progress-circle-text" text-anchor="middle">${progressPercent}%</text>
+            </svg>
+          </div>
+          <div class="run-trial-card-body">
+            <div class="run-trial-card-title">${escapeHtml(trial.name)}</div>
+            <div class="run-trial-card-meta">${escapeHtml(trial.cropName || "")}${trial.trialType ? " · " + escapeHtml(trial.trialType) : ""}${!hasLayout ? ' · <span style="color:var(--text-tertiary);font-size:0.75rem;">No layout</span>' : ""}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
+  const renderArchivedTrialCard = (trial) => {
+    const progress = calculateTrialProgress(trial);
+    const progressPercent = progress.percentage;
+
+    return `
+      <div class="run-trial-card trial-card-archived" data-trial-id="${trial.id}" onclick="showTrialDetail('${trial.id}')">
+        <div class="run-trial-card-header">
+          <div class="run-trial-card-icon">
+            <svg class="progress-circle" width="64" height="64" viewBox="0 0 64 64">
+              <circle cx="32" cy="32" r="28" class="progress-circle-bg"></circle>
+              <circle cx="32" cy="32" r="28" class="progress-circle-fill"
+                      style="stroke-dasharray: ${progressPercent * 1.75} 175; stroke: ${getProgressGradientColor(progressPercent)}"></circle>
+              <text x="32" y="37" class="progress-circle-text" text-anchor="middle">${progressPercent}%</text>
+            </svg>
+          </div>
+          <div class="run-trial-card-body">
+            <div class="run-trial-card-title">${escapeHtml(trial.name)}</div>
+            <div class="run-trial-card-meta">${escapeHtml(trial.cropName || "")}${trial.trialType ? " · " + escapeHtml(trial.trialType) : ""} · <span style="color:var(--text-tertiary);font-size:0.75rem;">Archived</span></div>
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
   if (activeTrials.length === 0 && archivedTrials.length === 0) {
-    activeContainer.classList.add("empty-trial");
     activeContainer.innerHTML = `
-      <div class="empty-state">
+      <div class="empty-state run-empty-grid" style="grid-column: 1/-1;">
         <span class="material-symbols-rounded">science</span>
         <p>No trials yet. Create your first trial to get started.</p>
       </div>
     `;
     if (archivedPanel) archivedPanel.style.display = "none";
     return;
-  } else {
-    activeContainer.classList.remove("empty-trial");
   }
-  
-  const renderTrialItem = (trial) => {
-    const startDate = trial.plantingStart
-      ? formatMonthYear(trial.plantingStart)
-      : "-";
-    const endDate = trial.plantingEnd
-      ? formatMonthYear(trial.plantingEnd)
-      : "-";
-    const areaCount = trial.areas ? trial.areas.length : 0;
-    const progress = calculateTrialProgress(trial);
-    const progressColor = progress.percentage === 100 ? 'var(--success)' 
-                        : progress.percentage > 0 ? 'var(--warning)' 
-                        : 'var(--text-tertiary)';
 
-    return `
-      <div class="inventory-item trial-list-item" onclick="showTrialDetail('${trial.id}')">
-        <div class="trial-item-row">
-          <div class="trial-item-icon">
-            <span class="material-symbols-rounded">science</span>
-          </div>
-          <div class="item-meta">
-            <div class="item-name">${escapeHtml(trial.name)}</div>
-            <div class="item-subtext trial-meta-row">
-              <span class="material-symbols-rounded">eco</span>${escapeHtml(trial.cropName || trial.cropType || "-")}
-              <span class="meta-separator">·</span>
-              <span class="material-symbols-rounded">calendar_month</span>${startDate} — ${endDate}
-            </div>
-            <div class="item-subtext trial-meta-row">
-              <span class="material-symbols-rounded">map</span>${areaCount} area(s)
-              <span class="meta-separator">·</span>
-              <span class="material-symbols-rounded">assignment</span>${trial.parameters ? trial.parameters.length : 0} param(s)
-              <span class="meta-separator">·</span>
-              <span class="trial-progress-badge" style="color: ${progressColor}">${progress.percentage}%</span>
-            </div>
-          </div>
-        </div>
-        <div class="item-actions">
-          <button class="edit-btn" data-id="${trial.id}" title="Edit" onclick="event.stopPropagation();">
-            <span class="material-symbols-rounded">edit</span>
-          </button>
-          <button class="archive-btn" data-id="${trial.id}" title="Archive" onclick="event.stopPropagation();">
-            <span class="material-symbols-rounded">archive</span>
-          </button>
-          <button class="delete-btn" data-id="${trial.id}" title="Delete" onclick="event.stopPropagation();">
-            <span class="material-symbols-rounded">delete</span>
-          </button>
-        </div>
-      </div>
-    `;
-  };
-
-  const renderArchivedTrialItem = (trial) => {
-    const startDate = trial.plantingStart
-      ? formatMonthYear(trial.plantingStart)
-      : "-";
-    const endDate = trial.plantingEnd
-      ? formatMonthYear(trial.plantingEnd)
-      : "-";
-    const areaCount = trial.areas ? trial.areas.length : 0;
-    const progress = calculateTrialProgress(trial);
-    const progressColor = progress.percentage === 100 ? 'var(--success)' 
-                        : progress.percentage > 0 ? 'var(--warning)' 
-                        : 'var(--text-tertiary)';
-
-    return `
-      <div class="inventory-item trial-list-item trial-archived" onclick="showTrialDetail('${trial.id}')">
-        <div class="trial-item-row">
-          <div class="trial-item-icon">
-            <span class="material-symbols-rounded">science</span>
-          </div>
-          <div class="item-meta">
-            <div class="item-name">${escapeHtml(trial.name)}</div>
-            <div class="item-subtext trial-meta-row">
-              <span class="material-symbols-rounded">eco</span>${escapeHtml(trial.cropName || trial.cropType || "-")}
-              <span class="meta-separator">·</span>
-              <span class="material-symbols-rounded">calendar_month</span>${startDate} — ${endDate}
-            </div>
-            <div class="item-subtext trial-meta-row">
-              <span class="material-symbols-rounded">map</span>${areaCount} area(s)
-              <span class="meta-separator">·</span>
-              <span class="material-symbols-rounded">assignment</span>${trial.parameters ? trial.parameters.length : 0} param(s)
-              <span class="meta-separator">·</span>
-              <span class="trial-progress-badge" style="color: ${progressColor}">${progress.percentage}%</span>
-            </div>
-          </div>
-        </div>
-        <div class="item-actions">
-          <button class="unarchive-btn" data-id="${trial.id}" title="Unarchive" onclick="event.stopPropagation();">
-            <span class="material-symbols-rounded">unarchive</span>
-          </button>
-          <button class="delete-btn" data-id="${trial.id}" title="Delete" onclick="event.stopPropagation();">
-            <span class="material-symbols-rounded">delete</span>
-          </button>
-        </div>
-      </div>
-    `;
-  };
-  
   // Render active trials
   if (activeTrials.length > 0) {
-    activeContainer.innerHTML = activeTrials.map(renderTrialItem).join("");
+    activeContainer.innerHTML = activeTrials.map(renderTrialCard).join("");
   } else {
     activeContainer.innerHTML = `
-      <div class="empty-state">
+      <div class="empty-state run-empty-grid" style="grid-column: 1/-1;">
         <span class="material-symbols-rounded">science</span>
-        <p>No active trials yet. Create your first trial to get started.</p>
+        <p>No active trials. Create your first trial to get started.</p>
       </div>
     `;
   }
-  
+
   // Render archived trials
   if (archivedTrials.length > 0) {
     if (archivedPanel) archivedPanel.style.display = "block";
-    archivedContainer.innerHTML = archivedTrials.map(renderArchivedTrialItem).join("");
+    archivedContainer.innerHTML = archivedTrials.map(renderArchivedTrialCard).join("");
   } else {
     if (archivedPanel) archivedPanel.style.display = "none";
   }
-
-  // Add event listeners for active trials
-  activeContainer.querySelectorAll(".edit-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openEditTrialModal(btn.dataset.id);
-    });
-  });
-
-  activeContainer.querySelectorAll(".archive-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      archiveTrial(btn.dataset.id);
-    });
-  });
-
-  activeContainer.querySelectorAll(".delete-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      deleteTrial(btn.dataset.id);
-    });
-  });
-
-  // Add event listeners for archived trials
-  archivedContainer.querySelectorAll(".unarchive-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      unarchiveTrial(btn.dataset.id);
-    });
-  });
-  
-  archivedContainer.querySelectorAll(".delete-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      deleteTrial(btn.dataset.id);
-    });
-  });
 }
 
 // Format month-year for display
@@ -398,53 +310,22 @@ function toggleTrialEditor(show) {
   const editor = document.getElementById("trialEditor");
   const panel = document.getElementById("trialManagementPanel");
   const archive = document.getElementById("archivedTrialManagementPanel");
-  const submenu = document.getElementById("trialSubmenu");
   if (!editor || !panel) return;
 
   if (show) {
     editor.classList.add("active");
     panel.classList.add("hidden");
-    archive.classList.add("hidden");
-    if (submenu) submenu.classList.add("hidden");
+    if (archive) archive.classList.add("hidden");
   } else {
     editor.classList.remove("active");
     panel.classList.remove("hidden");
-    archive.classList.remove("hidden");
-    if (submenu) submenu.classList.remove("hidden");
+    if (archive) archive.classList.remove("hidden");
   }
 }
 
 function switchTrialTab(tabName) {
-  const tabs = ["management", "run"];
-  const target = tabs.includes(tabName) ? tabName : "management";
-
-  if (target !== "management") {
-    toggleTrialEditor(false);
-  }
-
-  document.querySelectorAll(".trial-tab-content").forEach((panel) => {
-    panel.classList.remove("active");
-  });
-
-  const targetPanel = document.getElementById(
-    target === "management" ? "trialManagementContent" : "trialRunContent",
-  );
-  if (targetPanel) {
-    targetPanel.classList.add("active");
-  }
-
-  document.querySelectorAll(".trial-submenu-item").forEach((item) => {
-    item.classList.toggle("active", item.dataset.trialTab === target);
-  });
-
-  document
-    .querySelectorAll('.nav-subitem[data-parent="trial"]')
-    .forEach((item) => {
-      item.classList.toggle("active", item.dataset.trialTab === target);
-    });
-
-  // Initialize Run Trial when switching to run tab
-  if (target === "run") {
+  // In the unified view, 'run' simply means initialize run trial (which will be triggered from modal)
+  if (tabName === "run") {
     initializeRunTrial();
   }
 }
@@ -1012,11 +893,11 @@ function initializeTrialMap(centerCoords = null) {
 
   // Add satellite tile layer
   L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    "https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg",
     {
       attribution:
-        "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
-      maxNativeZoom: 19,
+        "© Stadia Maps",
+      maxNativeZoom: 20,
       maxZoom: 25,
     },
   ).addTo(trialMapInstance);
@@ -1026,7 +907,7 @@ function initializeTrialMap(centerCoords = null) {
     "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png",
     {
       attribution: "&copy; OpenStreetMap contributors, &copy; CartoDB",
-      maxNativeZoom: 19,
+      maxNativeZoom: 20,
       maxZoom: 25,
     },
   ).addTo(trialMapInstance);
@@ -1696,16 +1577,16 @@ function renderAreaPreviewMap(area, index) {
   }).setView([-6.2, 106.8], 12);
   
   // Add satellite layer
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg', {
     attribution: '',
-    maxNativeZoom: 19,
+    maxNativeZoom: 20,
     maxZoom: 25
   }).addTo(map);
 
   // Add labels layer
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png', {
     attribution: '',
-    maxNativeZoom: 19,
+    maxNativeZoom: 20,
     maxZoom: 25,
     pane: 'shadowPane'
   }).addTo(map);
@@ -2289,8 +2170,9 @@ function unarchiveTrial(trialId) {
 // ===========================
 // GRANULAR DRIVE STORAGE FOR TRIALS
 // Structure: Advanta/Trials/{trialId}/meta.json
-//            Advanta/Trials/{trialId}/responses/{areaIndex}_{paramId}.json
-// Each area+param combo = separate file → no multi-device conflicts
+//            Advanta/Trials/{trialId}/responses/{areaIndex}~{paramId}~{repIndex}~{lineId}.json
+// Each area+param+rep+line = separate file → maximum conflict prevention across devices
+// Legacy format: {areaIndex}_{paramId}.json (still supported on load)
 // ===========================
 
 let trialsFolderId = null;
@@ -2338,16 +2220,26 @@ async function loadTrialsFromGoogleDrive() {
           for (const respFile of (respFiles.result.files || [])) {
             try {
               const respData = await getFileContent(respFile.id);
-              // File name format: {areaIndex}_{paramId}.json
-              const key = respFile.name.replace(".json", "");
-              const sepIdx = key.indexOf("_");
-              if (sepIdx === -1) continue;
+              const fileName = respFile.name.replace(".json", "");
 
-              const areaIndex = key.substring(0, sepIdx);
-              const paramId = key.substring(sepIdx + 1);
-
-              if (!responses[areaIndex]) responses[areaIndex] = {};
-              responses[areaIndex][paramId] = respData;
+              if (fileName.includes("~")) {
+                // New format: {areaIndex}~{paramId}~{repIndex}~{lineId}
+                const parts = fileName.split("~");
+                if (parts.length < 4) continue;
+                const areaIndex = parts[0];
+                const paramId = parts[1];
+                if (!responses[areaIndex]) responses[areaIndex] = {};
+                if (!responses[areaIndex][paramId]) responses[areaIndex][paramId] = {};
+                Object.assign(responses[areaIndex][paramId], respData);
+              } else {
+                // Legacy format: {areaIndex}_{paramId}
+                const sepIdx = fileName.indexOf("_");
+                if (sepIdx === -1) continue;
+                const areaIndex = fileName.substring(0, sepIdx);
+                const paramId = fileName.substring(sepIdx + 1);
+                if (!responses[areaIndex]) responses[areaIndex] = {};
+                responses[areaIndex][paramId] = respData;
+              }
             } catch (e) {
               console.error(`Error loading response ${respFile.name}:`, e);
             }
@@ -2380,7 +2272,31 @@ async function saveTrialToGoogleDrive(trial) {
   await uploadJsonFile("meta.json", trialFolderId, meta);
 }
 
-// Save only the responses for a specific area+param to Drive
+// Save a single line's responses to Drive (targeted — per area+param+rep+line file)
+async function saveTrialLineToDrive(trial, areaIndex, paramId, repIndex, lineId) {
+  const rootFolderId = await getTrialsFolderId();
+  const trialFolderId = await getOrCreateFolder(trial.id, rootFolderId);
+  const responsesFolderId = await getOrCreateFolder("responses", trialFolderId);
+
+  // Extract all data keys belonging to this line (samples + per-line photos)
+  const paramResponses = trial.responses?.[areaIndex]?.[paramId] || {};
+  const lineData = {};
+  const prefix = `${lineId}_${repIndex}_`;
+  const exactKey = `${lineId}_${repIndex}`;
+
+  for (const key of Object.keys(paramResponses)) {
+    if (key === exactKey || key.startsWith(prefix)) {
+      lineData[key] = paramResponses[key];
+    }
+  }
+
+  if (Object.keys(lineData).length === 0) return; // Nothing to save
+
+  const fileName = `${areaIndex}~${paramId}~${repIndex}~${lineId}.json`;
+  await uploadJsonFile(fileName, responsesFolderId, lineData);
+}
+
+// Save all responses for a trial to Drive (full backup — iterates per area+param+rep+line)
 async function saveTrialResponsesToDrive(trial) {
   const rootFolderId = await getTrialsFolderId();
   const trialFolderId = await getOrCreateFolder(trial.id, rootFolderId);
@@ -2388,12 +2304,36 @@ async function saveTrialResponsesToDrive(trial) {
 
   const responses = trial.responses || {};
 
-  // Save each area+param combo as a separate file
   for (const areaIndex of Object.keys(responses)) {
     for (const paramId of Object.keys(responses[areaIndex])) {
-      const fileName = `${areaIndex}_${paramId}.json`;
-      const data = responses[areaIndex][paramId];
-      await uploadJsonFile(fileName, responsesFolderId, data);
+      const area = trial.areas?.[parseInt(areaIndex)];
+      const layoutResult = area?.layout?.result || [];
+
+      for (let repIndex = 0; repIndex < layoutResult.length; repIndex++) {
+        const grid = layoutResult[repIndex] || [];
+        const uniqueLines = new Set();
+        grid.forEach(row => (row || []).forEach(cell => {
+          if (cell?.id) uniqueLines.add(cell.id);
+        }));
+
+        for (const lineId of uniqueLines) {
+          const paramResponses = responses[areaIndex]?.[paramId] || {};
+          const lineData = {};
+          const prefix = `${lineId}_${repIndex}_`;
+          const exactKey = `${lineId}_${repIndex}`;
+
+          for (const key of Object.keys(paramResponses)) {
+            if (key === exactKey || key.startsWith(prefix)) {
+              lineData[key] = paramResponses[key];
+            }
+          }
+
+          if (Object.keys(lineData).length === 0) continue;
+
+          const fileName = `${areaIndex}~${paramId}~${repIndex}~${lineId}.json`;
+          await uploadJsonFile(fileName, responsesFolderId, lineData);
+        }
+      }
     }
   }
 }
@@ -2533,7 +2473,7 @@ function createAreaLayoutingForm(area, areaIndex) {
             </label>
             <div class="dual-picklist">
               <div class="picklist-column">
-                <div class="picklist-header">Available Lines</div>
+                <div class="picklist-header form-hint">Available Lines</div>
                 <div class="picklist-search">
                   <span class="material-symbols-rounded">search</span>
                   <input 
@@ -2562,7 +2502,7 @@ function createAreaLayoutingForm(area, areaIndex) {
                 </button>
               </div>
               <div class="picklist-column">
-                <div class="picklist-header">Selected Lines</div>
+                <div class="picklist-header form-hint">Selected Lines</div>
                 <div class="area-selected-lines picklist-list" data-area-index="${areaIndex}" data-list="selected">
                   <!-- Selected lines populated here -->
                 </div>
@@ -3081,7 +3021,6 @@ let runTrialState = {
 
 // Initialize Run Trial tab
 function initializeRunTrial() {
-  renderRunTrialList();
   setupRunTrialEventListeners();
 }
 
@@ -3138,10 +3077,12 @@ function renderRunTrialList() {
               <div class="run-trial-card-title">${escapeHtml(trial.name)}</div>
               <div class="run-trial-card-meta">${escapeHtml(trial.cropName || "")} · ${escapeHtml(trial.trialType || "")}</div>
             </div>
+            <!--
             <div class="run-trial-card-right">
               <div class="run-trial-status-label" style="color: ${statusColor}">${statusText}</div>
               <div class="run-trial-status-percent">${progressPercent}%</div>
             </div>
+            -->
           </div>
           <!--
           <div class="run-trial-card-stats">
@@ -3221,10 +3162,38 @@ function startRunTrial(trialId) {
   runTrialState.currentLineId = null;
   runTrialState.currentRepIndex = null;
 
-  // Show run interface
-  document.getElementById("runTrialSelection").classList.add("hidden");
+  // Hide trial list panels, show run interface
+  const mgmtPanel = document.getElementById("trialManagementPanel");
+  const archivePanel = document.getElementById("archivedTrialManagementPanel");
+  if (mgmtPanel) mgmtPanel.classList.add("hidden");
+  if (archivePanel) archivePanel.classList.add("hidden");
   document.getElementById("runTrialInterface").classList.remove("hidden");
-  document.getElementById("runTrialName").textContent = trial.name;
+  
+  // Modify topbar for run trial mode
+  const topbar = document.querySelector(".topbar");
+  const pageTitle = document.getElementById("pageTitle");
+  const menuToggle = document.querySelector(".menu-toggle");
+  const viewProgressBtn = document.getElementById("viewProgressBtn");
+  const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
+  
+  if (topbar) topbar.classList.add("run-trial-mode");
+  if (pageTitle) pageTitle.textContent = trial.name;
+  if (menuToggle) {
+    menuToggle.onclick = confirmExitRunTrial;
+    menuToggle.innerHTML = '<span class="material-symbols-rounded">arrow_back</span>';
+  }
+  if (viewProgressBtn) {
+    viewProgressBtn.style.display = "flex";
+    viewProgressBtn.classList.remove("hidden");
+  }
+  const runTrialNavBtn = document.getElementById("runTrialNavBtn");
+  const runTrialSaveBtn = document.getElementById("runTrialSaveBtn");
+  if (runTrialNavBtn) { runTrialNavBtn.style.display = "flex"; runTrialNavBtn.classList.remove("hidden"); }
+  if (runTrialSaveBtn) { runTrialSaveBtn.style.display = "flex"; runTrialSaveBtn.classList.remove("hidden"); }
+  // Hide sync buttons in run trial mode
+  syncButtons.forEach(btn => {
+    if (btn.id !== "viewProgressBtn") btn.style.display = "none";
+  });
 
   document.body.classList.add("run-trial-active", "sidebar-collapsed");
 
@@ -3246,12 +3215,40 @@ function exitRunTrial() {
   runTrialState.currentLineId = null;
   runTrialState.currentRepIndex = null;
 
-  document.getElementById("runTrialSelection").classList.remove("hidden");
+  // Show trial list panels, hide run interface
+  const mgmtPanel = document.getElementById("trialManagementPanel");
+  if (mgmtPanel) mgmtPanel.classList.remove("hidden");
   document.getElementById("runTrialInterface").classList.add("hidden");
+  // Re-render to show updated progress
+  renderTrials();
+
+  // Restore topbar to normal state
+  const topbar = document.querySelector(".topbar");
+  const pageTitle = document.getElementById("pageTitle");
+  const menuToggle = document.querySelector(".menu-toggle");
+  const viewProgressBtn = document.getElementById("viewProgressBtn");
+  const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
+  
+  if (topbar) topbar.classList.remove("run-trial-mode");
+  if (pageTitle) pageTitle.textContent = "Trial";
+  if (menuToggle) {
+    menuToggle.onclick = null;
+    menuToggle.innerHTML = '<span class="material-symbols-rounded">menu</span>';
+  }
+  if (viewProgressBtn) {
+    viewProgressBtn.style.display = "none";
+    viewProgressBtn.classList.add("hidden");
+  }
+  const runTrialNavBtn = document.getElementById("runTrialNavBtn");
+  const runTrialSaveBtn = document.getElementById("runTrialSaveBtn");
+  if (runTrialNavBtn) { runTrialNavBtn.style.display = "none"; runTrialNavBtn.classList.add("hidden"); }
+  if (runTrialSaveBtn) { runTrialSaveBtn.style.display = "none"; runTrialSaveBtn.classList.add("hidden"); }
+  // Show sync buttons again
+  syncButtons.forEach(btn => {
+    if (btn.id !== "viewProgressBtn") btn.style.display = "";
+  });
 
   document.body.classList.remove("run-trial-active", "sidebar-collapsed");
-
-  renderRunTrialList();
 }
 
 function confirmExitRunTrial() {
@@ -3301,7 +3298,6 @@ function renderRunTrialNavTree() {
           <span class="material-symbols-rounded expand-icon">expand_more</span>
           <span class="material-symbols-rounded">location_on</span>
           <span>${escapeHtml(area.name || `Area ${areaIndex + 1}`)}</span>
-          <span id="area-progress-${areaIndex}" class="nav-progress-text"></span>
         </div>
         <div class="run-nav-area-content">
     `;
@@ -3485,12 +3481,6 @@ function renderRunTrialNavTree() {
         });
       });
     });
-    
-    const progressEl = document.getElementById(`area-progress-${areaIndex}`);
-    if (progressEl) {
-      const paramCount = parameters.length;
-      progressEl.textContent = `${areaCompleted}/${areaTotal * paramCount}`;
-    }
   });
 }
 
@@ -3866,18 +3856,55 @@ function renderQuestionCard() {
           <hr class="run-nav-divider">
         ` : ''}
         <div class="run-line-nav">
-          <button class="btn btn-secondary" onclick="navigatePrevLine()">
+          <button class="btn btn-secondary" id="runPrevAreaBtn" onclick="navigatePrevArea()" style="display: none;">
+            <span class="material-symbols-rounded">arrow_back</span>
+            Previous Area
+          </button>
+          <button class="btn btn-secondary" id="runPrevLineBtn" onclick="navigatePrevLine()">
             <span class="material-symbols-rounded">arrow_back</span>
             Previous Line
           </button>
-          <button class="btn btn-secondary" onclick="navigateNextLine()">
+          <button class="btn btn-secondary" id="runNextLineBtn" onclick="navigateNextLine()">
             Next Line
+            <span class="material-symbols-rounded">arrow_forward</span>
+          </button>
+          <button class="btn btn-secondary" id="runNextAreaBtn" onclick="navigateNextArea()" style="display: none;">
+            Next Area
             <span class="material-symbols-rounded">arrow_forward</span>
           </button>
         </div>
       </div>
     </div>
   `;
+  
+  // Determine navigation boundaries
+  const lines = getAllLinesList();
+  const currentIdx = lines.findIndex(
+    (l) =>
+      l.areaIndex === areaIndex &&
+      l.paramId === paramId &&
+      l.lineId === lineId &&
+      l.repIndex === repIndex &&
+      l.sampleIndex === sampleIndex
+  );
+  
+  const isFirstInArea = currentIdx >= 0 && (currentIdx === 0 || lines[currentIdx - 1].areaIndex !== areaIndex);
+  const isLastInArea = currentIdx >= 0 && (currentIdx === lines.length - 1 || lines[currentIdx + 1].areaIndex !== areaIndex);
+  
+  const prevLineBtn = document.getElementById("runPrevLineBtn");
+  const nextLineBtn = document.getElementById("runNextLineBtn");
+  const prevAreaBtn = document.getElementById("runPrevAreaBtn");
+  const nextAreaBtn = document.getElementById("runNextAreaBtn");
+  
+  if (isFirstInArea) {
+    if (prevLineBtn) prevLineBtn.disabled = true;
+    if (prevAreaBtn && areaIndex > 0) prevAreaBtn.style.display = "flex";
+  }
+  
+  if (isLastInArea) {
+    if (nextLineBtn) nextLineBtn.disabled = true;
+    if (nextAreaBtn && areaIndex < trial.areas.length - 1) nextAreaBtn.style.display = "flex";
+  }
 }
 
 // Radio option selection
@@ -3938,7 +3965,7 @@ function handlePhotoUpload(event) {
     const repIndex = runTrialState.currentRepIndex;
     const sampleIndex = runTrialState.currentSampleIndex || 0;
     
-    if (areaIndex === null || !paramId || !lineId) return;
+    if (areaIndex === null || !paramId || !lineId || repIndex === null) return;
     
     const param = inventoryState.items.parameters.find((p) => p.id === paramId);
     if (!param) return;
@@ -3968,11 +3995,22 @@ function handlePhotoUpload(event) {
     runTrialState.responses[areaIndex][paramId][photoKey].photos.push(photoData);
     runTrialState.responses[areaIndex][paramId][photoKey].timestamp = new Date().toISOString();
     
+    // Save current input value to lineKey to prevent data loss
+    saveCurrentResponseSilent();
+    
+    // Trigger auto-save to sync queue
+    autoSaveProgress();
+    
     // Re-render to show the new photo
     renderQuestionCard();
   };
+  
   reader.readAsDataURL(file);
-  event.target.value = "";
+  
+  // Clear input value after reading starts
+  setTimeout(() => {
+    event.target.value = "";
+  }, 100);
 }
 
 // Remove photo
@@ -4185,19 +4223,22 @@ function saveCurrentResponseSilent() {
     }
   }
 
-  // Skip if nothing to save
-  if (!value && photos.length === 0) return true;
-
-  // Save response at lineKey (always includes sampleIndex)
+  // Always save lineKey response with value (photos stored separately in photoKey)
   if (!runTrialState.responses[areaIndex]) {
     runTrialState.responses[areaIndex] = {};
   }
   if (!runTrialState.responses[areaIndex][paramId]) {
     runTrialState.responses[areaIndex][paramId] = {};
   }
+  
+  // Preserve existing lineKey response or create new one
+  const existingLineResponse = runTrialState.responses[areaIndex][paramId][lineKey] || {};
+  
+  // IMPORTANT: When photoKey === lineKey (per-sample mode), preserve existing photos
+  const existingPhotos = existingLineResponse.photos || [];
   runTrialState.responses[areaIndex][paramId][lineKey] = {
     value,
-    photos: param.requirePhoto ? [] : photos, // Don't duplicate photos in lineKey if using photoKey
+    photos: existingPhotos, // Preserve photos that may have been saved by handlePhotoUpload
     timestamp: new Date().toISOString(),
   };
 
@@ -4289,6 +4330,47 @@ function navigateNextSample() {
   }
 }
 
+// Navigate to previous area (go to last line of previous area)
+function navigatePrevArea() {
+  // Auto-save current response only if there are changes
+  if (hasResponseChanges()) {
+    saveCurrentResponseSilent();
+    autoSaveProgress();
+  }
+  
+  const currentAreaIndex = runTrialState.currentAreaIndex;
+  if (currentAreaIndex <= 0) return;
+  
+  const lines = getAllLinesList();
+  const prevAreaLines = lines.filter(l => l.areaIndex === currentAreaIndex - 1);
+  
+  if (prevAreaLines.length > 0) {
+    const lastLine = prevAreaLines[prevAreaLines.length - 1];
+    selectLine(lastLine.areaIndex, lastLine.paramId, lastLine.lineId, lastLine.repIndex, lastLine.sampleIndex);
+  }
+}
+
+// Navigate to next area (go to first line of next area)
+function navigateNextArea() {
+  // Auto-save current response only if there are changes
+  if (hasResponseChanges()) {
+    saveCurrentResponseSilent();
+    autoSaveProgress();
+  }
+  
+  const trial = runTrialState.currentTrial;
+  const currentAreaIndex = runTrialState.currentAreaIndex;
+  if (currentAreaIndex >= trial.areas.length - 1) return;
+  
+  const lines = getAllLinesList();
+  const nextAreaLines = lines.filter(l => l.areaIndex === currentAreaIndex + 1);
+  
+  if (nextAreaLines.length > 0) {
+    const firstLine = nextAreaLines[0];
+    selectLine(firstLine.areaIndex, firstLine.paramId, firstLine.lineId, firstLine.repIndex, firstLine.sampleIndex);
+  }
+}
+
 // Navigate to next line (skip all samples, go directly to next line)
 function navigateNextLine() {
   // Auto-save current response only if there are changes
@@ -4365,8 +4447,6 @@ function renderCompletionState(isComplete, lines) {
       <div class="run-empty-state">
         <span class="material-symbols-rounded completion-icon-default">assignment</span>
         <h3>End of Questions</h3>
-        <p>Progress: ${completed} / ${lines.length} (${percentage}%)</p>
-        <p>You've reached the last question. Continue to review from the beginning.</p>
         <button class="btn btn-primary completion-restart-btn" onclick="navigateToFirstLine()">
           <span class="material-symbols-rounded">restart_alt</span>
           <span>Start from Beginning</span>
@@ -4460,11 +4540,25 @@ async function saveRunTrialProgress() {
     saveLocalCache("trials", { trials: trialState.trials });
   }
 
-  // Save responses to Google Drive (granular — per area+param file)
-  enqueueSync({
-    label: `Save Responses: ${trial.name}`,
-    run: () => saveTrialResponsesToDrive(trial),
-  });
+  // Save responses to Google Drive (targeted — per line file, deduplicated by fileKey)
+  const saveAreaIndex = runTrialState.currentAreaIndex;
+  const saveParamId = runTrialState.currentParamId;
+  const saveLineId = runTrialState.currentLineId;
+  const saveRepIndex = runTrialState.currentRepIndex;
+
+  if (saveAreaIndex !== null && saveParamId && saveLineId !== null && saveRepIndex !== null) {
+    enqueueSync({
+      label: `Save Responses: ${trial.name}`,
+      fileKey: `${trial.id}~${saveAreaIndex}~${saveParamId}~${saveRepIndex}~${saveLineId}`,
+      run: () => saveTrialLineToDrive(trial, saveAreaIndex, saveParamId, saveRepIndex, saveLineId),
+    });
+  } else {
+    // Fallback: full backup if current line context is unknown
+    enqueueSync({
+      label: `Save Responses: ${trial.name}`,
+      run: () => saveTrialResponsesToDrive(trial),
+    });
+  }
 
   // Update nav and progress display
   renderRunTrialNavTree();
@@ -4513,11 +4607,39 @@ async function autoSaveProgress() {
       saveLocalCache("trials", { trials: trialState.trials });
     }
 
-    // Save to Drive in background
-    enqueueSync({
-      label: `Auto-save: ${trial.name}`,
-      run: () => saveTrialResponsesToDrive(trial),
-    });
+    // Save to Drive in background (targeted: only current line, deduplicated by fileKey)
+    const saveAreaIndex = runTrialState.currentAreaIndex;
+    const saveParamId = runTrialState.currentParamId;
+    const saveLineId = runTrialState.currentLineId;
+    const saveRepIndex = runTrialState.currentRepIndex;
+    const saveSampleIndex = runTrialState.currentSampleIndex || 0;
+
+    if (saveAreaIndex !== null && saveParamId && saveLineId !== null && saveRepIndex !== null) {
+      // Build detailed label: trial > area > param > rep > line > sample
+      const area = trial.areas[saveAreaIndex];
+      const param = inventoryState.items.parameters.find((p) => p.id === saveParamId);
+      const line = area?.layout?.lines?.find((l) => l.id === saveLineId);
+      const numberOfSamples = param?.numberOfSamples || 1;
+      
+      const trialName = trial.name || "Trial";
+      const areaName = area?.name || `Area ${saveAreaIndex + 1}`;
+      const paramName = param?.name || "Param";
+      const repLabel = `Rep ${saveRepIndex + 1}`;
+      const lineName = line?.name || `Line ${saveLineId}`;
+      const sampleLabel = numberOfSamples > 1 ? ` · S${saveSampleIndex + 1}` : "";
+      
+      enqueueSync({
+        label: `Saving ${trialName} · ${areaName} · ${paramName} · ${repLabel} · ${lineName}${sampleLabel}`,
+        fileKey: `${trial.id}~${saveAreaIndex}~${saveParamId}~${saveRepIndex}~${saveLineId}`,
+        run: () => saveTrialLineToDrive(trial, saveAreaIndex, saveParamId, saveRepIndex, saveLineId),
+      });
+    } else {
+      // Fallback: full backup if current line context is unknown
+      enqueueSync({
+        label: `Saving ${trial.name}`,
+        run: () => saveTrialResponsesToDrive(trial),
+      });
+    }
 
     // Update nav and progress display
     renderRunTrialNavTree();
@@ -4869,13 +4991,35 @@ function showTrialDetail(trialId) {
   // Store current trial for editing/deleting
   window.currentDetailTrialId = trialId;
 
+  // Show/hide Run button based on whether trial has a layout
+  const runBtn = document.getElementById('trialDetailRunBtn');
+  const archiveBtn = document.getElementById('trialDetailArchiveBtn');
+  const editBtn = document.getElementById('trialDetailEditBtn');
+  const hasLayout = trial.areas && trial.areas.length > 0 && trial.areas.some(a => a.layout?.result);
+
+  if (runBtn) {
+    if (trial.archived || !hasLayout) {
+      runBtn.style.display = 'none';
+    } else {
+      runBtn.style.display = '';
+    }
+  }
+  if (archiveBtn) {
+    if (trial.archived) {
+      archiveBtn.innerHTML = '<span class="material-symbols-rounded">unarchive</span><span>Unarchive</span>';
+      archiveBtn.onclick = unarchiveTrialFromDetail;
+    } else {
+      archiveBtn.innerHTML = '<span class="material-symbols-rounded">archive</span><span>Archive</span>';
+      archiveBtn.onclick = archiveTrialFromDetail;
+    }
+    archiveBtn.style.display = '';
+  }
+  if (editBtn) {
+    editBtn.style.display = trial.archived ? 'none' : '';
+  }
+
   // Set header info
   document.getElementById('trialDetailTitle').textContent = trial.name;
-  const trialDetailMeta = document.getElementById('trialDetailMeta');
-  if (trialDetailMeta) {
-    const progress = calculateTrialProgress(trial);
-    trialDetailMeta.textContent = `${trial.cropName || trial.trialType || 'Trial'} · ${progress.percentage}% completed`;
-  }
 
   // Build comprehensive body content
   const body = document.getElementById('trialDetailBody');
@@ -4925,80 +5069,214 @@ function showTrialDetail(trialId) {
   }, 0) || 0;
 
   body.innerHTML = `
-    <!-- Progress Bar -->
-    <div class="td-section td-card">
-      <div class="td-row">
-        <div class="td-flex">
-          <span class="material-symbols-rounded td-progress-fill" style="color: ${progressColor};">donut_large</span>
-          <span class="td-info-label">Trial Progress</span>
-        </div>
-        <span class="td-progress-summary" style="color: ${progressColor};">${progress.percentage}%</span>
+
+  <div class='td-container grid-2'>
+
+    <div class='td-section td-progress'>
+      <svg class="td-progress-circle" width="120" height="120" viewBox="0 0 64 64"> <circle cx="32" cy="32" r="28" class="progress-circle-bg"></circle> <circle cx="32" cy="32" r="28" class="progress-circle-fill" style="stroke-dasharray: ${progress.percentage * 1.75} 175; stroke: ${getProgressGradientColor(progress.percentage)}"></circle> <text x="32" y="37" class="progress-circle-text" text-anchor="middle">${progress.percentage}%</text> </svg>
+    </div>
+
+    <div class='td-section td-description'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-section-icon">description</span>
       </div>
-      <div class="td-progress-track">
-        <div class="td-progress-fill" style="width: ${progress.percentage}%; background: ${progressColor};"></div>
-      </div>
-      <div class="td-progress-summary">
-        <span>${progress.completed} of ${progress.total} observations completed</span>
-        <span>${progress.percentage === 100 ? 'Completed' : progress.percentage > 0 ? 'In Progress' : 'Not Started'}</span>
+      <div class='td-content'>
+        <div class='td-label'>Description</div>
+        <div class='td-value'>${escapeHtml(trial.description)}</div>
+        <div class='td-text'>${progress.completed}/${progress.total} observations completed</div>
       </div>
     </div>
 
-    <!-- Info Grid -->
+  </div>
+
+  <div class='td-title'>
+    <p>General</p>
+  </div>
+
+  <div class='td-container grid-3'>
+
+    <div class='td-section td-crop'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">eco</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Crop</div>
+        <div class='td-value'>${escapeHtml(trial.cropName || "-")}</div>
+      </div>
+    </div>
+  
+    <div class='td-section td-type'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">science</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Trial Type</div>
+        <div class='td-value'>${escapeHtml(trial.trialType || "-")}</div>
+      </div>
+    </div>
+
+    <div class='td-section td-planting-window'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">calendar_month</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Planting Window</div>
+        <div class='td-value'>${trial.plantingStart ? formatMonthYear(trial.plantingStart) : "-"} — ${trial.plantingEnd ? formatMonthYear(trial.plantingEnd) : "-"}</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class='td-container'>
+
+    <div class='td-section td-param'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-section-icon">biotech</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Observation Parameters</div>
+        ${paramDetails.length > 0 ? `
+        <div class='td-grid grid-4'>
+          ${paramDetails.map((param) => `
+            <div class='td-item'>
+              <span class="material-symbols-rounded td-param-icon">${getParamIcon(param.type)}</span>
+              <span class="td-param-name">${escapeHtml(param.name)}</span>
+            </div>
+          `,).join("")}
+        </div>
+        ` : `No parameters assigned.`}
+      </div>
+    </div>
+
+  </div>
+
+  <div class='td-title'>
+    <p>Plot Specifications</p>
+  </div>
+
+  <div class='td-container grid-3'>
+
+    <div class='td-section td-no-rows'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">view_agenda</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>No. of Rows per Plot</div>
+        <div class='td-value'>${trial.rowsPerPlot} rows</div>
+      </div>
+    </div>
+
+    <div class='td-section td-plot-length'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">straighten</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Plot Length</div>
+        <div class='td-value'>${trial.plotLength} m</div>
+      </div>
+    </div>
+
+    <div class='td-section td-expected-plant'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">science</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Exp. No. of Plants per Plot</div>
+        <div class='td-value'>XXX</div>
+      </div>
+    </div>
+
+    <div class='td-section td-spacing'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">space_dashboard</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Plant Spacing</div>
+        <div class='td-value'>${trial.plantSpacingWidth} × ${trial.plantSpacingHeight} cm</div>
+      </div>
+    </div>
+
+    <div class='td-section td-plot-area'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">science</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Plot Area</div>
+        <div class='td-value'>XXX m²</div>
+      </div>
+    </div>
+
+    <div class='td-section td-population'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">science</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Population per Hectare</div>
+        <div class='td-value'>XXX plants</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class='td-container'>
+
+    <div class='td-section area'>
+    </div>
+
+  </div>
+
+  <!--
+    <div class="td-section td-card">
+      <div class="td-progress-circle-container">
+        <svg class="progress-circle" width="120" height="120" viewBox="0 0 64 64">
+          <circle cx="32" cy="32" r="28" class="progress-circle-bg"></circle>
+          <circle cx="32" cy="32" r="28" class="progress-circle-fill"
+                  style="stroke-dasharray: ${progress.percentage * 1.75} 175; stroke: ${getProgressGradientColor(progress.percentage)}"></circle>
+          <text x="32" y="37" class="progress-circle-text" text-anchor="middle">${progress.percentage}%</text>
+        </svg>
+        <div class="td-progress-info">
+          <div class="td-progress-title">Trial Progress</div>
+          <div class="td-progress-details">
+            <div class="td-progress-stat">
+              <span class="td-progress-stat-label">Observations</span>
+              <span class="td-progress-stat-value">${progress.completed}/${progress.total}</span>
+            </div>
+            <div class="td-progress-stat">
+              <span class="td-progress-stat-label">Status</span>
+              <span class="td-progress-stat-value" style="color: ${getProgressGradientColor(progress.percentage)};">${progress.percentage === 100 ? "Completed" : progress.percentage > 0 ? "In Progress" : "Not Started"}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="td-info-grid">
       <div class="td-info-item">
         <span class="material-symbols-rounded td-info-icon">eco</span>
         <div>
           <div class="td-info-label">Crop</div>
-          <div class="td-info-value">${escapeHtml(trial.cropName || '-')}</div>
+          <div class="td-info-value">${escapeHtml(trial.cropName || "-")}</div>
         </div>
       </div>
       <div class="td-info-item">
         <span class="material-symbols-rounded td-info-icon">science</span>
         <div>
           <div class="td-info-label">Trial Type</div>
-          <div class="td-info-value">${escapeHtml(trial.trialType || '-')}</div>
+          <div class="td-info-value">${escapeHtml(trial.trialType || "-")}</div>
         </div>
       </div>
       <div class="td-info-item">
         <span class="material-symbols-rounded td-info-icon">calendar_month</span>
         <div>
           <div class="td-info-label">Planting Window</div>
-          <div class="td-info-value">${trial.plantingStart ? formatMonthYear(trial.plantingStart) : '-'} — ${trial.plantingEnd ? formatMonthYear(trial.plantingEnd) : '-'}</div>
+          <div class="td-info-value">${trial.plantingStart ? formatMonthYear(trial.plantingStart) : "-"} — ${trial.plantingEnd ? formatMonthYear(trial.plantingEnd) : "-"}</div>
         </div>
       </div>
     </div>
 
-    <!-- Stats Row -->
-    <div class="td-stats-grid">
-      <div class="td-stat-item">
-        <span class="material-symbols-rounded td-stat-icon">map</span>
-        <div class="td-stat-value">${areaCount}</div>
-        <div class="td-stat-label">Areas</div>
-      </div>
-      <div class="td-stat-item">
-        <span class="material-symbols-rounded td-stat-icon">assignment</span>
-        <div class="td-stat-value">${paramDetails.length}</div>
-        <div class="td-stat-label">Parameters</div>
-      </div>
-      <div class="td-stat-item">
-        <span class="material-symbols-rounded td-stat-icon">grass</span>
-        <div class="td-stat-value">${totalLines}</div>
-        <div class="td-stat-label">Lines</div>
-      </div>
-      <div class="td-stat-item">
-        <span class="material-symbols-rounded td-stat-icon">pinch</span>
-        <div class="td-stat-value">${totalSamples}</div>
-        <div class="td-stat-label">Samples</div>
-      </div>
-      <div class="td-stat-item">
-        <span class="material-symbols-rounded td-stat-icon" style="color: ${progressColor};">check_circle</span>
-        <div class="td-stat-value">${progress.completed}</div>
-        <div class="td-stat-label">Answered</div>
-      </div>
-    </div>
-
-    ${trial.description ? `
-    <!-- Description -->
+    ${
+      trial.description
+        ? `
     <div class="td-section td-card">
       <div class="td-section-header">
         <span class="material-symbols-rounded td-section-icon">description</span>
@@ -5006,9 +5284,77 @@ function showTrialDetail(trialId) {
       </div>
       <p class="td-description">${escapeHtml(trial.description)}</p>
     </div>
-    ` : ''}
+    `
+        : ""
+    }
 
-    <!-- Parameters Section -->
+    ${
+      trial.rowsPerPlot !== undefined || trial.plotLength !== undefined
+        ? `
+    <div class="td-section td-card">
+      <div class="td-section-header">
+        <span class="material-symbols-rounded td-section-icon">square_foot</span>
+        <span class="td-section-title">Plot Specifications</span>
+      </div>
+      <div class="td-plot-specs-grid">
+        ${
+          trial.rowsPerPlot !== undefined
+            ? `
+          <div class="td-spec-item">
+            <span class="material-symbols-rounded">view_agenda</span>
+            <div>
+              <div class="td-spec-label">Rows per Plot</div>
+              <div class="td-spec-value">${trial.rowsPerPlot} rows</div>
+            </div>
+          </div>
+        `
+            : ""
+        }
+        ${
+          trial.plotLength !== undefined
+            ? `
+          <div class="td-spec-item">
+            <span class="material-symbols-rounded">straighten</span>
+            <div>
+              <div class="td-spec-label">Plot Length</div>
+              <div class="td-spec-value">${trial.plotLength} m</div>
+            </div>
+          </div>
+        `
+            : ""
+        }
+        ${
+          trial.plantSpacingWidth !== undefined
+            ? `
+          <div class="td-spec-item">
+            <span class="material-symbols-rounded">space_dashboard</span>
+            <div>
+              <div class="td-spec-label">Plant Spacing (Width)</div>
+              <div class="td-spec-value">${trial.plantSpacingWidth} cm</div>
+            </div>
+          </div>
+        `
+            : ""
+        }
+        ${
+          trial.plantSpacingHeight !== undefined
+            ? `
+          <div class="td-spec-item">
+            <span class="material-symbols-rounded">view_column</span>
+            <div>
+              <div class="td-spec-label">Plant Spacing (Height)</div>
+              <div class="td-spec-value">${trial.plantSpacingHeight} cm</div>
+            </div>
+          </div>
+        `
+            : ""
+        }
+      </div>
+    </div>
+    `
+        : ""
+    }
+
     <div class="td-section">
       <div class="td-section-header">
         <span class="material-symbols-rounded td-section-icon">biotech</span>
@@ -5017,43 +5363,145 @@ function showTrialDetail(trialId) {
       </div>
       ${paramDetails.length > 0 ? `
       <div class="td-params-grid">
-        ${paramDetails.map(param => `
+        ${paramDetails
+          .map(
+            (param) => `
           <div class="td-param-item">
             <span class="material-symbols-rounded td-param-icon">${getParamIcon(param.type)}</span>
             <span class="td-param-name">${escapeHtml(param.name)}</span>
-            <span class="td-param-type">${escapeHtml(param.type || '')}</span>
-            ${param.unit ? `<span class="td-param-unit">${escapeHtml(param.unit)}</span>` : ''}
-            ${param.requirePhoto ? '<span class="material-symbols-rounded td-param-photo" title="Photo required">photo_camera</span>' : ''}
+            <span class="td-param-type">${escapeHtml(param.type || "")}</span>
+            ${param.unit ? `<span class="td-param-unit">${escapeHtml(param.unit)}</span>` : ""}
+            ${param.requirePhoto ? '<span class="material-symbols-rounded td-param-photo" title="Photo required">photo_camera</span>' : ""}
           </div>
-        `).join('')}
+        `,
+          )
+          .join("")}
       </div>
-      ` : `<div class="td-no-items">No parameters assigned.</div>`}
+      `
+          : `<div class="td-no-items">No parameters assigned.</div>`
+      }
     </div>
 
-    <!-- Trial Areas Section -->
-    <div>
+    <div class="td-section">
       <div class="td-section-header">
         <span class="material-symbols-rounded td-section-icon">map</span>
         <span class="td-section-title">Trial Areas</span>
         <span class="td-section-count">${areaCount}</span>
       </div>
       <div id="trialDetailAreaMaps" class="td-area-maps-grid">
-        <!-- Area maps will be rendered here -->
       </div>
     </div>
 
+    <div class="td-section">
+      <div class="td-section-header">
+        <span class="material-symbols-rounded td-section-icon">grid_view</span>
+        <span class="td-section-title">Experimental Layout</span>
+      </div>
+      <div class="td-layout-details">
+        ${
+          trial.areas && trial.areas.length > 0
+            ? trial.areas
+                .map(
+                  (area, areaIdx) => `
+          <div class="td-area-layout-card">
+            <div class="td-area-layout-header">
+              <h4 class="td-area-layout-title">${escapeHtml(area.name || `Area ${areaIdx + 1}`)}</h4>
+              <div class="td-area-layout-meta">
+                ${area.areaSize ? `<span class="td-area-meta-item"><span class="material-symbols-rounded">straighten</span>${area.areaSize.hectares.toFixed(2)} ha</span>` : ""}
+                ${area.address ? `<span class="td-area-meta-item"><span class="material-symbols-rounded">location_on</span>${escapeHtml(area.address)}</span>` : ""}
+              </div>
+            </div>
+            ${
+              area.layout?.result && area.layout.result.length > 0
+                ? `
+              <div class="td-layout-info-grid">
+                <div class="td-layout-info-item">
+                  <span class="material-symbols-rounded">compare_arrows</span>
+                  <div>
+                    <div class="td-info-label">Layout Direction</div>
+                    <div class="td-info-value">${escapeHtml(area.layout.direction === "serpentine" ? "Serpentine (Snake)" : "Straight (Top-Bottom)")}</div>
+                  </div>
+                </div>
+                <div class="td-layout-info-item">
+                  <span class="material-symbols-rounded">shuffle</span>
+                  <div>
+                    <div class="td-info-label">Randomization</div>
+                    <div class="td-info-value">${escapeHtml(area.layout.randomization === "random" ? "All Randomized" : "Rep 1 Ordered, Rest Random")}</div>
+                  </div>
+                </div>
+                <div class="td-layout-info-item">
+                  <span class="material-symbols-rounded">repeat</span>
+                  <div>
+                    <div class="td-info-label">Replications</div>
+                    <div class="td-info-value">${area.layout.result?.length || 0}</div>
+                  </div>
+                </div>
+                <div class="td-layout-info-item">
+                  <span class="material-symbols-rounded">grid_3x3</span>
+                  <div>
+                    <div class="td-info-label">Ranges</div>
+                    <div class="td-info-value">${area.layout.numRanges || 0}</div>
+                  </div>
+                </div>
+              </div>
+              <div class="td-lines-section">
+                <div class="td-lines-header">Lines Used (${area.layout.lines?.length || 0})</div>
+                <div class="td-lines-list">
+                  ${
+                    area.layout.lines && area.layout.lines.length > 0
+                      ? area.layout.lines
+                          .map(
+                            (line, lineIdx) => `
+                    <div class="td-line-item">
+                      <span class="td-line-index">${lineIdx + 1}</span>
+                      <span class="td-line-name" title="${escapeHtml(line.name || "Unknown")}">${escapeHtml(line.name || `Line ${line.id}`)}</span>
+                    </div>
+                  `,
+                          )
+                          .join("")
+                      : '<div class="td-no-items">No lines configured</div>'
+                  }
+                </div>
+              </div>
+            `
+                : `
+              <div class="td-no-items">
+                <span class="material-symbols-rounded">info</span>
+                No layout defined yet
+              </div>
+            `
+            }
+          </div>
+        `,
+                )
+                .join("")
+            : '<div class="td-no-items">No areas configured</div>'
+        }
+      </div>
+    </div>
+
+    -->
+
     <!-- Timestamps -->
     <div class="td-timestamps">
-      ${trial.createdAt ? `
+      ${
+        trial.createdAt
+          ? `
       <div class="td-timestamp">
         <span class="material-symbols-rounded">schedule</span>
-        Created: ${new Date(trial.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-      </div>` : ''}
-      ${trial.updatedAt ? `
+        Created: ${new Date(trial.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+      </div>`
+          : ""
+      }
+      ${
+        trial.updatedAt
+          ? `
       <div class="td-timestamp">
         <span class="material-symbols-rounded">update</span>
-        Updated: ${new Date(trial.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-      </div>` : ''}
+        Updated: ${new Date(trial.updatedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+      </div>`
+          : ""
+      }
     </div>
   `;
 
@@ -5214,14 +5662,14 @@ function renderDetailAreaMap(area, index) {
   }).setView(initCenter, initZoom);
 
   // Add satellite layer
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxNativeZoom: 19,
+  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg', {
+    maxNativeZoom: 20,
     maxZoom: 25
   }).addTo(map);
 
   // Add labels layer
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png', {
-    maxNativeZoom: 19,
+    maxNativeZoom: 20,
     maxZoom: 25,
     pane: 'shadowPane'
   }).addTo(map);
@@ -5264,6 +5712,30 @@ function editTrialFromDetail() {
   if (window.currentDetailTrialId) {
     closeTrialDetailModal();
     openEditTrialModal(window.currentDetailTrialId);
+  }
+}
+
+// Run trial from detail modal
+function runTrialFromDetail() {
+  if (window.currentDetailTrialId) {
+    closeTrialDetailModal();
+    startRunTrial(window.currentDetailTrialId);
+  }
+}
+
+// Archive trial from detail modal
+function archiveTrialFromDetail() {
+  if (window.currentDetailTrialId) {
+    closeTrialDetailModal();
+    archiveTrial(window.currentDetailTrialId);
+  }
+}
+
+// Unarchive trial from detail modal
+function unarchiveTrialFromDetail() {
+  if (window.currentDetailTrialId) {
+    closeTrialDetailModal();
+    unarchiveTrial(window.currentDetailTrialId);
   }
 }
 

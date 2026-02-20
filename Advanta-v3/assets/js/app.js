@@ -144,10 +144,26 @@ const syncState = {
 };
 
 function enqueueSync(task) {
+  // Deduplication: if a pending task with the same fileKey exists, update it in-place
+  // so we don't upload the same file multiple times when navigating quickly
+  if (task.fileKey) {
+    const existing = syncState.queue.find(
+      (item) => item.status === "pending" && item.fileKey === task.fileKey
+    );
+    if (existing) {
+      existing.run = task.run;
+      existing.label = task.label;
+      existing.createdAt = new Date().toISOString();
+      updateSyncUI();
+      return;
+    }
+  }
+
   const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const entry = {
     id,
     label: task.label,
+    fileKey: task.fileKey || null,
     run: task.run,
     status: "pending",
     createdAt: new Date().toISOString(),
@@ -264,16 +280,16 @@ function updateSyncUI() {
               : "pending";
         const statusLabel =
           item.status === "success"
-            ? "Synced"
+            ? `<span class="material-symbols-rounded">check_circle</span>`
             : item.status === "error"
-              ? "Error"
-              : "Syncing";
+              ? `<span class="material-symbols-outlined"> error </span>`
+              : `<span class="material-symbols-rounded">cached</span>`;
         const errorHint =
           item.status === "error" && item.error ? ` - ${item.error}` : "";
         return `
                     <div class="sync-item">
-                        <span>${item.label}${errorHint}</span>
-                        <span class="sync-item-status ${statusClass}">${statusLabel}</span>
+                      <span class="sync-item-status ${statusClass}">${statusLabel}</span>
+                      <span>${item.label}${errorHint}</span>
                     </div>
                 `;
       })
@@ -415,16 +431,9 @@ function navigateToView(item) {
       syncInventoryNavState(category);
     }
   } else if (view === "trial") {
-    const firstSub = document.querySelector(
-      '.nav-subitem[data-parent="trial"]',
-    );
-    if (firstSub) {
-      // clear subitem active across all parents then activate first
-      document.querySelectorAll('.nav-subitem').forEach((s) => s.classList.remove('active'));
-      firstSub.classList.add('active');
-      const tab = firstSub.dataset.trialTab;
-      switchTrialTab(tab);
-    }
+    // Unified trial view - just render trials (no subnav)
+    if (typeof renderTrials === "function") renderTrials();
+    if (typeof initializeRunTrial === "function") initializeRunTrial();
   } else if (view === "reminder") {
     const firstSub = document.querySelector(
       '.nav-subitem[data-parent="reminder"]',
@@ -496,14 +505,14 @@ function showExitRunTrialConfirmation(onConfirm) {
 function clearNavActiveState() {
   document
     .querySelectorAll(
-      ".nav-item, .nav-subitem, .submenu-item, .trial-submenu-item",
+      ".nav-item, .nav-subitem",
     )
     .forEach((item) => item.classList.remove("active"));
 }
 
 function syncNavActiveState(pageName) {
   // Clear subitem active states globally first
-  document.querySelectorAll('.nav-subitem, .submenu-item, .trial-submenu-item').forEach((it) => it.classList.remove('active'));
+  document.querySelectorAll('.nav-subitem').forEach((it) => it.classList.remove('active'));
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.classList.toggle("active", item.dataset.view === pageName);
   });
@@ -515,23 +524,7 @@ function syncNavActiveState(pageName) {
   }
 
   if (pageName === "trial") {
-    const activeTrialTab =
-      document.querySelector(".trial-submenu-item.active")?.dataset.trialTab ||
-      "management";
-    document
-      .querySelectorAll('.nav-subitem[data-parent="trial"]')
-      .forEach((item) => {
-        item.classList.toggle(
-          "active",
-          item.dataset.trialTab === activeTrialTab,
-        );
-      });
-    document.querySelectorAll(".trial-submenu-item").forEach((item) => {
-      item.classList.toggle("active", item.dataset.trialTab === activeTrialTab);
-    });
-    // Ensure other parents' subitems are cleared
-    document.querySelectorAll('.nav-subitem[data-parent="inventory"]').forEach((item) => item.classList.remove('active'));
-    document.querySelectorAll('.nav-subitem[data-parent="reminder"]').forEach((item) => item.classList.remove('active'));
+    // Unified trial view - no subitems to sync
     return;
   }
 
@@ -544,7 +537,7 @@ function syncNavActiveState(pageName) {
   }
 
   document
-    .querySelectorAll(".nav-subitem, .submenu-item, .trial-submenu-item")
+    .querySelectorAll(".nav-subitem")
     .forEach((item) => item.classList.remove("active"));
 }
 
@@ -554,9 +547,6 @@ function syncInventoryNavState(category) {
     .forEach((item) => {
       item.classList.toggle("active", item.dataset.category === category);
     });
-  document.querySelectorAll(".submenu-item").forEach((item) => {
-    item.classList.toggle("active", item.dataset.category === category);
-  });
   document
     .querySelectorAll('.nav-subitem[data-parent="trial"]')
     .forEach((item) => item.classList.remove("active"));
@@ -579,8 +569,6 @@ function syncReminderNavState(tabName) {
   document
     .querySelectorAll('.nav-subitem[data-parent="trial"]')
     .forEach((item) => item.classList.remove("active"));
-  document.querySelectorAll(".submenu-item").forEach((item) => item.classList.remove("active"));
-  document.querySelectorAll(".trial-submenu-item").forEach((item) => item.classList.remove("active"));
 }
 
 // Initialize app
@@ -632,17 +620,17 @@ async function initializeApp() {
       await initializeDriveStructure();
     }
 
-    // Initialize Inventory (silent background loading)
+    // Initialize Trials FIRST (silent background loading)
     setLoadingProgress(20, "Loading cached data...");
-    initializeInventory({
+    initializeTrials({
       onProgress: (p, msg) => {
         // Silent background sync - no UI updates
       },
     });
 
-    // Initialize Trials (silent background loading)
-    setLoadingProgress(55, "Loading cached data...");
-    initializeTrials({
+    // Initialize Inventory (silent background loading)
+    setLoadingProgress(40, "Loading cached data...");
+    initializeInventory({
       onProgress: (p, msg) => {
         // Silent background sync - no UI updates
       },
@@ -690,6 +678,7 @@ function setupEventListeners() {
 
   if (menuToggle && sidebar) {
     menuToggle.addEventListener("click", () => {
+      if (document.body.classList.contains("run-trial-active")) return;
       const isMobile = window.matchMedia("(max-width: 768px)").matches;
       if (isMobile) {
         sidebar.classList.toggle("open");
@@ -826,27 +815,8 @@ function setupEventListeners() {
     });
   }
 
-  // Inventory submenu
-  document.querySelectorAll(".submenu-item").forEach((item) => {
-    item.addEventListener("click", (e) => {
-      e.preventDefault();
-      const category = item.dataset.category;
-      if (!category) {
-        return;
-      }
-      switchCategory(category);
-      syncInventoryNavState(category);
-    });
-  });
-
-  // Trial submenu
-  document.querySelectorAll(".trial-submenu-item").forEach((item) => {
-    item.addEventListener("click", (e) => {
-      e.preventDefault();
-      const tab = item.dataset.trialTab;
-      switchTrialTab(tab);
-    });
-  });
+  // Inventory category selection (from header buttons, if any)
+  // Note: Direct category switching can be done via navigateToView with inventory subitem
 
   // Add item button
   document.getElementById("addItemBtn").addEventListener("click", () => {
@@ -916,27 +886,7 @@ function setupEventListeners() {
     });
   }
 
-  // Reminder tab switching
-  document.querySelectorAll(".submenu-item[data-reminder-tab]").forEach((item) => {
-    item.addEventListener("click", () => {
-      const tab = item.dataset.reminderTab;
-      
-      // Update active states
-      document.querySelectorAll(".submenu-item[data-reminder-tab]").forEach((btn) => {
-        btn.classList.remove("active");
-      });
-      item.classList.add("active");
 
-      // Show corresponding content
-      document.querySelectorAll(".reminder-tab-content").forEach((content) => {
-        content.classList.remove("active");
-      });
-      
-      const contentId = tab === "observation" ? "reminderObservationContent" : "reminderAgronomyContent";
-      const content = document.getElementById(contentId);
-      if (content) content.classList.add("active");
-    });
-  });
 
   // Add reminder buttons (placeholder for coming soon functionality)
   const addObservationBtn = document.getElementById("addObservationBtn");
@@ -970,11 +920,6 @@ document.addEventListener("keydown", (e) => {
 
 // Switch reminder tab
 function switchReminderTab(tabName) {
-  // Update submenu buttons
-  document.querySelectorAll(".submenu-item[data-reminder-tab]").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.reminderTab === tabName);
-  });
-
   // Update content visibility
   document.querySelectorAll(".reminder-tab-content").forEach((content) => {
     content.classList.remove("active");

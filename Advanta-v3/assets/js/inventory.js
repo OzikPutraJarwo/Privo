@@ -279,15 +279,6 @@ function switchCategory(category) {
     syncInventoryNavState(key);
   }
 
-  // Update active submenu item
-  document.querySelectorAll(".submenu-item").forEach((item) => {
-    item.classList.remove("active");
-  });
-  const button = document.querySelector(`[data-category="${category}"]`);
-  if (button) {
-    button.classList.add("active");
-  }
-
   // Update title
   const categoryTitle = {
     crops: "Crops",
@@ -1233,16 +1224,16 @@ function renderLocationPreviewMap(location) {
   }).setView(center, 13);
 
   // Add satellite layer
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg', {
     attribution: '',
-    maxNativeZoom: 19,
+    maxNativeZoom: 20,
     maxZoom: 25
   }).addTo(map);
 
   // Add labels layer
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png', {
     attribution: '',
-    maxNativeZoom: 19,
+    maxNativeZoom: 20,
     maxZoom: 25,
     pane: 'shadowPane'
   }).addTo(map);

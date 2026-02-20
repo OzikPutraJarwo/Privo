@@ -17,7 +17,7 @@
         <div class="login-content">
           <div class="login-header">
             <div class="logo-icon">
-              <span class="material-symbols-rounded">agriculture</span>
+              <span class="material-symbols-rounded">energy_program_time_used</span>
             </div>
             <h1>Advanta v3</h1>
             <p>Agricultural Management System</p>
@@ -47,7 +47,7 @@
       <aside class="sidebar">
         <div class="sidebar-header">
           <div class="logo-container">
-            <span class="material-symbols-rounded">agriculture</span>
+            <span class="material-symbols-rounded">energy_program_time_used</span>
             <span class="logo-text">Advanta</span>
           </div>
         </div>
@@ -65,7 +65,7 @@
             </a>
             <div class="nav-submenu">
               <a href="#" class="nav-subitem" data-parent="inventory" data-category="crops">
-                <span class="material-symbols-rounded">agriculture</span>
+                <span class="material-symbols-rounded">psychiatry</span>
                 <span>Crops</span>
               </a>
               <a href="#" class="nav-subitem" data-parent="inventory" data-category="locations">
@@ -78,23 +78,10 @@
               </a>
             </div>
           </div>
-          <div class="nav-group" data-view="trial">
-            <a href="#" class="nav-item nav-parent" data-view="trial">
-              <span class="material-symbols-rounded">science</span>
-              <span>Trial</span>
-              <span class="material-symbols-rounded nav-caret">expand_more</span>
-            </a>
-            <div class="nav-submenu">
-              <a href="#" class="nav-subitem" data-parent="trial" data-trial-tab="management">
-                <span class="material-symbols-rounded">assignment</span>
-                <span>Trial Management</span>
-              </a>
-              <a href="#" class="nav-subitem" data-parent="trial" data-trial-tab="run">
-                <span class="material-symbols-rounded">play_circle</span>
-                <span>Run Trial</span>
-              </a>
-            </div>
-          </div>
+          <a href="#" class="nav-item" data-view="trial">
+            <span class="material-symbols-rounded">science</span>
+            <span>Trial</span>
+          </a>
           <a href="#" class="nav-item" data-view="library">
             <span class="material-symbols-rounded">folder_open</span>
             <span>Library</span>
@@ -111,7 +98,7 @@
                 <span>Observation</span>
               </a>
               <a href="#" class="nav-subitem" data-parent="reminder" data-reminder-tab="agronomy">
-                <span class="material-symbols-rounded">yard</span>
+                <span class="material-symbols-rounded">local_florist</span>
                 <span>Agronomy</span>
               </a>
             </div>
@@ -140,6 +127,16 @@
             <button id="syncStatusBtn" class="sync-status" aria-label="Sync status" title="Synced">
               <span class="material-symbols-rounded">cached</span>
               <span id="syncQueueCount" class="sync-badge">0</span>
+            </button>
+            <button id="viewProgressBtn" class="btn btn-secondary btn-icon-only hidden" onclick="showViewProgress()" style="display: none;">
+              <span class="material-symbols-rounded">analytics</span>
+            </button>
+            <button id="runTrialNavBtn" class="btn btn-secondary hidden mobile-nav-toggle" onclick="openMobileNav()" style="display: none;">
+              <span class="material-symbols-rounded">menu</span>
+              <span>Navigation</span>
+            </button>
+            <button id="runTrialSaveBtn" class="btn btn-secondary btn-icon-only run-save-icon hidden" onclick="manualSaveProgress()" style="display: none;" title="Save progress">
+              <span class="material-symbols-rounded">save</span>
             </button>
             <div class="user-menu" id="userMenu">
               <button class="user-menu-trigger" id="userMenuTrigger" aria-haspopup="true" aria-expanded="false">
@@ -229,22 +226,6 @@
           </div>
         
           <div id="inventoryContent" class="page-content">
-            <!-- Sub-menu Navigation -->
-            <div class="submenu-nav">
-              <button class="submenu-item active" data-category="crops">
-                <span class="material-symbols-rounded">agriculture</span>
-                <span>Crops</span>
-              </button>
-              <button class="submenu-item" data-category="locations">
-                <span class="material-symbols-rounded">location_on</span>
-                <span>Locations</span>
-              </button>
-              <button class="submenu-item" data-category="parameters">
-                <span class="material-symbols-rounded">tune</span>
-                <span>Parameters</span>
-              </button>
-            </div>
-        
             <!-- Inventory Content -->
             <div class="inventory-container">
               <div class="inventory-header">
@@ -262,19 +243,7 @@
           </div>
         
           <div id="trialContent" class="page-content">
-            <div class="submenu-nav" id="trialSubmenu">
-              <button class="trial-submenu-item active" data-trial-tab="management">
-                <span class="material-symbols-rounded">science</span>
-                <span>Trial Management</span>
-              </button>
-              <button class="trial-submenu-item" data-trial-tab="run">
-                <span class="material-symbols-rounded">play_arrow</span>
-                <span>Run Trial</span>
-              </button>
-            </div>
-        
-            <div id="trialManagementContent" class="trial-tab-content active">
-              <div class="inventory-container" id="trialManagementPanel">
+            <div class="inventory-container" id="trialManagementPanel">
                 <div class="inventory-header">
                   <h3>Trials</h3>
                   <button id="addTrialBtn" class="btn btn-primary">
@@ -283,7 +252,7 @@
                   </button>
                 </div>
         
-                <div class="inventory-list" id="trialList">
+                <div class="run-trial-list" id="trialList">
                   <!-- Active trials will be populated here -->
                 </div>
               </div>
@@ -296,7 +265,7 @@
                     <h3>Archived Trials</h3>
                   </button>
                 </div>
-                <div class="inventory-list" id="archivedTrialList">
+                <div class="run-trial-list" id="archivedTrialList">
                   <!-- Archived trials will be populated here -->
                 </div>
               </div>
@@ -307,9 +276,16 @@
                   <div class="library-detail-header">
                     <div class="library-detail-info">
                       <h3 id="trialDetailTitle">Trial Details</h3>
-                      <p id="trialDetailMeta" class="library-detail-meta"></p>
                     </div>
                     <div class="library-detail-actions">
+                      <button class="btn btn-primary" id="trialDetailRunBtn" onclick="runTrialFromDetail()">
+                        <span class="material-symbols-rounded">play_arrow</span>
+                        <span>Run</span>
+                      </button>
+                      <button class="btn btn-secondary" id="trialDetailArchiveBtn" onclick="archiveTrialFromDetail()">
+                        <span class="material-symbols-rounded">archive</span>
+                        <span>Archive</span>
+                      </button>
                       <button class="btn btn-secondary" id="trialDetailEditBtn" onclick="editTrialFromDetail()">
                         <span class="material-symbols-rounded">edit</span>
                         <span>Edit</span>
@@ -329,7 +305,6 @@
                   </div>
                 </div>
               </div>
-            </div>
         
             <div id="trialEditor" class="trial-editor">
               <div class="modal-content trial-editor-content">
@@ -429,7 +404,7 @@
                         <label for="parameterSearch">Observation Parameters</label>
                         <div class="dual-picklist">
                           <div class="picklist-column">
-                            <div class="picklist-header">Available Parameters</div>
+                            <div class="picklist-header form-hint">Available Parameters</div>
                             <div class="picklist-search">
                               <span class="material-symbols-rounded">search</span>
                               <input type="text" id="parameterSearch" placeholder="Search parameters...">
@@ -453,7 +428,7 @@
                             </button>
                           </div>
                           <div class="picklist-column">
-                            <div class="picklist-header">Selected Parameters</div>
+                            <div class="picklist-header form-hint">Selected Parameters</div>
                             <div id="parameterSelectedList" class="picklist-list" data-list="selected">
                               <!-- Selected parameters populated here -->
                             </div>
@@ -551,46 +526,10 @@
                 </div>
               </div>
             </div>
-          </div>
-        
-          <div id="trialRunContent" class="page-content trial-tab-content">
-            <!-- Trial Selection -->
-            <div id="runTrialSelection" class="run-trial-section">
-              <div class="run-trial-header">
-                <h3>Select Trial to Run</h3>
-                <p>Choose a trial from your saved trials to start data collection</p>
-              </div>
-              <div id="runTrialList" class="run-trial-list">
-                <!-- Trial cards will be populated here -->
-              </div>
-            </div>
         
             <!-- Run Trial Interface -->
             <div id="runTrialInterface" class="run-trial-section hidden">
               <div id="runTrialShell" class="run-trial-shell">
-                <div class="run-trial-topbar">
-                  <button class="btn btn-secondary btn-icon" id="runTrialBackBtn">
-                    <span class="material-symbols-rounded">arrow_back</span>
-                  </button>
-                  <div class="run-trial-info">
-                    <h3 id="runTrialName">Trial Name</h3>
-                    <!--<span id="runTrialProgress" class="run-trial-progress">0 / 0 completed</span>-->
-                  </div>
-                  <div class="run-trial-actions">
-                    <button class="btn btn-secondary mobile-nav-toggle" onclick="openMobileNav()">
-                      <span class="material-symbols-rounded">menu</span>
-                      <span class="btn-text">Navigation</span>
-                    </button>
-                    <button class="btn btn-secondary" onclick="showViewProgress()">
-                      <span class="material-symbols-rounded">analytics</span>
-                      <span class="btn-text">View Progress</span>
-                    </button>
-                    <button class="btn btn-icon-only run-save-icon" onclick="manualSaveProgress()" title="Save progress">
-                      <span class="material-symbols-rounded">save</span>
-                    </button>
-                  </div>
-                </div>
-        
                 <div class="run-trial-container">
                   <!-- Mobile Nav Overlay -->
                   <div id="mobileNavOverlay" class="mobile-nav-overlay" onclick="closeMobileNav()"></div>
@@ -760,17 +699,6 @@
           </div>
         
           <div id="reminderContent" class="page-content">
-            <div class="submenu-nav" id="reminderSubmenu">
-              <button class="submenu-item active" data-reminder-tab="observation">
-                <span class="material-symbols-rounded">visibility</span>
-                <span>Observation</span>
-              </button>
-              <button class="submenu-item" data-reminder-tab="agronomy">
-                <span class="material-symbols-rounded">yard</span>
-                <span>Agronomy</span>
-              </button>
-            </div>
-        
             <div id="reminderObservationContent" class="reminder-tab-content active">
               <div class="empty-state">
                 <span class="material-symbols-rounded">schedule</span>
