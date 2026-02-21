@@ -3656,6 +3656,24 @@ function renderQuestionCard() {
     return;
   }
 
+  const lines = getAllLinesList();
+  const currentIdx = lines.findIndex(
+    (l) =>
+      l.areaIndex === areaIndex &&
+      l.paramId === paramId &&
+      l.lineId === lineId &&
+      l.repIndex === repIndex &&
+      l.sampleIndex === sampleIndex
+  );
+
+  const isFirstInArea = currentIdx >= 0 && (currentIdx === 0 || lines[currentIdx - 1].areaIndex !== areaIndex);
+  const isLastInArea = currentIdx >= 0 && (currentIdx === lines.length - 1 || lines[currentIdx + 1].areaIndex !== areaIndex);
+  const isLastOverall = currentIdx >= 0 && currentIdx === lines.length - 1;
+  const nextLineButtonClass = isLastOverall ? "btn btn-primary" : "btn btn-secondary";
+  const nextLineButtonLabel = isLastOverall ? "Finish" : "Next Line";
+  const nextLineButtonIcon = isLastOverall ? "check" : "arrow_forward";
+  const nextLineButtonHandler = isLastOverall ? "finishRunTrialLastQuestion()" : "navigateNextLine()";
+
   // Get existing response for this sample
   const existingResponse = runTrialState.responses[areaIndex]?.[paramId]?.[lineKey] || {};
   const existingValue = existingResponse.value ?? "";
@@ -3864,9 +3882,9 @@ function renderQuestionCard() {
             <span class="material-symbols-rounded">arrow_back</span>
             Previous Line
           </button>
-          <button class="btn btn-secondary" id="runNextLineBtn" onclick="navigateNextLine()">
-            Next Line
-            <span class="material-symbols-rounded">arrow_forward</span>
+          <button class="${nextLineButtonClass}" id="runNextLineBtn" onclick="${nextLineButtonHandler}">
+            ${nextLineButtonLabel}
+            <span class="material-symbols-rounded">${nextLineButtonIcon}</span>
           </button>
           <button class="btn btn-secondary" id="runNextAreaBtn" onclick="navigateNextArea()" style="display: none;">
             Next Area
@@ -3876,20 +3894,6 @@ function renderQuestionCard() {
       </div>
     </div>
   `;
-  
-  // Determine navigation boundaries
-  const lines = getAllLinesList();
-  const currentIdx = lines.findIndex(
-    (l) =>
-      l.areaIndex === areaIndex &&
-      l.paramId === paramId &&
-      l.lineId === lineId &&
-      l.repIndex === repIndex &&
-      l.sampleIndex === sampleIndex
-  );
-  
-  const isFirstInArea = currentIdx >= 0 && (currentIdx === 0 || lines[currentIdx - 1].areaIndex !== areaIndex);
-  const isLastInArea = currentIdx >= 0 && (currentIdx === lines.length - 1 || lines[currentIdx + 1].areaIndex !== areaIndex);
   
   const prevLineBtn = document.getElementById("runPrevLineBtn");
   const nextLineBtn = document.getElementById("runNextLineBtn");
@@ -3902,9 +3906,16 @@ function renderQuestionCard() {
   }
   
   if (isLastInArea) {
-    if (nextLineBtn) nextLineBtn.disabled = true;
+    if (nextLineBtn && !isLastOverall) nextLineBtn.disabled = true;
     if (nextAreaBtn && areaIndex < trial.areas.length - 1) nextAreaBtn.style.display = "flex";
   }
+}
+
+function finishRunTrialLastQuestion() {
+  if (hasResponseChanges()) {
+    saveCurrentResponseSilent();
+  }
+  saveRunTrialProgress();
 }
 
 // Radio option selection
@@ -5070,7 +5081,7 @@ function showTrialDetail(trialId) {
 
   body.innerHTML = `
 
-  <div class='td-container grid-2'>
+  <div class='td-container grid-2 td-intro'>
 
     <div class='td-section td-progress'>
       <svg class="td-progress-circle" width="120" height="120" viewBox="0 0 64 64"> <circle cx="32" cy="32" r="28" class="progress-circle-bg"></circle> <circle cx="32" cy="32" r="28" class="progress-circle-fill" style="stroke-dasharray: ${progress.percentage * 1.75} 175; stroke: ${getProgressGradientColor(progress.percentage)}"></circle> <text x="32" y="37" class="progress-circle-text" text-anchor="middle">${progress.percentage}%</text> </svg>
@@ -5218,271 +5229,52 @@ function showTrialDetail(trialId) {
 
   </div>
 
+  <div class='td-title'>
+    <p>Trial Areas</p>
+  </div>
+
   <div class='td-container'>
 
-    <div class='td-section area'>
+    ${trial.areas && trial.areas.length > 0 ? trial.areas.map((area, areaIdx) => `
+    <div class='td-section td-area'>
+      <div class='td-area-header td-grid grid-4'>
+        <div class='td-area-map' id='detailAreaMap${areaIdx}'>
+        </div>
+        <div class='td-area-head-info'>
+          <div class='td-area-title'>
+            <p>${escapeHtml(area.name || `Area ${areaIdx + 1}`)}</p>
+          </div>
+          <div class='td-area-size'>
+            <span class="material-symbols-rounded"> straighten </span>
+            <p>${area.areaSize.hectares.toFixed(2)} ha</p>
+          </div>
+          <div class='td-area-address'>
+            <span class="material-symbols-rounded"> location_on </span>
+            <p>${escapeHtml(area.address)}</p>
+          </div>
+          <div class='td-area-'>
+            <span class="material-symbols-rounded">grid_3x3</span>
+            <p>Ranges: ${area.layout.numRanges || 0}</p>
+          </div>
+          <div class='td-area-'>
+            <span class="material-symbols-rounded">repeat</span>
+            <p>Reps: ${area.layout.result?.length || 0}</p>
+          </div>
+          <div class='td-area-'>
+            <span class="material-symbols-rounded">compare_arrows</span>
+            <p>Direction: ${escapeHtml(area.layout.direction === "serpentine" ? "Serpentine" : "Straight")}</p>
+          </div>
+          <div class='td-area-'>
+            <span class="material-symbols-rounded">shuffle</span>
+            <p>Randomization: ${escapeHtml(area.layout.randomization === "random" ? "Random" : "Normal")}</p>
+          </div>
+        </div>
+      </div>
     </div>
+    `,).join("") : ``}
 
   </div>
 
-  <!--
-    <div class="td-section td-card">
-      <div class="td-progress-circle-container">
-        <svg class="progress-circle" width="120" height="120" viewBox="0 0 64 64">
-          <circle cx="32" cy="32" r="28" class="progress-circle-bg"></circle>
-          <circle cx="32" cy="32" r="28" class="progress-circle-fill"
-                  style="stroke-dasharray: ${progress.percentage * 1.75} 175; stroke: ${getProgressGradientColor(progress.percentage)}"></circle>
-          <text x="32" y="37" class="progress-circle-text" text-anchor="middle">${progress.percentage}%</text>
-        </svg>
-        <div class="td-progress-info">
-          <div class="td-progress-title">Trial Progress</div>
-          <div class="td-progress-details">
-            <div class="td-progress-stat">
-              <span class="td-progress-stat-label">Observations</span>
-              <span class="td-progress-stat-value">${progress.completed}/${progress.total}</span>
-            </div>
-            <div class="td-progress-stat">
-              <span class="td-progress-stat-label">Status</span>
-              <span class="td-progress-stat-value" style="color: ${getProgressGradientColor(progress.percentage)};">${progress.percentage === 100 ? "Completed" : progress.percentage > 0 ? "In Progress" : "Not Started"}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="td-info-grid">
-      <div class="td-info-item">
-        <span class="material-symbols-rounded td-info-icon">eco</span>
-        <div>
-          <div class="td-info-label">Crop</div>
-          <div class="td-info-value">${escapeHtml(trial.cropName || "-")}</div>
-        </div>
-      </div>
-      <div class="td-info-item">
-        <span class="material-symbols-rounded td-info-icon">science</span>
-        <div>
-          <div class="td-info-label">Trial Type</div>
-          <div class="td-info-value">${escapeHtml(trial.trialType || "-")}</div>
-        </div>
-      </div>
-      <div class="td-info-item">
-        <span class="material-symbols-rounded td-info-icon">calendar_month</span>
-        <div>
-          <div class="td-info-label">Planting Window</div>
-          <div class="td-info-value">${trial.plantingStart ? formatMonthYear(trial.plantingStart) : "-"} — ${trial.plantingEnd ? formatMonthYear(trial.plantingEnd) : "-"}</div>
-        </div>
-      </div>
-    </div>
-
-    ${
-      trial.description
-        ? `
-    <div class="td-section td-card">
-      <div class="td-section-header">
-        <span class="material-symbols-rounded td-section-icon">description</span>
-        <span class="td-desc-label">Description</span>
-      </div>
-      <p class="td-description">${escapeHtml(trial.description)}</p>
-    </div>
-    `
-        : ""
-    }
-
-    ${
-      trial.rowsPerPlot !== undefined || trial.plotLength !== undefined
-        ? `
-    <div class="td-section td-card">
-      <div class="td-section-header">
-        <span class="material-symbols-rounded td-section-icon">square_foot</span>
-        <span class="td-section-title">Plot Specifications</span>
-      </div>
-      <div class="td-plot-specs-grid">
-        ${
-          trial.rowsPerPlot !== undefined
-            ? `
-          <div class="td-spec-item">
-            <span class="material-symbols-rounded">view_agenda</span>
-            <div>
-              <div class="td-spec-label">Rows per Plot</div>
-              <div class="td-spec-value">${trial.rowsPerPlot} rows</div>
-            </div>
-          </div>
-        `
-            : ""
-        }
-        ${
-          trial.plotLength !== undefined
-            ? `
-          <div class="td-spec-item">
-            <span class="material-symbols-rounded">straighten</span>
-            <div>
-              <div class="td-spec-label">Plot Length</div>
-              <div class="td-spec-value">${trial.plotLength} m</div>
-            </div>
-          </div>
-        `
-            : ""
-        }
-        ${
-          trial.plantSpacingWidth !== undefined
-            ? `
-          <div class="td-spec-item">
-            <span class="material-symbols-rounded">space_dashboard</span>
-            <div>
-              <div class="td-spec-label">Plant Spacing (Width)</div>
-              <div class="td-spec-value">${trial.plantSpacingWidth} cm</div>
-            </div>
-          </div>
-        `
-            : ""
-        }
-        ${
-          trial.plantSpacingHeight !== undefined
-            ? `
-          <div class="td-spec-item">
-            <span class="material-symbols-rounded">view_column</span>
-            <div>
-              <div class="td-spec-label">Plant Spacing (Height)</div>
-              <div class="td-spec-value">${trial.plantSpacingHeight} cm</div>
-            </div>
-          </div>
-        `
-            : ""
-        }
-      </div>
-    </div>
-    `
-        : ""
-    }
-
-    <div class="td-section">
-      <div class="td-section-header">
-        <span class="material-symbols-rounded td-section-icon">biotech</span>
-        <span class="td-section-title">Observation Parameters</span>
-        <span class="td-section-count">${paramDetails.length}</span>
-      </div>
-      ${paramDetails.length > 0 ? `
-      <div class="td-params-grid">
-        ${paramDetails
-          .map(
-            (param) => `
-          <div class="td-param-item">
-            <span class="material-symbols-rounded td-param-icon">${getParamIcon(param.type)}</span>
-            <span class="td-param-name">${escapeHtml(param.name)}</span>
-            <span class="td-param-type">${escapeHtml(param.type || "")}</span>
-            ${param.unit ? `<span class="td-param-unit">${escapeHtml(param.unit)}</span>` : ""}
-            ${param.requirePhoto ? '<span class="material-symbols-rounded td-param-photo" title="Photo required">photo_camera</span>' : ""}
-          </div>
-        `,
-          )
-          .join("")}
-      </div>
-      `
-          : `<div class="td-no-items">No parameters assigned.</div>`
-      }
-    </div>
-
-    <div class="td-section">
-      <div class="td-section-header">
-        <span class="material-symbols-rounded td-section-icon">map</span>
-        <span class="td-section-title">Trial Areas</span>
-        <span class="td-section-count">${areaCount}</span>
-      </div>
-      <div id="trialDetailAreaMaps" class="td-area-maps-grid">
-      </div>
-    </div>
-
-    <div class="td-section">
-      <div class="td-section-header">
-        <span class="material-symbols-rounded td-section-icon">grid_view</span>
-        <span class="td-section-title">Experimental Layout</span>
-      </div>
-      <div class="td-layout-details">
-        ${
-          trial.areas && trial.areas.length > 0
-            ? trial.areas
-                .map(
-                  (area, areaIdx) => `
-          <div class="td-area-layout-card">
-            <div class="td-area-layout-header">
-              <h4 class="td-area-layout-title">${escapeHtml(area.name || `Area ${areaIdx + 1}`)}</h4>
-              <div class="td-area-layout-meta">
-                ${area.areaSize ? `<span class="td-area-meta-item"><span class="material-symbols-rounded">straighten</span>${area.areaSize.hectares.toFixed(2)} ha</span>` : ""}
-                ${area.address ? `<span class="td-area-meta-item"><span class="material-symbols-rounded">location_on</span>${escapeHtml(area.address)}</span>` : ""}
-              </div>
-            </div>
-            ${
-              area.layout?.result && area.layout.result.length > 0
-                ? `
-              <div class="td-layout-info-grid">
-                <div class="td-layout-info-item">
-                  <span class="material-symbols-rounded">compare_arrows</span>
-                  <div>
-                    <div class="td-info-label">Layout Direction</div>
-                    <div class="td-info-value">${escapeHtml(area.layout.direction === "serpentine" ? "Serpentine (Snake)" : "Straight (Top-Bottom)")}</div>
-                  </div>
-                </div>
-                <div class="td-layout-info-item">
-                  <span class="material-symbols-rounded">shuffle</span>
-                  <div>
-                    <div class="td-info-label">Randomization</div>
-                    <div class="td-info-value">${escapeHtml(area.layout.randomization === "random" ? "All Randomized" : "Rep 1 Ordered, Rest Random")}</div>
-                  </div>
-                </div>
-                <div class="td-layout-info-item">
-                  <span class="material-symbols-rounded">repeat</span>
-                  <div>
-                    <div class="td-info-label">Replications</div>
-                    <div class="td-info-value">${area.layout.result?.length || 0}</div>
-                  </div>
-                </div>
-                <div class="td-layout-info-item">
-                  <span class="material-symbols-rounded">grid_3x3</span>
-                  <div>
-                    <div class="td-info-label">Ranges</div>
-                    <div class="td-info-value">${area.layout.numRanges || 0}</div>
-                  </div>
-                </div>
-              </div>
-              <div class="td-lines-section">
-                <div class="td-lines-header">Lines Used (${area.layout.lines?.length || 0})</div>
-                <div class="td-lines-list">
-                  ${
-                    area.layout.lines && area.layout.lines.length > 0
-                      ? area.layout.lines
-                          .map(
-                            (line, lineIdx) => `
-                    <div class="td-line-item">
-                      <span class="td-line-index">${lineIdx + 1}</span>
-                      <span class="td-line-name" title="${escapeHtml(line.name || "Unknown")}">${escapeHtml(line.name || `Line ${line.id}`)}</span>
-                    </div>
-                  `,
-                          )
-                          .join("")
-                      : '<div class="td-no-items">No lines configured</div>'
-                  }
-                </div>
-              </div>
-            `
-                : `
-              <div class="td-no-items">
-                <span class="material-symbols-rounded">info</span>
-                No layout defined yet
-              </div>
-            `
-            }
-          </div>
-        `,
-                )
-                .join("")
-            : '<div class="td-no-items">No areas configured</div>'
-        }
-      </div>
-    </div>
-
-    -->
-
-    <!-- Timestamps -->
     <div class="td-timestamps">
       ${
         trial.createdAt
@@ -5547,9 +5339,6 @@ function closeTrialDetailModal() {
 
 // Initialize separate maps for each trial area in detail view
 function initializeTrialDetailAreaMaps(trial) {
-  const container = document.getElementById('trialDetailAreaMaps');
-  if (!container) return;
-
   // Initialize storage for maps
   if (!window.trialDetailAreaMaps) {
     window.trialDetailAreaMaps = {};
@@ -5561,57 +5350,10 @@ function initializeTrialDetailAreaMaps(trial) {
     window.trialDetailAreaMaps = {};
   }
 
-  // Get areas
   const areas = trial.areas || [];
+  if (areas.length === 0) return;
 
-  if (areas.length === 0) {
-    container.innerHTML = `
-      <div class="td-no-areas">
-        <span class="material-symbols-rounded">map</span>
-        <p>No areas defined for this trial.</p>
-      </div>`;
-    return;
-  }
-
-  // Create HTML for each area map
-  container.innerHTML = areas.map((area, index) => {
-    const areaSize = area.areaSize ? `${area.areaSize.hectares.toFixed(2)} ha` : '-';
-    const pointCount = area.coordinates ? area.coordinates.length : (area.polygon ? area.polygon.length : 0);
-    const lineCount = area.layout?.result ? (() => { let c = 0; area.layout.result.forEach(rep => rep.forEach(row => row.forEach(cell => { if (cell) c++; }))); return c; })() : (area.layout?.lines?.length || 0);
-    const repCount = area.layout?.replications || area.layout?.result?.length || 1;
-
-    return `
-      <div class="td-area-card">
-        <div id="detailAreaMap${index}" class="td-area-map"></div>
-        <div class="td-area-info">
-          <div class="td-area-name-row">
-            <span class="material-symbols-rounded td-area-name-icon">pentagon</span>
-            <h5 class="td-area-name">${escapeHtml(area.name || 'Area ' + (index + 1))}</h5>
-          </div>
-          <div class="td-area-stats">
-            <span class="td-area-stat">
-              <span class="material-symbols-rounded">straighten</span>
-              ${areaSize}
-            </span>
-            <span class="td-area-stat">
-              <span class="material-symbols-rounded">radio_button_checked</span>
-              ${pointCount} pts
-            </span>
-            <span class="td-area-stat">
-              <span class="material-symbols-rounded">grass</span>
-              ${lineCount} lines
-            </span>
-            <span class="td-area-stat">
-              <span class="material-symbols-rounded">repeat</span>
-              ${repCount} rep(s)
-            </span>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  // Initialize map for each area after DOM is ready
+  // Render map into each area's container
   requestAnimationFrame(() => {
     areas.forEach((area, index) => {
       renderDetailAreaMap(area, index);
