@@ -33,5 +33,18 @@
 - [ ] `Reminder > Observation` Reminders for data retrieval per parameters
 - [ ] `Reminder > Agronomy` Reminders for agronomy things (fertilizing, spraying, etc)
 - [ ] `Dashboard` Reminder linking
-- [ ] `Unsure` Observation parameters (date type) linked to run trial/fieldbook and reminders
-- [ ] `Unsure` Export and import in Excel/CSV format (escape plan)
+
+### Feb 21, 2026
+
+- [x] `Trial` Click on trial item > Detail, Run Observation, Agronomy Monitoring
+- [x] `Trial` Trial detail modal: Lines list per areas
+- [x] `Trial` Run Observation: After last question UI
+- [x] `Trial` Run Observation: Take photo for photo upload
+- [x] `Trial` Run Observation: Preview photo after uploaded
+- [ ] `Trial` Agronomy Monitoring: Per area, table [Activity, DAP, Date, Chemical, Dose, Remark]
+- [ ] `Trial` Agronomy Monitoring: Fieldbook: Actual Application Date, Photo
+- [x] `Inventory > Parameters` Last updated per param
+- [ ] `Inventory > Parameters` Days of Observation per crop, with range
+- [ ] `Inventory > Parameters` Filter per crop
+- [ ] `Inventory > Agronomy` Agronomy scheduler
+- [ ] `Inventory > Agronomy` Crop, Activity, DAP, Chemical, Dose, Remark

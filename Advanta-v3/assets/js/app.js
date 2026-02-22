@@ -1067,7 +1067,7 @@ async function exportData() {
   const a = document.createElement("a");
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   a.href = url;
-  a.download = `advanta_backup_${dateStr}.adv`;
+  a.download = `spectra_backup_${dateStr}.adv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1120,7 +1120,7 @@ async function handleImportFile(file) {
 
     if (payload.magic !== DATA_MAGIC) {
       hideDataTransfer();
-      showAlert("This file is not a valid Advanta backup.", "error", "Import Failed");
+      showAlert("This file is not a valid SPECTRA backup.", "error", "Import Failed");
       return;
     }
 

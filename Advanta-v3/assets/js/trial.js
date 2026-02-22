@@ -92,7 +92,7 @@ function renderTrials() {
     const hasLayout = trial.areas && trial.areas.length > 0 && trial.areas.some(a => a.layout?.result);
 
     return `
-      <div class="run-trial-card" data-trial-id="${trial.id}" onclick="showTrialDetail('${trial.id}')">
+      <div class="run-trial-card" data-trial-id="${trial.id}" onclick="showTrialActionPopup(event, '${trial.id}')">
         <div class="run-trial-card-header">
           <div class="run-trial-card-icon">
             <svg class="progress-circle" width="64" height="64" viewBox="0 0 64 64">
@@ -116,7 +116,7 @@ function renderTrials() {
     const progressPercent = progress.percentage;
 
     return `
-      <div class="run-trial-card trial-card-archived" data-trial-id="${trial.id}" onclick="showTrialDetail('${trial.id}')">
+      <div class="run-trial-card trial-card-archived" data-trial-id="${trial.id}" onclick="showTrialActionPopup(event, '${trial.id}')">
         <div class="run-trial-card-header">
           <div class="run-trial-card-icon">
             <svg class="progress-circle" width="64" height="64" viewBox="0 0 64 64">
@@ -3831,8 +3831,7 @@ function renderQuestionCard() {
           `
             )
             .join("")}
-          <label class="run-photo-add">
-            <input type="file" accept="image/*" capture="environment" class="photo-upload-input" onchange="handlePhotoUpload(event)">
+          <label class="run-photo-add" onclick="showPhotoUploadChoice(event)">
             <span class="material-symbols-rounded">add_a_photo</span>
             <span>Add</span>
           </label>
@@ -3912,10 +3911,80 @@ function renderQuestionCard() {
 }
 
 function finishRunTrialLastQuestion() {
+  // Save current answer first
   if (hasResponseChanges()) {
     saveCurrentResponseSilent();
   }
+  autoSaveProgress();
+  
+  // Calculate progress
+  const lines = getAllLinesList();
+  const completed = lines.filter((l) => {
+    const lineKey = `${l.lineId}_${l.repIndex}_${l.sampleIndex}`;
+    return hasResponse(l.areaIndex, l.paramId, lineKey);
+  }).length;
+  const total = lines.length;
+  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  
+  // Show finish overlay
+  const existing = document.querySelector('.finish-trial-overlay');
+  if (existing) existing.remove();
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'finish-trial-overlay';
+  overlay.innerHTML = `
+    <div class="finish-trial-popup">
+      <div class="finish-trial-icon">
+        <span class="material-symbols-rounded">check_circle</span>
+      </div>
+      <h3>Observation Complete!</h3>
+      <p>You have completed <strong>${completed}/${total}</strong> observations (${percentage}%). What would you like to do?</p>
+      <div class="finish-trial-actions">
+        <button class="btn btn-primary" onclick="confirmFinishRunTrial()">
+          <span class="material-symbols-rounded">done_all</span>
+          Finish & Back to Trials
+        </button>
+        <button class="btn btn-secondary" onclick="reviewFromFirstQuestion()">
+          <span class="material-symbols-rounded">replay</span>
+          Review from First Question
+        </button>
+        <button class="btn btn-secondary" onclick="closeFinishTrialPopup()">
+          <span class="material-symbols-rounded">arrow_back</span>
+          Continue Editing
+        </button>
+      </div>
+    </div>
+  `;
+  
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeFinishTrialPopup();
+  });
+  
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('active'));
+}
+
+function closeFinishTrialPopup() {
+  const overlay = document.querySelector('.finish-trial-overlay');
+  if (overlay) {
+    overlay.classList.remove('active');
+    setTimeout(() => overlay.remove(), 200);
+  }
+}
+
+function confirmFinishRunTrial() {
+  closeFinishTrialPopup();
   saveRunTrialProgress();
+  exitRunTrial();
+}
+
+function reviewFromFirstQuestion() {
+  closeFinishTrialPopup();
+  const lines = getAllLinesList();
+  if (lines.length > 0) {
+    const first = lines[0];
+    selectLine(first.areaIndex, first.paramId, first.lineId, first.repIndex, first.sampleIndex);
+  }
 }
 
 // Radio option selection
@@ -3958,6 +4027,73 @@ function closeMobileNav() {
   if (nav) nav.classList.remove('open');
   if (overlay) overlay.classList.remove('open');
   document.body.classList.remove('no-scroll');
+}
+
+// Show photo upload choice popup (camera vs file)
+function showPhotoUploadChoice(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  
+  // Remove any existing overlay
+  const existing = document.querySelector('.photo-upload-choice-overlay');
+  if (existing) existing.remove();
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'photo-upload-choice-overlay';
+  overlay.innerHTML = `
+    <div class="photo-upload-choice">
+      <div class="photo-upload-choice-header">
+        <p>Add Photo</p>
+      </div>
+      <div class="photo-upload-choice-options">
+        <button class="photo-upload-choice-btn" id="photoChoiceCamera">
+          <span class="material-symbols-rounded">photo_camera</span>
+          Take Photo
+        </button>
+        <button class="photo-upload-choice-btn" id="photoChoiceFile">
+          <span class="material-symbols-rounded">photo_library</span>
+          Choose from Gallery
+        </button>
+      </div>
+      <button class="photo-upload-choice-cancel" onclick="closePhotoUploadChoice()">Cancel</button>
+    </div>
+  `;
+  
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closePhotoUploadChoice();
+  });
+  
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('active'));
+  
+  // Camera option
+  overlay.querySelector('#photoChoiceCamera').addEventListener('click', () => {
+    closePhotoUploadChoice();
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.onchange = handlePhotoUpload;
+    input.click();
+  });
+  
+  // File/gallery option
+  overlay.querySelector('#photoChoiceFile').addEventListener('click', () => {
+    closePhotoUploadChoice();
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = handlePhotoUpload;
+    input.click();
+  });
+}
+
+function closePhotoUploadChoice() {
+  const overlay = document.querySelector('.photo-upload-choice-overlay');
+  if (overlay) {
+    overlay.classList.remove('active');
+    setTimeout(() => overlay.remove(), 200);
+  }
 }
 
 // Handle photo upload
@@ -4991,6 +5127,73 @@ function renderDashboardTrialProgress() {
   }).join('');
 }
 
+// Show trial action popup when clicking a trial card
+function showTrialActionPopup(event, trialId) {
+  event.stopPropagation();
+  
+  // Remove any existing popup
+  const existingPopup = document.querySelector('.trial-action-popup-overlay');
+  if (existingPopup) existingPopup.remove();
+  
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial) return;
+  
+  const hasLayout = trial.areas && trial.areas.length > 0 && trial.areas.some(a => a.layout?.result);
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'trial-action-popup-overlay';
+  overlay.innerHTML = `
+    <div class="trial-action-popup">
+      <div class="trial-action-popup-header">
+        <h4>${escapeHtml(trial.name)}</h4>
+        <button class="btn-icon-close" onclick="closeTrialActionPopup()">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+      <div class="trial-action-popup-options">
+        <button class="trial-action-option" onclick="closeTrialActionPopup(); showTrialDetail('${trialId}');">
+          <span class="material-symbols-rounded">info</span>
+          <div class="trial-action-option-text">
+            <span class="trial-action-option-title">Detail</span>
+            <span class="trial-action-option-desc">View trial information and settings</span>
+          </div>
+        </button>
+        <button class="trial-action-option ${!hasLayout || trial.archived ? 'disabled' : ''}" 
+                onclick="${hasLayout && !trial.archived ? `closeTrialActionPopup(); startRunTrial('${trialId}');` : ''}" 
+                ${!hasLayout || trial.archived ? 'disabled' : ''}>
+          <span class="material-symbols-rounded">visibility</span>
+          <div class="trial-action-option-text">
+            <span class="trial-action-option-title">Run Observation</span>
+            <span class="trial-action-option-desc">${!hasLayout ? 'No layout available' : trial.archived ? 'Trial is archived' : 'Start or continue observations'}</span>
+          </div>
+        </button>
+        <button class="trial-action-option disabled" disabled>
+          <span class="material-symbols-rounded">local_florist</span>
+          <div class="trial-action-option-text">
+            <span class="trial-action-option-title">Agronomy Monitoring</span>
+            <span class="trial-action-option-desc">Coming soon</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  `;
+  
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeTrialActionPopup();
+  });
+  
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('active'));
+}
+
+function closeTrialActionPopup() {
+  const overlay = document.querySelector('.trial-action-popup-overlay');
+  if (overlay) {
+    overlay.classList.remove('active');
+    setTimeout(() => overlay.remove(), 200);
+  }
+}
+
 // Show trial detail modal
 function showTrialDetail(trialId) {
   const trial = trialState.trials.find(t => t.id === trialId);
@@ -5002,19 +5205,9 @@ function showTrialDetail(trialId) {
   // Store current trial for editing/deleting
   window.currentDetailTrialId = trialId;
 
-  // Show/hide Run button based on whether trial has a layout
-  const runBtn = document.getElementById('trialDetailRunBtn');
   const archiveBtn = document.getElementById('trialDetailArchiveBtn');
   const editBtn = document.getElementById('trialDetailEditBtn');
-  const hasLayout = trial.areas && trial.areas.length > 0 && trial.areas.some(a => a.layout?.result);
 
-  if (runBtn) {
-    if (trial.archived || !hasLayout) {
-      runBtn.style.display = 'none';
-    } else {
-      runBtn.style.display = '';
-    }
-  }
   if (archiveBtn) {
     if (trial.archived) {
       archiveBtn.innerHTML = '<span class="material-symbols-rounded">unarchive</span><span>Unarchive</span>';
@@ -5235,7 +5428,31 @@ function showTrialDetail(trialId) {
 
   <div class='td-container'>
 
-    ${trial.areas && trial.areas.length > 0 ? trial.areas.map((area, areaIdx) => `
+    ${trial.areas && trial.areas.length > 0 ? trial.areas.map((area, areaIdx) => {
+      // Collect unique lines from layout result
+      const uniqueLines = [];
+      const seenIds = new Set();
+      if (area.layout?.result) {
+        area.layout.result.forEach(rep => {
+          rep.forEach(row => {
+            row.forEach(cell => {
+              if (cell && !seenIds.has(cell.id)) {
+                seenIds.add(cell.id);
+                uniqueLines.push(cell);
+              }
+            });
+          });
+        });
+      } else if (area.layout?.lines) {
+        area.layout.lines.forEach(line => {
+          if (!seenIds.has(line.id)) {
+            seenIds.add(line.id);
+            uniqueLines.push(line);
+          }
+        });
+      }
+      
+      return `
     <div class='td-section td-area'>
       <div class='td-area-header td-grid grid-4'>
         <div class='td-area-map' id='detailAreaMap${areaIdx}'>
@@ -5270,8 +5487,19 @@ function showTrialDetail(trialId) {
           </div>
         </div>
       </div>
+      ${uniqueLines.length > 0 ? `
+      <div class='td-area-lines'>
+        <div class='td-area-lines-title'>
+          <span class="material-symbols-rounded">grass</span>
+          Lines (${uniqueLines.length})
+        </div>
+        <div class='td-area-lines-list'>
+          ${uniqueLines.map(line => `<span class="td-area-line-chip">${escapeHtml(line.name)}</span>`).join('')}
+        </div>
+      </div>
+      ` : ''}
     </div>
-    `,).join("") : ``}
+    `;}).join("") : ``}
 
   </div>
 

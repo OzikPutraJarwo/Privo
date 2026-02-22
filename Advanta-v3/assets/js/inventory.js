@@ -408,6 +408,7 @@ function renderInventoryItems() {
         const paramMeta = isParameters
           ? `
                 <div class="item-subtext">Type: ${escapeHtml(item.type || "-")} · Initial: ${escapeHtml(item.initial || "-")} · Unit: ${escapeHtml(item.unit || "-")}</div>
+                ${item.updatedAt ? `<div class="item-subtext item-updated">Last updated: ${new Date(item.updatedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}</div>` : ''}
             `
           : "";
 
