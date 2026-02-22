@@ -5294,7 +5294,7 @@ img.leaflet-tile {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   width: 90%;
-  max-width: 400px;
+  max-width: 700px;
   transform: scale(0.9);
   opacity: 0;
   transition: transform 0.2s ease, opacity 0.2s ease;
@@ -5325,7 +5325,10 @@ img.leaflet-tile {
 }
 
 .trial-action-popup-options {
-  padding: 0.5rem;
+  padding: 0 1rem 1rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
 }
 
 .trial-action-option {
@@ -5334,12 +5337,13 @@ img.leaflet-tile {
   gap: 0.75rem;
   width: 100%;
   padding: 0.875rem 1rem;
-  border: none;
-  background: none;
-  border-radius: var(--radius-md);
   cursor: pointer;
-  text-align: left;
   transition: background 0.15s;
+  text-align: center;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  flex-direction: column;
 }
 
 .trial-action-option:hover:not(:disabled) {
@@ -5353,7 +5357,7 @@ img.leaflet-tile {
 }
 
 .trial-action-option > .material-symbols-rounded {
-  font-size: 1.5rem;
+  font-size: 3rem;
   color: var(--primary);
   flex-shrink: 0;
 }
@@ -5372,6 +5376,7 @@ img.leaflet-tile {
   font-size: 0.9375rem;
   font-weight: 500;
   color: var(--text-primary);
+  margin-bottom: .25rem;
 }
 
 .trial-action-option-desc {
