@@ -1,7 +1,7 @@
 // Google Drive API Integration
 const ADVANTA_FOLDER_NAME = "Advanta";
 const INVENTORY_FOLDER_NAME = "Inventory";
-const CATEGORIES = ["Crops", "Lines", "Locations", "Parameters"];
+const CATEGORIES = ["Crops", "Lines", "Locations", "Parameters", "Agronomy"];
 
 let driveState = {
   advantaFolderId: null,

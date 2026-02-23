@@ -41,10 +41,10 @@
 - [x] `Trial` Run Observation: After last question UI
 - [x] `Trial` Run Observation: Take photo for photo upload
 - [x] `Trial` Run Observation: Preview photo after uploaded
-- [ ] `Trial` Agronomy Monitoring: Per area, table [Activity, DAP, Date, Chemical, Dose, Remark]
-- [ ] `Trial` Agronomy Monitoring: Fieldbook: Actual Application Date, Photo
+- [x] `Trial` Agronomy Monitoring: Per area, table [Activity, DAP, Date, Chemical, Dose, Remark]
+- [x] `Trial` Agronomy Monitoring: Fieldbook: Actual Application Date, Photo
 - [x] `Inventory > Parameters` Last updated per param
 - [ ] `Inventory > Parameters` Days of Observation per crop, with range
 - [ ] `Inventory > Parameters` Filter per crop
-- [ ] `Inventory > Agronomy` Agronomy scheduler
-- [ ] `Inventory > Agronomy` Crop, Activity, DAP, Chemical, Dose, Remark
+- [x] `Inventory > Agronomy` Agronomy scheduler
+- [x] `Inventory > Agronomy` Crop, Activity, DAP, Chemical, Dose, Remark

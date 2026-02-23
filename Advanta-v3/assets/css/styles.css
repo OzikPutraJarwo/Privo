@@ -847,6 +847,10 @@ body {
   padding: 0;
 }
 
+.inventory-list.agronomy-view {
+  grid-template-columns: 1fr;
+}
+
 .inventory-item {
   display: flex;
   flex-direction: column;
@@ -914,6 +918,187 @@ body {
 .item-actions .delete-btn:hover {
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+/* Agronomy Table (Inventory) */
+.agronomy-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--bg-primary);
+}
+
+.agronomy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.agronomy-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.agronomy-table tbody tr {
+  transition: background var(--transition);
+}
+
+.agronomy-table tbody tr:hover {
+  background: var(--bg-tertiary);
+}
+
+.agronomy-table tbody td {
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.agronomy-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.agronomy-cell-activity {
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 140px;
+  white-space: normal;
+}
+
+.agronomy-cell-dap {
+  text-align: center;
+  min-width: 60px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agronomy-cell-remark {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+th.agronomy-table-actions,
+td.agronomy-table-actions {
+  text-align: center;
+  width: 80px;
+  white-space: nowrap;
+}
+
+td.agronomy-table-actions {
+  display: flex;
+  gap: 0.25rem;
+  justify-content: center;
+  border-bottom: 1px solid var(--border);
+}
+
+td.agronomy-table-actions button {
+  padding: 0.3rem;
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+}
+
+td.agronomy-table-actions button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+td.agronomy-table-actions .delete-btn:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* Agronomy Crop Checkboxes (Item Modal) */
+.agronomy-crop-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.agronomy-crop-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  transition: var(--transition);
+  user-select: none;
+}
+
+.agronomy-crop-checkbox-label:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--primary);
+}
+
+.agronomy-crop-checkbox-label input[type="checkbox"] {
+  width: auto;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+.agronomy-crop-checkbox-label input[type="checkbox"]:checked + span {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* DAP Range Input */
+.range-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.range-input-group input {
+  flex: 1;
+  min-width: 0;
+}
+
+.range-separator {
+  color: var(--text-tertiary);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+/* Agronomy Monitoring Toggle (Trial Form) */
+.agronomy-toggle-label {
+  display: grid !important;
+  grid-template-columns: 20px 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.agronomy-toggle-checkbox {
+  width: auto;
+  cursor: pointer;
+  accent-color: var(--primary);
 }
 
 /* Empty State */
@@ -1137,6 +1322,12 @@ body {
   color: var(--text-primary);
   background: var(--bg-primary);
   transition: var(--transition);
+  font-family: inherit;
+}
+
+.form-group textarea {
+  min-height: 80px;
+  resize: vertical;
 }
 
 .form-group input:focus,
@@ -1781,7 +1972,6 @@ body {
   border: 1px solid var(--border);
   cursor: pointer;
   transition: var(--transition);
-  margin-bottom: 0.5rem;
   /* animation: slideUp 0.3s ease-out; */
 }
 
@@ -2165,7 +2355,6 @@ body {
   padding: 1.25rem 1.5rem;
   background: var(--warning-soft);
   border-bottom: 1px solid var(--border);
-  justify-content: space-between;
 }
 
 .confirm-modal-header .material-symbols-rounded {
@@ -2537,7 +2726,7 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .library-detail-actions .btn span:last-child {
+  .library-detail-actions .btn span:last-child:not(.material-symbols-rounded) {
     display: none;
   }
 
@@ -3000,6 +3189,190 @@ body.run-trial-active .main-content {
   margin-top: 0.25rem;
 }
 
+/* Agronomy Monitoring - Detail Chips */
+.agronomy-detail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.agronomy-chip {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.625rem;
+  border-radius: 1rem;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* Agronomy DAP Warning */
+.agronomy-dap-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: var(--radius);
+  background: var(--warning-soft, rgba(255, 193, 7, 0.08));
+  border: 1px solid var(--warning, #ffc107);
+  color: var(--text-primary);
+}
+
+.agronomy-dap-warning > .material-symbols-rounded {
+  color: var(--warning, #ffc107);
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.agronomy-dap-warning strong {
+  font-weight: 600;
+}
+
+.agronomy-dap-warning p {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Agronomy Remark Box */
+.agronomy-remark-box {
+  display: flex;
+  gap: 0.625rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: var(--radius);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+}
+
+.agronomy-remark-box > .material-symbols-rounded {
+  color: var(--text-tertiary);
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.agronomy-remark-box p {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Agronomy Nav - early/scheduled item */
+.agronomy-nav-early .run-nav-line-icon {
+  color: var(--warning, #ffc107) !important;
+}
+
+.run-nav-line-meta {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--text-tertiary);
+  margin-top: 0.125rem;
+}
+
+/* Agronomy Nav Tree - Progress Bar */
+.run-nav-progress {
+  padding: 0.75rem 0;
+  margin-bottom: 0.5rem;
+}
+
+.run-nav-progress-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.375rem;
+}
+
+.run-nav-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.run-nav-progress-text {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+/* Agronomy Nav Tree - Area Children & Item List */
+.run-nav-area-children {
+  padding: 0;
+}
+
+.run-nav-area-children.collapsed {
+  display: none;
+}
+
+.run-nav-area-header .run-nav-area-count {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+.run-nav-area-header .run-nav-toggle-icon {
+  font-size: 16px;
+  transition: transform 0.2s ease;
+}
+
+/* Agronomy Nav - Flat Item List (no param/rep nesting) */
+.run-nav-area-children .run-nav-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem 0.625rem 1.25rem;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.run-nav-area-children .run-nav-line:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.run-nav-area-children .run-nav-line.active {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.run-nav-area-children .run-nav-line.complete {
+  color: var(--success);
+}
+
+.run-nav-area-children .run-nav-line.complete .run-nav-line-icon {
+  color: var(--success);
+}
+
+.run-nav-line-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.run-nav-line-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.run-nav-line-name {
+  display: block;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .run-sample-indicator {
   display: inline-block;
   font-size: 0.8rem;
@@ -3036,6 +3409,7 @@ body.run-trial-active .main-content {
 
 .run-input-text,
 .run-input-number,
+.run-input-field,
 .run-input-textarea {
   width: 100%;
   padding: 0.75rem 1rem;
@@ -3049,6 +3423,7 @@ body.run-trial-active .main-content {
 
 .run-input-text:focus,
 .run-input-number:focus,
+.run-input-field:focus,
 .run-input-textarea:focus {
   outline: none;
   border-color: var(--primary);
@@ -3434,29 +3809,29 @@ body.run-trial-active .main-content {
 
 .mobile-nav-overlay {
   display: none;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.mobile-nav-overlay.open {
-  display: block;
-  opacity: 1;
 }
 
 .mobile-nav-header {
   display: none;
   align-items: center;
-  justify-content: space-between;
-  padding: 1rem;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
-  font-weight: 600;
+}
+
+.nav-header-progress {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-header-progress .run-nav-progress-bar {
+  margin-bottom: 0.25rem;
+}
+
+.nav-header-progress .run-nav-progress-text {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  font-weight: 500;
 }
 
 .btn-icon-close {
@@ -3848,13 +4223,16 @@ body.run-trial-active .main-content {
 @media (max-width: 768px) {
   .run-trial-container {
     grid-template-columns: 1fr;
+    position: relative;
+    overflow: hidden;
   }
 
   .mobile-nav-toggle {
     display: inline-flex;
   }
 
-  #runTrialQuestion {
+  #runTrialQuestion,
+  #agronomyQuestionCard {
     min-height: 100%;
     border: none;
     border-radius: unset;
@@ -3862,31 +4240,66 @@ body.run-trial-active .main-content {
 
   .run-trial-content {
     padding: 0;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .run-trial-container.mobile-nav-open .run-trial-content {
+    transform: translateX(80dvw);
+    pointer-events: none;
   }
 
   .run-trial-nav {
     position: fixed;
     left: 0;
-    right: 0;
+    top: var(--topbar-height);
     bottom: 0;
-    top: auto;
-    height: 70vh;
+    width: 80dvw;
     z-index: 1000;
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    border-radius: 0;
+    border-right: 1px solid var(--border);
     box-shadow: var(--shadow-xl);
-    transform: translateY(100%);
-    transition: transform 0.3s ease;
-    display: block;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    max-height: none;
   }
 
   .run-trial-nav.open {
-    transform: translateY(0);
+    transform: translateX(0);
+  }
+
+  .run-trial-nav .run-nav-tree {
+    flex: 1;
+    overflow-y: auto;
   }
 
   .mobile-nav-header {
     display: flex;
-    padding: 0 0 .75rem .5rem;
-    border: none;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .mobile-nav-scrim {
+    display: none;
+    position: fixed;
+    top: var(--topbar-height);
+    left: 80dvw;
+    right: 0;
+    bottom: 0;
+    z-index: 999;
+    background: rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .mobile-nav-scrim.open {
+    display: block;
+    opacity: 1;
   }
 
   .run-trial-topbar {
@@ -4136,12 +4549,16 @@ body.no-scroll {
 
 .picklist-list {
   min-height: 220px;
-  max-height: 260px;
+  max-height: 270px;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.5rem;
   background: var(--bg-primary);
+}
+
+.picklist-list[data-list="selected"] {
+  min-height: 270px;
 }
 
 .picklist-item {
@@ -4754,7 +5171,7 @@ body.no-scroll {
   font-size: 1.1rem;
 }
 
-.td-section {
+.td-section, .td-area-lines {
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -4809,11 +5226,11 @@ body.no-scroll {
   color: var(--primary);
 }
 
-.td-param .td-label {
+.td-param .td-label, .td-area-lines .td-label, .td-agronomy .td-label {
   margin-bottom: .5rem;
 }
 
-.td-param .td-grid {
+.td-param .td-grid, .td-agronomy .td-grid {
   max-height: 130px;
   overflow: auto;
 }
@@ -4884,6 +5301,17 @@ body.no-scroll {
 .td-area-map .leaflet-pane.leaflet-overlay-pane+* {
   opacity: 0;
   display: none;
+}
+
+.td-lines-flex {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.td-lines-flex .td-item {
+  padding: .25rem 1rem;
+  font-size: 0.7rem;
 }
 
 img.leaflet-tile {
@@ -5347,7 +5775,7 @@ img.leaflet-tile {
 }
 
 .trial-action-option:hover:not(:disabled) {
-  background: var(--bg-secondary);
+  background: var(--border);
 }
 
 .trial-action-option:disabled,
@@ -5545,44 +5973,4 @@ img.leaflet-tile {
 .finish-trial-actions .btn {
   width: 100%;
   justify-content: center;
-}
-
-/* ===========================
-   TRIAL DETAIL LINES LIST
-   =========================== */
-.td-area-lines {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--border-color);
-}
-
-.td-area-lines-title {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 0.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-
-.td-area-lines-title .material-symbols-rounded {
-  font-size: 1rem;
-}
-
-.td-area-lines-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-}
-
-.td-area-line-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.625rem;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-full, 999px);
-  font-size: 0.75rem;
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
 }

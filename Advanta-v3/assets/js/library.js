@@ -538,6 +538,38 @@ async function fetchLibraryFileBlob(fileId) {
   return response.blob();
 }
 
+function formatMimeLabel(mimeType) {
+  if (!mimeType) return "Unknown";
+  const map = {
+    "application/pdf": "PDF",
+    "application/zip": "ZIP Archive",
+    "application/x-zip-compressed": "ZIP Archive",
+    "application/json": "JSON",
+    "application/xml": "XML",
+    "text/plain": "Text",
+    "text/csv": "CSV",
+    "text/html": "HTML",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "Excel (XLSX)",
+    "application/vnd.ms-excel": "Excel (XLS)",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word (DOCX)",
+    "application/msword": "Word (DOC)",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PowerPoint (PPTX)",
+    "application/vnd.ms-powerpoint": "PowerPoint (PPT)",
+    "application/vnd.google-apps.spreadsheet": "Google Sheets",
+    "application/vnd.google-apps.document": "Google Docs",
+    "application/vnd.google-apps.presentation": "Google Slides",
+    "application/vnd.google-apps.folder": "Folder",
+  };
+  if (map[mimeType]) return map[mimeType];
+  if (mimeType.startsWith("image/")) return "Image (" + mimeType.split("/")[1].toUpperCase() + ")";
+  if (mimeType.startsWith("video/")) return "Video (" + mimeType.split("/")[1].toUpperCase() + ")";
+  if (mimeType.startsWith("audio/")) return "Audio (" + mimeType.split("/")[1].toUpperCase() + ")";
+  // Fallback: take last segment after last dot or slash
+  const parts = mimeType.split(/[/.]+/);
+  const last = parts[parts.length - 1];
+  return last.length <= 12 ? last.toUpperCase() : mimeType;
+}
+
 function updateLibraryDetailMeta(file) {
   const title = document.getElementById("libraryDetailTitle");
   const meta = document.getElementById("libraryDetailMeta");
@@ -551,7 +583,7 @@ function updateLibraryDetailMeta(file) {
     const dateLabel = file.modifiedTime
       ? new Date(file.modifiedTime).toLocaleString()
       : "-";
-    meta.textContent = `${file.mimeType || "Unknown"} · ${sizeLabel} · ${dateLabel}`;
+    meta.textContent = `${formatMimeLabel(file.mimeType)} · ${sizeLabel} · ${dateLabel}`;
   }
 }
 

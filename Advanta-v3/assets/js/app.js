@@ -1049,6 +1049,7 @@ async function exportData() {
       lines: inventoryState.items.lines || [],
       locations: inventoryState.items.locations || [],
       parameters: inventoryState.items.parameters || [],
+      agronomy: inventoryState.items.agronomy || [],
     },
     trials: trialState.trials || [],
   };
@@ -1134,7 +1135,7 @@ async function handleImportFile(file) {
     const duplicates = [];
 
     // Check each category
-    const categories = ["crops", "lines", "locations", "parameters"];
+    const categories = ["crops", "lines", "locations", "parameters", "agronomy"];
     for (const cat of categories) {
       const existing = inventoryState.items[cat] || [];
       const newItems = incoming[cat] || [];
@@ -1277,7 +1278,7 @@ async function applyImport(incoming, incomingTrials, duplicates) {
   }
 
   // Merge inventory categories
-  const categories = ["crops", "lines", "locations", "parameters"];
+  const categories = ["crops", "lines", "locations", "parameters", "agronomy"];
   for (const cat of categories) {
     const existing = inventoryState.items[cat] || [];
     const newItems = incoming[cat] || [];
@@ -1435,8 +1436,8 @@ async function syncDownFromDrive() {
     updateDataTransfer("Checking for new data...", 30);
     await new Promise(r => setTimeout(r, 150));
 
-    const categories = ["crops", "lines", "locations", "parameters"];
-    const newItems = { crops: [], lines: [], locations: [], parameters: [] };
+    const categories = ["crops", "lines", "locations", "parameters", "agronomy"];
+    const newItems = { crops: [], lines: [], locations: [], parameters: [], agronomy: [] };
     const conflicts = [];
 
     // Check each inventory category

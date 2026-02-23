@@ -6,6 +6,7 @@ let inventoryState = {
     lines: [],
     locations: [],
     parameters: [],
+    agronomy: [],
   },
   editingItemId: null,
 };
@@ -132,6 +133,55 @@ function togglePhotoModeGroup() {
   }
 }
 
+function toggleAgronomyFields(show) {
+  const groups = [
+    "agronomyCropGroup",
+    "agronomyActivityGroup",
+    "agronomyDapGroup",
+    "agronomyChemicalGroup",
+    "agronomyDoseGroup",
+    "agronomyRemarkGroup",
+  ];
+
+  groups.forEach((id) => {
+    const group = document.getElementById(id);
+    if (!group) return;
+    if (show) {
+      group.classList.remove("hidden");
+    } else {
+      group.classList.add("hidden");
+    }
+  });
+
+  // Hide the generic name field for agronomy (activity IS the name)
+  const nameField = document.getElementById("itemName");
+  const nameGroup = nameField?.closest(".form-group");
+  if (nameGroup) nameGroup.classList.toggle("hidden", show);
+
+  // Populate crop checkboxes when showing
+  if (show) {
+    populateAgronomyCropCheckboxes();
+  }
+}
+
+function populateAgronomyCropCheckboxes(selectedCropIds = []) {
+  const container = document.getElementById("agronomyCropCheckboxes");
+  if (!container) return;
+
+  const crops = inventoryState.items.crops || [];
+  if (crops.length === 0) {
+    container.innerHTML = '<p class="form-hint">No crops available. Add crops first.</p>';
+    return;
+  }
+
+  container.innerHTML = crops.map(crop => `
+    <label class="agronomy-crop-checkbox-label">
+      <input type="checkbox" value="${crop.id}" ${selectedCropIds.includes(crop.id) ? 'checked' : ''}>
+      <span>${escapeHtml(crop.name)}</span>
+    </label>
+  `).join('');
+}
+
 function updateLineCropOptions() {
   const select = document.getElementById("lineCrop");
   if (!select) return;
@@ -175,6 +225,10 @@ async function initializeInventory(options = {}) {
 
     if (cached?.items) {
       inventoryState.items = cached.items;
+      // Ensure agronomy array exists (migration for older caches)
+      if (!inventoryState.items.agronomy) {
+        inventoryState.items.agronomy = [];
+      }
       hasCache = true;
 
       // Migrate lines - ensure cropId is set from crop field if missing
@@ -284,6 +338,7 @@ function switchCategory(category) {
     crops: "Crops",
     locations: "Locations",
     parameters: "Parameters",
+    agronomy: "Agronomy",
   };
   document.getElementById("categoryTitle").textContent = categoryTitle[key];
 
@@ -291,6 +346,7 @@ function switchCategory(category) {
   toggleLineFields(key === "crops"); // Show line fields when editing lines from crops
   toggleLocationFields(key === "locations");
   toggleParameterFields(key === "parameters");
+  toggleAgronomyFields(key === "agronomy");
   if (key === "crops") {
     updateCropTypeSuggestions();
     updateLineCropOptions();
@@ -307,6 +363,10 @@ function renderInventoryItems() {
   const isCrops = inventoryState.currentCategory === "crops";
   const isLocations = inventoryState.currentCategory === "locations";
   const isParameters = inventoryState.currentCategory === "parameters";
+  const isAgronomy = inventoryState.currentCategory === "agronomy";
+
+  // Toggle agronomy-view class for full-width table layout
+  container.classList.toggle("agronomy-view", isAgronomy);
 
   if (items.length === 0) {
     container.innerHTML = `
@@ -394,16 +454,79 @@ function renderInventoryItems() {
         inventoryState.currentCategory = prevCategory;
       });
     });
+  } else if (isAgronomy) {
+    // Table rendering for Agronomy
+    const resolveCropNames = (cropIds) => {
+      if (!cropIds || !Array.isArray(cropIds)) return "-";
+      return cropIds.map(id => {
+        const crop = inventoryState.items.crops.find(c => c.id === id);
+        return crop ? escapeHtml(crop.name) : "Unknown";
+      }).join(", ") || "-";
+    };
+
+    const formatDap = (item) => {
+      if (item.dapMin != null && item.dapMax != null && item.dapMax !== "" && item.dapMax !== item.dapMin) {
+        return `${item.dapMin}-${item.dapMax}`;
+      }
+      return item.dapMin != null ? `${item.dapMin}` : "-";
+    };
+
+    container.innerHTML = `
+      <div class="agronomy-table-wrapper">
+        <table class="agronomy-table">
+          <thead>
+            <tr>
+              <th>Activity</th>
+              <th>Crops</th>
+              <th>DAP</th>
+              <th>Chemical</th>
+              <th>Dose</th>
+              <th>Remark</th>
+              <th class="agronomy-table-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map(item => `
+              <tr>
+                <td class="agronomy-cell-activity">${escapeHtml(item.activity || item.name || "-")}</td>
+                <td>${resolveCropNames(item.cropIds)}</td>
+                <td class="agronomy-cell-dap">${formatDap(item)}</td>
+                <td>${escapeHtml(item.chemical || "-")}</td>
+                <td>${escapeHtml(item.dose || "-")}</td>
+                <td class="agronomy-cell-remark">${escapeHtml(item.remark || "-")}</td>
+                <td class="agronomy-table-actions">
+                  <button class="edit-btn" data-id="${item.id}" title="Edit">
+                    <span class="material-symbols-rounded">edit</span>
+                  </button>
+                  <button class="delete-btn" data-id="${item.id}" title="Delete">
+                    <span class="material-symbols-rounded">delete</span>
+                  </button>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    // Add event listeners
+    container.querySelectorAll(".edit-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openEditModal(btn.dataset.id);
+      });
+    });
+    container.querySelectorAll(".delete-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteItem(btn.dataset.id);
+      });
+    });
   } else {
     // Standard rendering for Locations and Parameters
     container.innerHTML = items
       .map((item) => {
-        const locationMeta =
-          isLocations && item.coordinates
-            ? `
-                <div class="item-subtext">Coordinates: ${escapeHtml(item.coordinates)}</div>
-            `
-            : "";
+        const locationMeta = "";
 
         const paramMeta = isParameters
           ? `
@@ -530,6 +653,16 @@ function openAddModal() {
       typeSelect.removeEventListener("change", handleParameterTypeChange);
       typeSelect.addEventListener("change", handleParameterTypeChange);
     }
+  }
+  toggleAgronomyFields(inventoryState.currentCategory === "agronomy");
+  if (inventoryState.currentCategory === "agronomy") {
+    document.getElementById("agronomyActivity").value = "";
+    document.getElementById("agronomyDapMin").value = "";
+    document.getElementById("agronomyDapMax").value = "";
+    document.getElementById("agronomyChemical").value = "";
+    document.getElementById("agronomyDose").value = "";
+    document.getElementById("agronomyRemark").value = "";
+    populateAgronomyCropCheckboxes();
   }
   document.getElementById("itemModal").classList.add("active");
   document.getElementById("itemName").focus();
@@ -784,6 +917,16 @@ function openEditModal(itemId) {
       photoCheckbox.addEventListener("change", togglePhotoModeGroup);
     }
   }
+  toggleAgronomyFields(inventoryState.currentCategory === "agronomy");
+  if (inventoryState.currentCategory === "agronomy") {
+    document.getElementById("agronomyActivity").value = item.activity || "";
+    document.getElementById("agronomyDapMin").value = item.dapMin ?? "";
+    document.getElementById("agronomyDapMax").value = item.dapMax ?? "";
+    document.getElementById("agronomyChemical").value = item.chemical || "";
+    document.getElementById("agronomyDose").value = item.dose || "";
+    document.getElementById("agronomyRemark").value = item.remark || "";
+    populateAgronomyCropCheckboxes(item.cropIds || []);
+  }
   document.getElementById("itemModal").classList.add("active");
   document.getElementById("itemName").focus();
 }
@@ -839,16 +982,42 @@ function closeModal() {
   const photoModeRadios = document.querySelectorAll('input[name="photoMode"]');
   if (photoModeRadios.length > 0) photoModeRadios[0].checked = true;
   
+  // Reset agronomy fields
+  const agronomyFields = [
+    "agronomyActivity",
+    "agronomyDapMin",
+    "agronomyDapMax",
+    "agronomyChemical",
+    "agronomyDose",
+    "agronomyRemark",
+  ];
+  agronomyFields.forEach((id) => {
+    const field = document.getElementById(id);
+    if (field) field.value = "";
+  });
+  const agronomyCropCheckboxes = document.getElementById("agronomyCropCheckboxes");
+  if (agronomyCropCheckboxes) {
+    agronomyCropCheckboxes.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  }
+  
   destroyLocationMap();
 }
 
 // Save item
 async function saveItem() {
-  const name = document.getElementById("itemName").value.trim();
+  let name = document.getElementById("itemName").value.trim();
   const isCrops = inventoryState.currentCategory === "crops";
   const isLines = inventoryState.currentCategory === "lines";
   const isLocations = inventoryState.currentCategory === "locations";
   const isParameters = inventoryState.currentCategory === "parameters";
+  const isAgronomy = inventoryState.currentCategory === "agronomy";
+
+  // For agronomy, activity IS the item name
+  if (isAgronomy) {
+    const activityVal = document.getElementById("agronomyActivity")?.value.trim() || "";
+    name = activityVal;
+  }
+
   const cropTypeInput = document.getElementById("cropType");
   const cropType = isCrops && cropTypeInput ? cropTypeInput.value.trim() : "";
 
@@ -918,6 +1087,29 @@ async function saveItem() {
     ? document.querySelector('input[name="photoMode"]:checked')?.value || 'per-sample'
     : undefined;
 
+  // Agronomy fields
+  const agronomyCropIds = isAgronomy
+    ? Array.from(document.querySelectorAll('#agronomyCropCheckboxes input[type="checkbox"]:checked')).map(cb => cb.value)
+    : [];
+  const agronomyActivity = isAgronomy
+    ? document.getElementById("agronomyActivity")?.value.trim()
+    : "";
+  const agronomyDapMin = isAgronomy
+    ? document.getElementById("agronomyDapMin")?.value.trim()
+    : "";
+  const agronomyDapMax = isAgronomy
+    ? document.getElementById("agronomyDapMax")?.value.trim()
+    : "";
+  const agronomyChemical = isAgronomy
+    ? document.getElementById("agronomyChemical")?.value.trim()
+    : "";
+  const agronomyDose = isAgronomy
+    ? document.getElementById("agronomyDose")?.value.trim()
+    : "";
+  const agronomyRemark = isAgronomy
+    ? document.getElementById("agronomyRemark")?.value.trim()
+    : "";
+
   if (!name) {
     showToast("Please enter an item name", "error");
     return;
@@ -981,6 +1173,17 @@ async function saveItem() {
     }
   }
 
+  if (isAgronomy) {
+    if (agronomyCropIds.length === 0) {
+      showToast("Please select at least one crop", "error");
+      return;
+    }
+    if (!agronomyActivity) {
+      showToast("Please enter an activity", "error");
+      return;
+    }
+  }
+
   try {
     const category = inventoryState.currentCategory;
     let item;
@@ -1026,6 +1229,15 @@ async function saveItem() {
           item.requirePhoto = paramPhoto;
           item.photoMode = paramPhotoMode;
         }
+        if (isAgronomy) {
+          item.cropIds = agronomyCropIds;
+          item.activity = agronomyActivity;
+          item.dapMin = agronomyDapMin ? Number(agronomyDapMin) : null;
+          item.dapMax = agronomyDapMax ? Number(agronomyDapMax) : null;
+          item.chemical = agronomyChemical;
+          item.dose = agronomyDose;
+          item.remark = agronomyRemark;
+        }
         item.updatedAt = new Date().toISOString();
       }
     } else {
@@ -1066,6 +1278,13 @@ async function saveItem() {
         numberOfSamples: isParameters && paramQuantity ? Number(paramQuantity) : 1,
         requirePhoto: isParameters ? paramPhoto : undefined,
         photoMode: isParameters ? paramPhotoMode : undefined,
+        cropIds: isAgronomy ? agronomyCropIds : undefined,
+        activity: isAgronomy ? agronomyActivity : undefined,
+        dapMin: isAgronomy && agronomyDapMin ? Number(agronomyDapMin) : undefined,
+        dapMax: isAgronomy && agronomyDapMax ? Number(agronomyDapMax) : undefined,
+        chemical: isAgronomy ? agronomyChemical : undefined,
+        dose: isAgronomy ? agronomyDose : undefined,
+        remark: isAgronomy ? agronomyRemark : undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

@@ -76,6 +76,10 @@
                 <span class="material-symbols-rounded">tune</span>
                 <span>Parameters</span>
               </a>
+              <a href="#" class="nav-subitem" data-parent="inventory" data-category="agronomy">
+                <span class="material-symbols-rounded">local_florist</span>
+                <span>Agronomy</span>
+              </a>
             </div>
           </div>
           <a href="#" class="nav-item" data-view="trial">
@@ -350,6 +354,11 @@
                         </div>
                       </div>
                       <div class="form-group">
+                        <label for="trialPlantingDate">Planting Date</label>
+                        <input type="date" id="trialPlantingDate" placeholder="Select planting date">
+                        <small class="form-hint">Actual planting date (used for agronomy scheduling)</small>
+                      </div>
+                      <div class="form-group">
                         <label for="trialCrops">Crops</label>
                         <select id="trialCrops" required>
                           <option value="">Select crop</option>
@@ -433,6 +442,47 @@
                         <small class="form-hint-block">
                           <span id="selectedParamCount">0</span> parameter(s) selected
                         </small>
+                      </div>
+                      <div class="form-group">
+                        <label class="agronomy-toggle-label">
+                          <input type="checkbox" id="trialAgronomyMonitoring" class="agronomy-toggle-checkbox">
+                          <span>Agronomy Monitoring</span>
+                        </label>
+                        <div id="agronomyPickerContainer" class="hidden">
+                          <div class="dual-picklist">
+                            <div class="picklist-column">
+                              <div class="picklist-header form-hint">Available Agronomy</div>
+                              <div class="picklist-search">
+                                <span class="material-symbols-rounded">search</span>
+                                <input type="text" id="agronomySearch" placeholder="Search agronomy...">
+                              </div>
+                              <div id="agronomyAvailableList" class="picklist-list" data-list="available">
+                              </div>
+                            </div>
+                            <div class="picklist-controls">
+                              <button type="button" class="picklist-control-btn" id="agronomyMoveRight" title="Add">
+                                <span class="material-symbols-rounded">arrow_forward</span>
+                              </button>
+                              <button type="button" class="picklist-control-btn" id="agronomyMoveUp" title="Move up">
+                                <span class="material-symbols-rounded">arrow_upward</span>
+                              </button>
+                              <button type="button" class="picklist-control-btn" id="agronomyMoveDown" title="Move down">
+                                <span class="material-symbols-rounded">arrow_downward</span>
+                              </button>
+                              <button type="button" class="picklist-control-btn danger" id="agronomyRemove" title="Remove">
+                                <span class="material-symbols-rounded">delete</span>
+                              </button>
+                            </div>
+                            <div class="picklist-column">
+                              <div class="picklist-header form-hint">Selected Agronomy</div>
+                              <div id="agronomySelectedList" class="picklist-list" data-list="selected">
+                              </div>
+                            </div>
+                          </div>
+                          <small class="form-hint-block">
+                            <span id="selectedAgronomyCount">0</span> agronomy item(s) selected
+                          </small>
+                        </div>
                       </div>
                     </div>
         
@@ -527,13 +577,11 @@
             <div id="runTrialInterface" class="run-trial-section hidden">
               <div id="runTrialShell" class="run-trial-shell">
                 <div class="run-trial-container">
-                  <!-- Mobile Nav Overlay -->
-                  <div id="mobileNavOverlay" class="mobile-nav-overlay" onclick="closeMobileNav()"></div>
         
                   <!-- Navigation Sidebar -->
                   <div class="run-trial-nav">
                     <div class="mobile-nav-header">
-                      <span>Navigation</span>
+                      <div class="nav-header-progress"></div>
                       <button class="btn-icon-close" onclick="closeMobileNav()">
                         <span class="material-symbols-rounded">close</span>
                       </button>
@@ -550,6 +598,31 @@
                       <div class="run-empty-state">
                         <span class="material-symbols-rounded">touch_app</span>
                         <p>Select a line from the navigation to start recording data</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Agronomy Monitoring Interface -->
+            <div id="agronomyMonitoringInterface" class="run-trial-section hidden">
+              <div class="run-trial-shell">
+                <div class="run-trial-container">
+                  <div class="run-trial-nav">
+                    <div class="mobile-nav-header">
+                      <div class="nav-header-progress"></div>
+                      <button class="btn-icon-close" onclick="closeAgronomyMobileNav()">
+                        <span class="material-symbols-rounded">close</span>
+                      </button>
+                    </div>
+                    <div id="agronomyNavTree" class="run-nav-tree"></div>
+                  </div>
+                  <div class="run-trial-content">
+                    <div id="agronomyQuestionCard" class="run-question-card">
+                      <div class="run-empty-state">
+                        <span class="material-symbols-rounded">agriculture</span>
+                        <p>Select an agronomy item from the navigation to start monitoring</p>
                       </div>
                     </div>
                   </div>
@@ -858,6 +931,37 @@
                   </label>
                 </div>
               </div>
+            </div>
+            <!-- Agronomy Fields -->
+            <div class="form-group hidden" id="agronomyCropGroup">
+              <label for="agronomyCrops">Crops</label>
+              <div id="agronomyCropCheckboxes" class="agronomy-crop-checkboxes"></div>
+              <small class="form-hint">Select one or more crops this agronomy applies to</small>
+            </div>
+            <div class="form-group hidden" id="agronomyActivityGroup">
+              <label for="agronomyActivity">Activity</label>
+              <input type="text" id="agronomyActivity" placeholder="e.g., Fertilizer Application">
+            </div>
+            <div class="form-group hidden" id="agronomyDapGroup">
+              <label>Days After Planting (DAP)</label>
+              <div class="range-input-group">
+                <input type="number" id="agronomyDapMin" placeholder="From" min="0" step="1">
+                <span class="range-separator">-</span>
+                <input type="number" id="agronomyDapMax" placeholder="To (optional)" min="0" step="1">
+              </div>
+              <small class="form-hint">Single value or range (e.g., 5 or 5-8)</small>
+            </div>
+            <div class="form-group hidden" id="agronomyChemicalGroup">
+              <label for="agronomyChemical">Chemical</label>
+              <input type="text" id="agronomyChemical" placeholder="e.g., Urea, NPK">
+            </div>
+            <div class="form-group hidden" id="agronomyDoseGroup">
+              <label for="agronomyDose">Dose</label>
+              <input type="text" id="agronomyDose" placeholder="e.g., 200 kg/ha">
+            </div>
+            <div class="form-group hidden" id="agronomyRemarkGroup">
+              <label for="agronomyRemark">Remark</label>
+              <textarea id="agronomyRemark" placeholder="Additional notes" rows="2"></textarea>
             </div>
           </form>
         </div>

@@ -223,8 +223,18 @@ function openAddTrialModal() {
   // Populate parameters
   populateTrialParameters();
 
+  // Reset agronomy monitoring
+  const agronomyCheckbox = document.getElementById('trialAgronomyMonitoring');
+  if (agronomyCheckbox) agronomyCheckbox.checked = false;
+  const agronomyContainer = document.getElementById('agronomyPickerContainer');
+  if (agronomyContainer) agronomyContainer.classList.add('hidden');
+  trialState.selectedAgronomyOrder = [];
+
   // Setup calculation listeners and reset calculated fields
   setupTrialGeneralCalculations();
+
+  // Setup agronomy monitoring listeners
+  setupAgronomyMonitoringListeners();
 
   // Reset areas list
   document.getElementById("areasList").classList.add("hidden");
@@ -263,6 +273,7 @@ function openEditTrialModal(trialId) {
   document.getElementById("trialPlantingStart").value =
     trial.plantingStart || "";
   document.getElementById("trialPlantingEnd").value = trial.plantingEnd || "";
+  document.getElementById("trialPlantingDate").value = trial.plantingDate || "";
   document.getElementById("trialType").value = trial.trialType || "";
   document.getElementById("trialRowsPerPlot").value = trial.rowsPerPlot ?? "";
   document.getElementById("trialPlotLength").value = trial.plotLength ?? "";
@@ -279,8 +290,25 @@ function openEditTrialModal(trialId) {
 
   populateTrialParameters(trial.parameters);
 
+  // Restore agronomy monitoring
+  const agronomyCheckbox = document.getElementById('trialAgronomyMonitoring');
+  const agronomyContainer = document.getElementById('agronomyPickerContainer');
+  if (trial.agronomyMonitoring && agronomyCheckbox) {
+    agronomyCheckbox.checked = true;
+    if (agronomyContainer) agronomyContainer.classList.remove('hidden');
+    trialState.selectedAgronomyOrder = Array.isArray(trial.agronomyItems) ? [...trial.agronomyItems] : [];
+    populateTrialAgronomy(trialState.selectedAgronomyOrder);
+  } else {
+    if (agronomyCheckbox) agronomyCheckbox.checked = false;
+    if (agronomyContainer) agronomyContainer.classList.add('hidden');
+    trialState.selectedAgronomyOrder = [];
+  }
+
   // Setup calculation listeners and refresh calculated fields
   setupTrialGeneralCalculations();
+
+  // Setup agronomy monitoring listeners
+  setupAgronomyMonitoringListeners();
 
   // Load areas
   trialState.currentAreas = trial.areas || [];
@@ -786,6 +814,276 @@ function getSelectedParameterIds() {
   return Array.isArray(trialState.selectedParametersOrder)
     ? trialState.selectedParametersOrder
     : [];
+}
+
+// ═══════════════════════════════════════════════
+// Agronomy Monitoring Picker (same pattern as parameters)
+// ═══════════════════════════════════════════════
+
+function populateTrialAgronomy(selectedIds = []) {
+  const availableList = document.getElementById("agronomyAvailableList");
+  const selectedList = document.getElementById("agronomySelectedList");
+  const searchInput = document.getElementById("agronomySearch");
+  const moveRightBtn = document.getElementById("agronomyMoveRight");
+  const moveUpBtn = document.getElementById("agronomyMoveUp");
+  const moveDownBtn = document.getElementById("agronomyMoveDown");
+  const removeBtn = document.getElementById("agronomyRemove");
+  if (!availableList || !selectedList || !searchInput) return;
+
+  trialState.selectedAgronomyOrder = Array.isArray(selectedIds) ? [...selectedIds] : [];
+
+  // Get current trial crop
+  const cropId = document.getElementById("trialCrops")?.value;
+
+  // Filter agronomy items by crop
+  const allAgronomy = inventoryState.items.agronomy || [];
+  const filteredAgronomy = cropId
+    ? allAgronomy.filter(a => a.cropIds && a.cropIds.includes(cropId))
+    : allAgronomy;
+
+  const setSelection = (listEl, id) => {
+    listEl.querySelectorAll(".picklist-item").forEach((item) => {
+      item.classList.toggle("selected", item.dataset.id === id);
+    });
+    listEl.dataset.selectedId = id || "";
+  };
+
+  const renderAvailable = (searchTerm = "") => {
+    const filtered = filteredAgronomy.filter((item) => {
+      const activity = item.activity || item.name || "";
+      const match = activity.toLowerCase().includes(searchTerm.toLowerCase());
+      return match && !trialState.selectedAgronomyOrder.includes(item.id);
+    });
+
+    if (filtered.length === 0) {
+      availableList.innerHTML = '<p class="param-no-results">No agronomy items found</p>';
+      return;
+    }
+
+    availableList.innerHTML = filtered.map((item) => {
+      const dapText = item.dapMin != null
+        ? (item.dapMax != null && item.dapMax !== "" && item.dapMax !== item.dapMin
+          ? `DAP ${item.dapMin}-${item.dapMax}`
+          : `DAP ${item.dapMin}`)
+        : "";
+      return `
+        <div class="picklist-item" draggable="true" data-id="${item.id}">
+          <div class="picklist-item-title">${escapeHtml(item.activity || item.name || "")}</div>
+        </div>
+      `;
+    }).join("");
+
+    availableList.querySelectorAll(".picklist-item").forEach((el) => {
+      el.addEventListener("click", () => {
+        setSelection(availableList, el.dataset.id);
+        setSelection(selectedList, "");
+      });
+      el.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", el.dataset.id);
+        e.dataTransfer.setData("source", "available");
+        el.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+      });
+      el.addEventListener("dragend", () => {
+        el.classList.remove("dragging");
+        document.querySelectorAll(".picklist-item.drag-over").forEach(x => x.classList.remove("drag-over"));
+      });
+    });
+  };
+
+  const renderSelected = () => {
+    if (trialState.selectedAgronomyOrder.length === 0) {
+      selectedList.innerHTML = '<p class="param-no-results">No agronomy selected</p>';
+      return;
+    }
+
+    selectedList.innerHTML = trialState.selectedAgronomyOrder.map((id) => {
+      const item = allAgronomy.find((a) => a.id === id);
+      if (!item) return "";
+      const dapText = item.dapMin != null
+        ? (item.dapMax != null && item.dapMax !== "" && item.dapMax !== item.dapMin
+          ? `DAP ${item.dapMin}-${item.dapMax}`
+          : `DAP ${item.dapMin}`)
+        : "";
+      return `
+        <div class="picklist-item" draggable="true" data-id="${item.id}">
+          <div class="picklist-item-title">${escapeHtml(item.activity || item.name || "")}</div>
+        </div>
+      `;
+    }).join("");
+
+    selectedList.querySelectorAll(".picklist-item").forEach((el) => {
+      el.addEventListener("click", () => {
+        setSelection(selectedList, el.dataset.id);
+        setSelection(availableList, "");
+      });
+      el.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", el.dataset.id);
+        e.dataTransfer.setData("source", "selected");
+        el.classList.add("dragging");
+      });
+      el.addEventListener("dragend", () => {
+        el.classList.remove("dragging");
+        document.querySelectorAll(".picklist-item.drag-over").forEach(x => x.classList.remove("drag-over"));
+      });
+      el.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        el.classList.add("drag-over");
+        e.dataTransfer.dropEffect = "move";
+      });
+      el.addEventListener("dragleave", (e) => {
+        if (e.target === el) el.classList.remove("drag-over");
+      });
+      el.addEventListener("drop", (e) => {
+        e.preventDefault();
+        el.classList.remove("drag-over");
+        const draggedId = e.dataTransfer.getData("text/plain");
+        const source = e.dataTransfer.getData("source");
+        const targetId = el.dataset.id;
+        if (draggedId === targetId) return;
+
+        if (source === "available") {
+          const targetIdx = trialState.selectedAgronomyOrder.indexOf(targetId);
+          trialState.selectedAgronomyOrder.splice(targetIdx, 0, draggedId);
+        } else if (source === "selected") {
+          const fromIdx = trialState.selectedAgronomyOrder.indexOf(draggedId);
+          if (fromIdx >= 0) trialState.selectedAgronomyOrder.splice(fromIdx, 1);
+          const targetIdx = trialState.selectedAgronomyOrder.indexOf(targetId);
+          trialState.selectedAgronomyOrder.splice(targetIdx, 0, draggedId);
+        }
+        renderAvailable(searchInput.value);
+        renderSelected();
+        updateSelectedAgronomyCount();
+      });
+    });
+  };
+
+  const updateSelectedAgronomyCount = () => {
+    const countEl = document.getElementById("selectedAgronomyCount");
+    if (countEl) countEl.textContent = trialState.selectedAgronomyOrder.length;
+  };
+
+  // Drop on available list (remove from selected)
+  availableList.ondragover = (e) => { e.preventDefault(); availableList.classList.add("picklist-list-drag-over"); };
+  availableList.ondragleave = () => { availableList.classList.remove("picklist-list-drag-over"); };
+  availableList.ondrop = (e) => {
+    e.preventDefault();
+    availableList.classList.remove("picklist-list-drag-over");
+    const draggedId = e.dataTransfer.getData("text/plain");
+    const source = e.dataTransfer.getData("source");
+    if (source === "selected") {
+      const idx = trialState.selectedAgronomyOrder.indexOf(draggedId);
+      if (idx >= 0) trialState.selectedAgronomyOrder.splice(idx, 1);
+      renderAvailable(searchInput.value);
+      renderSelected();
+      updateSelectedAgronomyCount();
+    }
+  };
+
+  // Drop on selected list (add from available)
+  selectedList.ondragover = (e) => { e.preventDefault(); selectedList.classList.add("picklist-list-drag-over"); };
+  selectedList.ondragleave = () => { selectedList.classList.remove("picklist-list-drag-over"); };
+  selectedList.ondrop = (e) => {
+    e.preventDefault();
+    selectedList.classList.remove("picklist-list-drag-over");
+    const draggedId = e.dataTransfer.getData("text/plain");
+    const source = e.dataTransfer.getData("source");
+    if (source === "available" && !trialState.selectedAgronomyOrder.includes(draggedId)) {
+      trialState.selectedAgronomyOrder.push(draggedId);
+      renderAvailable(searchInput.value);
+      renderSelected();
+      updateSelectedAgronomyCount();
+    }
+  };
+
+  // Button controls
+  if (moveRightBtn) {
+    moveRightBtn.onclick = () => {
+      const id = availableList.dataset.selectedId;
+      if (id && !trialState.selectedAgronomyOrder.includes(id)) {
+        trialState.selectedAgronomyOrder.push(id);
+        renderAvailable(searchInput.value);
+        renderSelected();
+        updateSelectedAgronomyCount();
+      }
+    };
+  }
+  if (moveUpBtn) {
+    moveUpBtn.onclick = () => {
+      const id = selectedList.dataset.selectedId;
+      const idx = trialState.selectedAgronomyOrder.indexOf(id);
+      if (idx > 0) {
+        [trialState.selectedAgronomyOrder[idx - 1], trialState.selectedAgronomyOrder[idx]] =
+          [trialState.selectedAgronomyOrder[idx], trialState.selectedAgronomyOrder[idx - 1]];
+        renderSelected();
+        setSelection(selectedList, id);
+      }
+    };
+  }
+  if (moveDownBtn) {
+    moveDownBtn.onclick = () => {
+      const id = selectedList.dataset.selectedId;
+      const idx = trialState.selectedAgronomyOrder.indexOf(id);
+      if (idx >= 0 && idx < trialState.selectedAgronomyOrder.length - 1) {
+        [trialState.selectedAgronomyOrder[idx], trialState.selectedAgronomyOrder[idx + 1]] =
+          [trialState.selectedAgronomyOrder[idx + 1], trialState.selectedAgronomyOrder[idx]];
+        renderSelected();
+        setSelection(selectedList, id);
+      }
+    };
+  }
+  if (removeBtn) {
+    removeBtn.onclick = () => {
+      const id = selectedList.dataset.selectedId;
+      const idx = trialState.selectedAgronomyOrder.indexOf(id);
+      if (idx >= 0) {
+        trialState.selectedAgronomyOrder.splice(idx, 1);
+        renderAvailable(searchInput.value);
+        renderSelected();
+        updateSelectedAgronomyCount();
+      }
+    };
+  }
+
+  renderAvailable();
+  renderSelected();
+  updateSelectedAgronomyCount();
+
+  // Search listener
+  searchInput.removeEventListener("input", searchInput._agronomySearchHandler);
+  searchInput._agronomySearchHandler = (e) => renderAvailable(e.target.value);
+  searchInput.addEventListener("input", searchInput._agronomySearchHandler);
+}
+
+// Setup agronomy monitoring toggle and crop change listener
+function setupAgronomyMonitoringListeners() {
+  const checkbox = document.getElementById('trialAgronomyMonitoring');
+  const container = document.getElementById('agronomyPickerContainer');
+  const cropSelect = document.getElementById('trialCrops');
+
+  if (checkbox) {
+    checkbox.removeEventListener('change', checkbox._agronomyToggle);
+    checkbox._agronomyToggle = () => {
+      if (checkbox.checked) {
+        container?.classList.remove('hidden');
+        populateTrialAgronomy(trialState.selectedAgronomyOrder || []);
+      } else {
+        container?.classList.add('hidden');
+      }
+    };
+    checkbox.addEventListener('change', checkbox._agronomyToggle);
+  }
+
+  // When crop changes, refresh agronomy available list
+  if (cropSelect) {
+    cropSelect.removeEventListener('change', cropSelect._agronomyCropChange);
+    cropSelect._agronomyCropChange = () => {
+      if (checkbox?.checked) {
+        populateTrialAgronomy(trialState.selectedAgronomyOrder || []);
+      }
+    };
+    cropSelect.addEventListener('change', cropSelect._agronomyCropChange);
+  }
 }
 
 function setupTrialGeneralCalculations() {
@@ -1676,6 +1974,7 @@ async function saveTrial() {
   const description = document.getElementById("trialDescription").value.trim();
   const plantingStart = document.getElementById("trialPlantingStart").value;
   const plantingEnd = document.getElementById("trialPlantingEnd").value;
+  const plantingDate = document.getElementById("trialPlantingDate").value;
   const cropSelect = document.getElementById("trialCrops");
   const cropId = cropSelect.value;
   const cropName =
@@ -1729,6 +2028,10 @@ async function saveTrial() {
 
   // Get selected parameters
   const selectedParams = getSelectedParameterIds();
+
+  // Get agronomy monitoring
+  const agronomyMonitoring = document.getElementById('trialAgronomyMonitoring')?.checked || false;
+  const selectedAgronomy = agronomyMonitoring ? (trialState.selectedAgronomyOrder || []) : [];
 
   // Validation
   if (!name) {
@@ -1824,6 +2127,7 @@ async function saveTrial() {
         trial.description = description;
         trial.plantingStart = plantingStart;
         trial.plantingEnd = plantingEnd;
+        trial.plantingDate = plantingDate;
         trial.cropId = cropId;
         trial.cropName = cropName;
         trial.trialType = trialType;
@@ -1841,6 +2145,8 @@ async function saveTrial() {
         trial.locationId = locationId;
         trial.locationCoordinates = locationCoords;
         trial.parameters = selectedParams;
+        trial.agronomyMonitoring = agronomyMonitoring;
+        trial.agronomyItems = selectedAgronomy;
         trial.areas = trialState.currentAreas;
         trial.consumedLines = lineUsage;
         trial.updatedAt = new Date().toISOString();
@@ -1857,6 +2163,7 @@ async function saveTrial() {
         description: description,
         plantingStart: plantingStart,
         plantingEnd: plantingEnd,
+        plantingDate: plantingDate,
         cropId: cropId,
         cropName: cropName,
         trialType: trialType,
@@ -1874,6 +2181,8 @@ async function saveTrial() {
         locationId: locationId,
         locationCoordinates: locationCoords,
         parameters: selectedParams,
+        agronomyMonitoring: agronomyMonitoring,
+        agronomyItems: selectedAgronomy,
         areas: trialState.currentAreas,
         consumedLines: lineUsage,
         archived: false,
@@ -2268,6 +2577,7 @@ async function saveTrialToGoogleDrive(trial) {
   // Save meta.json (trial definition WITHOUT responses to keep it small)
   const meta = { ...trial };
   delete meta.responses; // Responses saved separately
+  delete meta.agronomyResponses; // Agronomy responses saved separately
 
   await uploadJsonFile("meta.json", trialFolderId, meta);
 }
@@ -3019,6 +3329,785 @@ let runTrialState = {
   photoFiles: [], // Temporary photo storage
 };
 
+// ===========================
+// AGRONOMY MONITORING
+// ===========================
+
+let agronomyMonitoringState = {
+  currentTrialId: null,
+  currentTrial: null,
+  currentAreaIndex: null,
+  currentItemId: null,
+  responses: {}, // { areaIndex: { agronomyItemId: { applicationDate, photos, timestamp } } }
+};
+
+let agronomyAutoSaveInProgress = false;
+
+// Get agronomy items for a trial, sorted by dapMin
+function getTrialAgronomyItems(trial) {
+  if (!trial || !trial.agronomyItems || !trial.agronomyItems.length) return [];
+  return trial.agronomyItems
+    .map(id => inventoryState.items.agronomy?.find(a => a.id === id))
+    .filter(Boolean)
+    .sort((a, b) => (a.dapMin ?? 9999) - (b.dapMin ?? 9999));
+}
+
+// Build flat navigation list: [{areaIndex, itemId, areaName, itemName}]
+function getAllAgronomyNavPositions() {
+  const trial = agronomyMonitoringState.currentTrial;
+  if (!trial) return [];
+  const items = getTrialAgronomyItems(trial);
+  const positions = [];
+  (trial.areas || []).forEach((area, areaIndex) => {
+    items.forEach(item => {
+      positions.push({
+        areaIndex,
+        itemId: item.id,
+        areaName: area.name || `Area ${areaIndex + 1}`,
+        itemActivity: item.activity || item.name || "-",
+      });
+    });
+  });
+  return positions;
+}
+
+// Calculate agronomy monitoring progress
+function calculateAgronomyProgress(trial) {
+  const items = getTrialAgronomyItems(trial);
+  const areas = trial.areas || [];
+  const responses = trial.agronomyResponses || {};
+  let total = 0, completed = 0;
+  areas.forEach((_, areaIndex) => {
+    items.forEach(item => {
+      total++;
+      const resp = responses[areaIndex]?.[item.id];
+      if (resp && resp.applicationDate) completed++;
+    });
+  });
+  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  return { total, completed, percentage };
+}
+
+// Check if an agronomy item is complete
+function isAgronomyItemComplete(areaIndex, itemId) {
+  const resp = agronomyMonitoringState.responses[areaIndex]?.[itemId];
+  return !!(resp && resp.applicationDate && resp.photos && resp.photos.length > 0);
+}
+
+// Calculate expected date for a DAP value
+function getDapExpectedDate(trial, dapMin) {
+  if (!trial.plantingDate || dapMin == null) return null;
+  const planting = new Date(trial.plantingDate + "T00:00:00");
+  if (isNaN(planting.getTime())) return null;
+  planting.setDate(planting.getDate() + Number(dapMin));
+  return planting;
+}
+
+// Start Agronomy Monitoring
+function startAgronomyMonitoring(trialId) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial) return;
+
+  agronomyMonitoringState.currentTrialId = trialId;
+  agronomyMonitoringState.currentTrial = trial;
+  agronomyMonitoringState.responses = trial.agronomyResponses || {};
+  agronomyMonitoringState.currentAreaIndex = null;
+  agronomyMonitoringState.currentItemId = null;
+
+  // Hide trial list, show agronomy interface
+  const mgmtPanel = document.getElementById("trialManagementPanel");
+  const archivePanel = document.getElementById("archivedTrialManagementPanel");
+  if (mgmtPanel) mgmtPanel.classList.add("hidden");
+  if (archivePanel) archivePanel.classList.add("hidden");
+  document.getElementById("agronomyMonitoringInterface").classList.remove("hidden");
+
+  // Modify topbar
+  const topbar = document.querySelector(".topbar");
+  const pageTitle = document.getElementById("pageTitle");
+  const menuToggle = document.querySelector(".menu-toggle");
+  const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
+  const viewProgressBtn = document.getElementById("viewProgressBtn");
+
+  if (topbar) topbar.classList.add("run-trial-mode");
+  if (pageTitle) pageTitle.textContent = `${trial.name}`;
+  if (menuToggle) {
+    menuToggle.onclick = confirmExitAgronomyMonitoring;
+    menuToggle.innerHTML = '<span class="material-symbols-rounded">arrow_back</span>';
+  }
+  if (viewProgressBtn) { viewProgressBtn.style.display = "none"; viewProgressBtn.classList.add("hidden"); }
+
+  const runTrialNavBtn = document.getElementById("runTrialNavBtn");
+  const runTrialSaveBtn = document.getElementById("runTrialSaveBtn");
+  if (runTrialNavBtn) {
+    runTrialNavBtn.style.display = "flex";
+    runTrialNavBtn.classList.remove("hidden");
+    runTrialNavBtn.onclick = openAgronomyMobileNav;
+  }
+  if (runTrialSaveBtn) {
+    runTrialSaveBtn.style.display = "flex";
+    runTrialSaveBtn.classList.remove("hidden");
+    runTrialSaveBtn.onclick = manualSaveAgronomyProgress;
+  }
+  syncButtons.forEach(btn => {
+    if (btn.id !== "runTrialNavBtn" && btn.id !== "viewProgressBtn") btn.style.display = "none";
+  });
+
+  document.body.classList.add("run-trial-active", "sidebar-collapsed");
+
+  renderAgronomyNavTree();
+  renderAgronomyEmptyState();
+}
+
+// Exit Agronomy Monitoring
+function exitAgronomyMonitoring() {
+  agronomyMonitoringState.currentTrialId = null;
+  agronomyMonitoringState.currentTrial = null;
+  agronomyMonitoringState.responses = {};
+  agronomyMonitoringState.currentAreaIndex = null;
+  agronomyMonitoringState.currentItemId = null;
+
+  const mgmtPanel = document.getElementById("trialManagementPanel");
+  if (mgmtPanel) mgmtPanel.classList.remove("hidden");
+  document.getElementById("agronomyMonitoringInterface").classList.add("hidden");
+  renderTrials();
+
+  // Restore topbar
+  const topbar = document.querySelector(".topbar");
+  const pageTitle = document.getElementById("pageTitle");
+  const menuToggle = document.querySelector(".menu-toggle");
+  const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
+  const viewProgressBtn = document.getElementById("viewProgressBtn");
+
+  if (topbar) topbar.classList.remove("run-trial-mode");
+  if (pageTitle) pageTitle.textContent = "Trial";
+  if (menuToggle) {
+    menuToggle.onclick = null;
+    menuToggle.innerHTML = '<span class="material-symbols-rounded">menu</span>';
+  }
+  if (viewProgressBtn) { viewProgressBtn.style.display = "none"; viewProgressBtn.classList.add("hidden"); }
+  const runTrialNavBtn = document.getElementById("runTrialNavBtn");
+  const runTrialSaveBtn = document.getElementById("runTrialSaveBtn");
+  if (runTrialNavBtn) { runTrialNavBtn.style.display = "none"; runTrialNavBtn.classList.add("hidden"); runTrialNavBtn.onclick = openMobileNav; }
+  if (runTrialSaveBtn) { runTrialSaveBtn.style.display = "none"; runTrialSaveBtn.classList.add("hidden"); runTrialSaveBtn.onclick = () => manualSaveProgress(); }
+  syncButtons.forEach(btn => {
+    if (btn.id !== "viewProgressBtn") btn.style.display = "";
+  });
+
+  document.body.classList.remove("run-trial-active", "sidebar-collapsed");
+}
+
+function confirmExitAgronomyMonitoring() {
+  const doExit = () => {
+    saveAgronomyResponseSilent();
+    autoSaveAgronomyProgress();
+    exitAgronomyMonitoring();
+  };
+  if (typeof showConfirmModal === "function") {
+    showConfirmModal(
+      "Exit Agronomy Monitoring",
+      "Are you sure you want to exit? Current progress will be saved automatically.",
+      doExit,
+      "Exit",
+      "btn-primary",
+    );
+  } else if (window.confirm("Exit Agronomy Monitoring? Progress will be saved.")) {
+    doExit();
+  }
+}
+
+// Render empty state
+function renderAgronomyEmptyState() {
+  const container = document.getElementById("agronomyQuestionCard");
+  if (!container) return;
+  container.innerHTML = `
+    <div class="run-empty-state">
+      <span class="material-symbols-rounded">agriculture</span>
+      <p>Select an agronomy item from the navigation to start monitoring</p>
+    </div>
+  `;
+}
+
+// Render navigation tree
+function renderAgronomyNavTree() {
+  const container = document.getElementById("agronomyNavTree");
+  const trial = agronomyMonitoringState.currentTrial;
+  if (!container || !trial) return;
+
+  const items = getTrialAgronomyItems(trial);
+  const areas = trial.areas || [];
+  const progress = calculateAgronomyProgress(trial);
+
+  let html = `
+    <div class="run-nav-progress">
+      <div class="run-nav-progress-bar">
+        <div class="run-nav-progress-fill" style="width:${progress.percentage}%"></div>
+      </div>
+      <span class="run-nav-progress-text">${progress.completed}/${progress.total} (${progress.percentage}%)</span>
+    </div>
+  `;
+
+  areas.forEach((area, areaIndex) => {
+    const areaCompleted = items.filter(item => isAgronomyItemComplete(areaIndex, item.id)).length;
+    const areaTotal = items.length;
+    const isAreaActive = agronomyMonitoringState.currentAreaIndex === areaIndex;
+
+    html += `
+      <div class="run-nav-area ${isAreaActive ? 'active' : ''}">
+        <div class="run-nav-area-header" onclick="toggleAgronomyNavArea(${areaIndex})">
+          <span class="material-symbols-rounded run-nav-area-icon">location_on</span>
+          <span class="run-nav-area-name">${escapeHtml(area.name || `Area ${areaIndex + 1}`)}</span>
+          <span class="run-nav-area-count">${areaCompleted}/${areaTotal}</span>
+          <span class="material-symbols-rounded run-nav-toggle-icon">expand_more</span>
+        </div>
+        <div class="run-nav-area-children ${isAreaActive ? '' : 'collapsed'}">
+    `;
+
+    items.forEach(item => {
+      const isActive = agronomyMonitoringState.currentAreaIndex === areaIndex &&
+                        agronomyMonitoringState.currentItemId === item.id;
+      const isComplete = isAgronomyItemComplete(areaIndex, item.id);
+      const dapLabel = item.dapMin != null ? `DAP ${item.dapMin}${item.dapMax != null && item.dapMax !== item.dapMin ? '-' + item.dapMax : ''}` : '';
+
+      // Check if it's too early for this item
+      const expectedDate = getDapExpectedDate(trial, item.dapMin);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const isTooEarly = expectedDate && today < expectedDate && !isComplete;
+
+      html += `
+        <div class="run-nav-line ${isActive ? 'active' : ''} ${isComplete ? 'complete' : ''} ${isTooEarly ? 'agronomy-nav-early' : ''}"
+             onclick="selectAgronomyItem(${areaIndex}, '${item.id}')">
+          <span class="material-symbols-rounded run-nav-line-icon">
+            ${isComplete ? 'check_circle' : isTooEarly ? 'schedule' : 'radio_button_unchecked'}
+          </span>
+          <div class="run-nav-line-text">
+            <span class="run-nav-line-name">${escapeHtml(item.activity || item.name || '-')}</span>
+            ${dapLabel ? `<span class="run-nav-line-meta">${dapLabel}</span>` : ''}
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div></div>`;
+  });
+
+  container.innerHTML = html;
+
+  // Update mobile header progress
+  const headerProgress = document.querySelector('#agronomyMonitoringInterface .nav-header-progress');
+  if (headerProgress) {
+    headerProgress.innerHTML = `
+      <div class="run-nav-progress-bar">
+        <div class="run-nav-progress-fill" style="width:${progress.percentage}%"></div>
+      </div>
+      <span class="run-nav-progress-text">${progress.completed}/${progress.total} (${progress.percentage}%)</span>
+    `;
+  }
+}
+
+function toggleAgronomyNavArea(areaIndex) {
+  const container = document.getElementById("agronomyNavTree");
+  const areas = container?.querySelectorAll(".run-nav-area");
+  if (!areas || !areas[areaIndex]) return;
+  const children = areas[areaIndex].querySelector(".run-nav-area-children");
+  if (children) children.classList.toggle("collapsed");
+}
+
+// Select agronomy item
+function selectAgronomyItem(areaIndex, itemId) {
+  // Auto-save previous response
+  saveAgronomyResponseSilent();
+
+  agronomyMonitoringState.currentAreaIndex = areaIndex;
+  agronomyMonitoringState.currentItemId = itemId;
+
+  renderAgronomyNavTree();
+  renderAgronomyQuestionCard();
+  closeAgronomyMobileNav();
+}
+
+// Render the question card
+function renderAgronomyQuestionCard() {
+  const container = document.getElementById("agronomyQuestionCard");
+  const trial = agronomyMonitoringState.currentTrial;
+  const areaIndex = agronomyMonitoringState.currentAreaIndex;
+  const itemId = agronomyMonitoringState.currentItemId;
+
+  if (!container || !trial || areaIndex === null || !itemId) {
+    renderAgronomyEmptyState();
+    return;
+  }
+
+  const area = trial.areas[areaIndex];
+  const item = inventoryState.items.agronomy?.find(a => a.id === itemId);
+  if (!area || !item) { renderAgronomyEmptyState(); return; }
+
+  // Get existing response
+  const resp = agronomyMonitoringState.responses[areaIndex]?.[itemId] || {};
+  const existingDate = resp.applicationDate || new Date().toISOString().split("T")[0];
+  const existingPhotos = resp.photos || [];
+
+  // DAP info & warning
+  const expectedDate = getDapExpectedDate(trial, item.dapMin);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isTooEarly = expectedDate && today < expectedDate;
+  const expectedDateStr = expectedDate ? expectedDate.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null;
+
+  // DAP label
+  const dapLabel = item.dapMin != null
+    ? (item.dapMax != null && item.dapMax !== "" && item.dapMax !== item.dapMin
+        ? `DAP ${item.dapMin}–${item.dapMax}`
+        : `DAP ${item.dapMin}`)
+    : null;
+
+  // Build details chips
+  const detailChips = [dapLabel, item.chemical, item.dose].filter(Boolean);
+
+  // Navigation info
+  const positions = getAllAgronomyNavPositions();
+  const currentIdx = positions.findIndex(p => p.areaIndex === areaIndex && p.itemId === itemId);
+  const isFirst = currentIdx <= 0;
+  const isLast = currentIdx >= positions.length - 1;
+
+  // Check if area boundary
+  const prevPos = currentIdx > 0 ? positions[currentIdx - 1] : null;
+  const nextPos = currentIdx < positions.length - 1 ? positions[currentIdx + 1] : null;
+  const isPrevDifferentArea = prevPos && prevPos.areaIndex !== areaIndex;
+  const isNextDifferentArea = nextPos && nextPos.areaIndex !== areaIndex;
+
+  // Photo section
+  const photoHTML = `
+    <div class="run-photo-section">
+      <div class="run-photo-label">
+        <span class="material-symbols-rounded">photo_camera</span>
+        Photo Documentation
+      </div>
+      <div class="run-photo-upload" id="agronomyPhotoContainer">
+        ${existingPhotos.map((photo, idx) => `
+          <div class="run-photo-preview" data-index="${idx}" onclick="openAgronomyPhotoPreview(${idx})">
+            <img src="${photo}" alt="Photo ${idx + 1}">
+            <button class="run-photo-remove" onclick="removeAgronomyPhoto(${idx}); event.stopPropagation();">
+              <span class="material-symbols-rounded">close</span>
+            </button>
+          </div>
+        `).join("")}
+        <label class="run-photo-add" onclick="showAgronomyPhotoUploadChoice(event)">
+          <span class="material-symbols-rounded">add_a_photo</span>
+          <span>Add</span>
+        </label>
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = `
+    <div class="run-question-header">
+      <div class="run-question-breadcrumb">
+        ${escapeHtml(area.name || `Area ${areaIndex + 1}`)} › Agronomy Monitoring
+      </div>
+      <div class="run-question-title">${escapeHtml(item.activity || item.name || "-")}</div>
+      ${detailChips.length > 0 ? `
+        <div class="agronomy-detail-chips">
+          ${detailChips.map(chip => `<span class="agronomy-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      ` : ''}
+    </div>
+
+    ${isTooEarly ? `
+      <div class="agronomy-dap-warning">
+        <span class="material-symbols-rounded">warning</span>
+        <p><strong>Not yet due</strong> — scheduled for <strong>${expectedDateStr}</strong> (${dapLabel}), it may be too early to apply.</p>
+      </div>
+    ` : ''}
+
+    ${item.remark ? `
+      <div class="agronomy-remark-box">
+        <span class="material-symbols-rounded">info</span>
+        <p>${escapeHtml(item.remark)}</p>
+      </div>
+    ` : ''}
+
+    <div class="run-question-body">
+      <div class="run-input-group">
+        <label class="run-input-label">
+          Actual Application Date
+        </label>
+        <input type="date" class="run-input-field" id="agronomyDateInput" value="${existingDate}">
+      </div>
+      ${photoHTML}
+    </div>
+
+    <div class="run-question-footer">
+      <div class="run-nav-buttons">
+        <div class="run-line-nav">
+          ${isPrevDifferentArea && !isFirst ? `
+            <button class="btn btn-secondary" onclick="navigateAgronomyPrev()">
+              <span class="material-symbols-rounded">arrow_back</span>
+              Prev Area
+            </button>
+          ` : `
+            <button class="btn btn-secondary" onclick="navigateAgronomyPrev()" ${isFirst ? 'disabled' : ''}>
+              <span class="material-symbols-rounded">arrow_back</span>
+              Previous
+            </button>
+          `}
+          ${isLast ? `
+            <button class="btn btn-primary" onclick="finishAgronomyMonitoring()">
+              Finish
+              <span class="material-symbols-rounded">check_circle</span>
+            </button>
+          ` : isNextDifferentArea ? `
+            <button class="btn btn-primary" onclick="navigateAgronomyNext()">
+              Next Area
+              <span class="material-symbols-rounded">arrow_forward</span>
+            </button>
+          ` : `
+            <button class="btn btn-primary" onclick="navigateAgronomyNext()">
+              Next
+              <span class="material-symbols-rounded">arrow_forward</span>
+            </button>
+          `}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Navigation
+function navigateAgronomyPrev() {
+  saveAgronomyResponseSilent();
+  autoSaveAgronomyProgress();
+
+  const positions = getAllAgronomyNavPositions();
+  const currentIdx = positions.findIndex(p =>
+    p.areaIndex === agronomyMonitoringState.currentAreaIndex &&
+    p.itemId === agronomyMonitoringState.currentItemId
+  );
+  if (currentIdx > 0) {
+    const prev = positions[currentIdx - 1];
+    agronomyMonitoringState.currentAreaIndex = prev.areaIndex;
+    agronomyMonitoringState.currentItemId = prev.itemId;
+    renderAgronomyNavTree();
+    renderAgronomyQuestionCard();
+  }
+}
+
+function navigateAgronomyNext() {
+  saveAgronomyResponseSilent();
+  autoSaveAgronomyProgress();
+
+  const positions = getAllAgronomyNavPositions();
+  const currentIdx = positions.findIndex(p =>
+    p.areaIndex === agronomyMonitoringState.currentAreaIndex &&
+    p.itemId === agronomyMonitoringState.currentItemId
+  );
+  if (currentIdx < positions.length - 1) {
+    const next = positions[currentIdx + 1];
+    agronomyMonitoringState.currentAreaIndex = next.areaIndex;
+    agronomyMonitoringState.currentItemId = next.itemId;
+    renderAgronomyNavTree();
+    renderAgronomyQuestionCard();
+  }
+}
+
+// Save current response silently
+function saveAgronomyResponseSilent() {
+  const areaIndex = agronomyMonitoringState.currentAreaIndex;
+  const itemId = agronomyMonitoringState.currentItemId;
+  if (areaIndex === null || !itemId) return;
+
+  const dateInput = document.getElementById("agronomyDateInput");
+  const applicationDate = dateInput ? dateInput.value : "";
+
+  if (!agronomyMonitoringState.responses[areaIndex]) {
+    agronomyMonitoringState.responses[areaIndex] = {};
+  }
+  if (!agronomyMonitoringState.responses[areaIndex][itemId]) {
+    agronomyMonitoringState.responses[areaIndex][itemId] = { applicationDate: "", photos: [], timestamp: "" };
+  }
+
+  agronomyMonitoringState.responses[areaIndex][itemId].applicationDate = applicationDate;
+  agronomyMonitoringState.responses[areaIndex][itemId].timestamp = new Date().toISOString();
+}
+
+// Auto-save to storage and Drive
+async function autoSaveAgronomyProgress() {
+  if (agronomyAutoSaveInProgress) return;
+  const trial = agronomyMonitoringState.currentTrial;
+  if (!trial) return;
+
+  agronomyAutoSaveInProgress = true;
+
+  const saveIcon = document.querySelector('.run-save-icon');
+  const saveIconSymbol = saveIcon?.querySelector('.material-symbols-rounded');
+  if (saveIcon) { saveIcon.classList.add('saving'); saveIcon.disabled = true; }
+  if (saveIconSymbol) { saveIconSymbol.textContent = 'cached'; }
+
+  try {
+    trial.agronomyResponses = agronomyMonitoringState.responses;
+    trial.updatedAt = new Date().toISOString();
+
+    const idx = trialState.trials.findIndex(t => t.id === trial.id);
+    if (idx !== -1) trialState.trials[idx] = trial;
+
+    if (typeof saveLocalCache === "function") {
+      saveLocalCache("trials", { trials: trialState.trials });
+    }
+
+    // Save to Drive (full agronomy responses file)
+    const areaIndex = agronomyMonitoringState.currentAreaIndex;
+    const itemId = agronomyMonitoringState.currentItemId;
+
+    if (areaIndex !== null && itemId) {
+      const item = inventoryState.items.agronomy?.find(a => a.id === itemId);
+      const area = trial.areas?.[areaIndex];
+      const trialName = trial.name || "Trial";
+      const areaName = area?.name || `Area ${areaIndex + 1}`;
+      const itemName = item?.activity || "Item";
+
+      enqueueSync({
+        label: `Saving ${trialName} · ${areaName} · ${itemName}`,
+        fileKey: `${trial.id}~agronomy~${areaIndex}~${itemId}`,
+        run: () => saveAgronomyResponseToDrive(trial, areaIndex, itemId),
+      });
+    } else {
+      enqueueSync({
+        label: `Saving ${trial.name} agronomy`,
+        run: () => saveAllAgronomyResponsesToDrive(trial),
+      });
+    }
+
+    renderAgronomyNavTree();
+  } finally {
+    setTimeout(() => {
+      agronomyAutoSaveInProgress = false;
+      if (saveIcon) { saveIcon.classList.remove('saving'); saveIcon.disabled = false; }
+      if (saveIconSymbol) { saveIconSymbol.textContent = 'save'; }
+    }, 500);
+  }
+}
+
+// Save single agronomy response to Drive
+async function saveAgronomyResponseToDrive(trial, areaIndex, itemId) {
+  const rootFolderId = await getTrialsFolderId();
+  const trialFolderId = await getOrCreateFolder(trial.id, rootFolderId);
+  const agronomyFolderId = await getOrCreateFolder("agronomy", trialFolderId);
+
+  const responseData = trial.agronomyResponses?.[areaIndex]?.[itemId];
+  if (!responseData) return;
+
+  const fileName = `${areaIndex}~${itemId}.json`;
+  await uploadJsonFile(fileName, agronomyFolderId, responseData);
+}
+
+// Save all agronomy responses to Drive
+async function saveAllAgronomyResponsesToDrive(trial) {
+  const rootFolderId = await getTrialsFolderId();
+  const trialFolderId = await getOrCreateFolder(trial.id, rootFolderId);
+  const agronomyFolderId = await getOrCreateFolder("agronomy", trialFolderId);
+
+  const responses = trial.agronomyResponses || {};
+  for (const areaIndex of Object.keys(responses)) {
+    for (const itemId of Object.keys(responses[areaIndex])) {
+      const responseData = responses[areaIndex][itemId];
+      if (!responseData) continue;
+      const fileName = `${areaIndex}~${itemId}.json`;
+      await uploadJsonFile(fileName, agronomyFolderId, responseData);
+    }
+  }
+}
+
+// Manual save
+function manualSaveAgronomyProgress() {
+  saveAgronomyResponseSilent();
+  autoSaveAgronomyProgress();
+  showToast("Agronomy progress saved", "success");
+}
+
+// Photo upload
+function showAgronomyPhotoUploadChoice(event) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  const existing = document.querySelector('.photo-upload-choice-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'photo-upload-choice-overlay';
+  overlay.innerHTML = `
+    <div class="photo-upload-choice">
+      <div class="photo-upload-choice-header"><p>Add Photo</p></div>
+      <div class="photo-upload-choice-options">
+        <button class="photo-upload-choice-btn" id="agrPhotoCamera">
+          <span class="material-symbols-rounded">photo_camera</span>
+          Take Photo
+        </button>
+        <button class="photo-upload-choice-btn" id="agrPhotoFile">
+          <span class="material-symbols-rounded">photo_library</span>
+          Choose from Gallery
+        </button>
+      </div>
+      <button class="photo-upload-choice-cancel" onclick="closePhotoUploadChoice()">Cancel</button>
+    </div>
+  `;
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) closePhotoUploadChoice(); });
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('active'));
+
+  overlay.querySelector('#agrPhotoCamera').addEventListener('click', () => {
+    closePhotoUploadChoice();
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+    input.onchange = handleAgronomyPhotoUpload;
+    input.click();
+  });
+  overlay.querySelector('#agrPhotoFile').addEventListener('click', () => {
+    closePhotoUploadChoice();
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.onchange = handleAgronomyPhotoUpload;
+    input.click();
+  });
+}
+
+function handleAgronomyPhotoUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const photoData = e.target.result;
+    const areaIndex = agronomyMonitoringState.currentAreaIndex;
+    const itemId = agronomyMonitoringState.currentItemId;
+    if (areaIndex === null || !itemId) return;
+
+    if (!agronomyMonitoringState.responses[areaIndex]) {
+      agronomyMonitoringState.responses[areaIndex] = {};
+    }
+    if (!agronomyMonitoringState.responses[areaIndex][itemId]) {
+      agronomyMonitoringState.responses[areaIndex][itemId] = { applicationDate: "", photos: [], timestamp: "" };
+    }
+
+    agronomyMonitoringState.responses[areaIndex][itemId].photos.push(photoData);
+    agronomyMonitoringState.responses[areaIndex][itemId].timestamp = new Date().toISOString();
+
+    saveAgronomyResponseSilent();
+    autoSaveAgronomyProgress();
+    renderAgronomyQuestionCard();
+  };
+  reader.readAsDataURL(file);
+  setTimeout(() => { event.target.value = ""; }, 100);
+}
+
+function removeAgronomyPhoto(idx) {
+  const areaIndex = agronomyMonitoringState.currentAreaIndex;
+  const itemId = agronomyMonitoringState.currentItemId;
+  if (areaIndex === null || !itemId) return;
+
+  const resp = agronomyMonitoringState.responses[areaIndex]?.[itemId];
+  if (!resp || !resp.photos) return;
+  resp.photos.splice(idx, 1);
+  resp.timestamp = new Date().toISOString();
+
+  autoSaveAgronomyProgress();
+  renderAgronomyQuestionCard();
+}
+
+function openAgronomyPhotoPreview(idx) {
+  const areaIndex = agronomyMonitoringState.currentAreaIndex;
+  const itemId = agronomyMonitoringState.currentItemId;
+  const resp = agronomyMonitoringState.responses[areaIndex]?.[itemId];
+  if (!resp || !resp.photos || !resp.photos[idx]) return;
+
+  // Reuse existing photo preview modal
+  const modal = document.getElementById("photoPreviewModal");
+  const img = modal?.querySelector("img");
+  if (modal && img) {
+    img.src = resp.photos[idx];
+    modal.classList.remove("hidden");
+    modal.classList.add("active");
+  }
+}
+
+// Finish agronomy monitoring
+function finishAgronomyMonitoring() {
+  saveAgronomyResponseSilent();
+  autoSaveAgronomyProgress();
+
+  const trial = agronomyMonitoringState.currentTrial;
+  const progress = calculateAgronomyProgress(trial);
+
+  const existing = document.querySelector('.finish-trial-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'finish-trial-overlay';
+  overlay.innerHTML = `
+    <div class="finish-trial-popup">
+      <div class="finish-trial-icon">
+        <span class="material-symbols-rounded">check_circle</span>
+      </div>
+      <h3>Agronomy Monitoring Complete!</h3>
+      <p>You have completed <strong>${progress.completed}/${progress.total}</strong> items (${progress.percentage}%). What would you like to do?</p>
+      <div class="finish-trial-actions">
+        <button class="btn btn-primary" onclick="closeFinishTrialPopup(); exitAgronomyMonitoring();">
+          <span class="material-symbols-rounded">done_all</span>
+          Finish & Back to Trials
+        </button>
+        <button class="btn btn-secondary" onclick="closeFinishTrialPopup(); navigateAgronomyFirst();">
+          <span class="material-symbols-rounded">replay</span>
+          Review from First Item
+        </button>
+        <button class="btn btn-secondary" onclick="closeFinishTrialPopup();">
+          <span class="material-symbols-rounded">arrow_back</span>
+          Continue Editing
+        </button>
+      </div>
+    </div>
+  `;
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeFinishTrialPopup(); });
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('active'));
+}
+
+function navigateAgronomyFirst() {
+  const positions = getAllAgronomyNavPositions();
+  if (positions.length > 0) {
+    agronomyMonitoringState.currentAreaIndex = positions[0].areaIndex;
+    agronomyMonitoringState.currentItemId = positions[0].itemId;
+    renderAgronomyNavTree();
+    renderAgronomyQuestionCard();
+  }
+}
+
+// Mobile nav helpers
+function openAgronomyMobileNav() {
+  const container = document.querySelector('#agronomyMonitoringInterface .run-trial-container');
+  const nav = document.querySelector('#agronomyMonitoringInterface .run-trial-nav');
+  const scrim = document.getElementById('agronomyMobileNavScrim');
+  if (nav && nav.classList.contains('open')) { closeAgronomyMobileNav(); return; }
+  if (nav) nav.classList.add('open');
+  if (container) container.classList.add('mobile-nav-open');
+  if (scrim) scrim.classList.add('open');
+  document.body.classList.add('no-scroll');
+}
+
+function closeAgronomyMobileNav() {
+  const container = document.querySelector('#agronomyMonitoringInterface .run-trial-container');
+  const nav = document.querySelector('#agronomyMonitoringInterface .run-trial-nav');
+  const scrim = document.getElementById('agronomyMobileNavScrim');
+  if (nav) nav.classList.remove('open');
+  if (container) container.classList.remove('mobile-nav-open');
+  if (scrim) scrim.classList.remove('open');
+  document.body.classList.remove('no-scroll');
+}
+
+// ===========================
+// END AGRONOMY MONITORING
+// ===========================
+
 // Initialize Run Trial tab
 function initializeRunTrial() {
   setupRunTrialEventListeners();
@@ -3284,7 +4373,38 @@ function renderRunTrialNavTree() {
     return inventoryState.items.parameters.find((p) => p.id === paramId);
   }).filter(Boolean);
 
-  let html = "";
+  // Calculate overall progress
+  let overallTotal = 0;
+  let overallCompleted = 0;
+  trial.areas.forEach((area, areaIndex) => {
+    if (!area.layout?.result) return;
+    parameters.forEach(param => {
+      const numSamples = param.numberOfSamples || 1;
+      area.layout.result.forEach((rep, repIndex) => {
+        rep.forEach(row => {
+          row.forEach(cell => {
+            if (cell) {
+              overallTotal += numSamples;
+              for (let si = 0; si < numSamples; si++) {
+                const lineKey = `${cell.id}_${repIndex}_${si}`;
+                if (hasResponse(areaIndex, param.id, lineKey)) overallCompleted++;
+              }
+            }
+          });
+        });
+      });
+    });
+  });
+  const overallPercentage = overallTotal > 0 ? Math.round((overallCompleted / overallTotal) * 100) : 0;
+
+  let html = `
+    <div class="run-nav-progress">
+      <div class="run-nav-progress-bar">
+        <div class="run-nav-progress-fill" style="width:${overallPercentage}%"></div>
+      </div>
+      <span class="run-nav-progress-text">${overallCompleted}/${overallTotal} (${overallPercentage}%)</span>
+    </div>
+  `;
 
   trial.areas.forEach((area, areaIndex) => {
     if (!area.layout?.result) return;
@@ -3458,30 +4578,17 @@ function renderRunTrialNavTree() {
   });
 
   container.innerHTML = html;
-  
-  // Calculate and display area progress
-  trial.areas.forEach((area, areaIndex) => {
-    if (!area.layout?.result) return;
-    
-    let areaTotal = 0;
-    let areaCompleted = 0;
-    
-    area.layout.result.forEach((rep, repIndex) => {
-      rep.forEach((row) => {
-        row.forEach((cell) => {
-          if (cell) {
-            areaTotal += 1;
-            parameters.forEach((param) => {
-              const lineKey = `${cell.id}_${repIndex}`;
-              if (hasResponse(areaIndex, param.id, lineKey)) {
-                areaCompleted += 1;
-              }
-            });
-          }
-        });
-      });
-    });
-  });
+
+  // Update mobile header progress
+  const headerProgress = document.querySelector('#runTrialInterface .nav-header-progress');
+  if (headerProgress) {
+    headerProgress.innerHTML = `
+      <div class="run-nav-progress-bar">
+        <div class="run-nav-progress-fill" style="width:${overallPercentage}%"></div>
+      </div>
+      <span class="run-nav-progress-text">${overallCompleted}/${overallTotal} (${overallPercentage}%)</span>
+    `;
+  }
 }
 
 // Toggle area collapse
@@ -4014,18 +5121,23 @@ function syncRangeInputs(value, source) {
 
 // Mobile nav toggle functions
 function openMobileNav() {
-  const nav = document.querySelector('.run-trial-nav');
-  const overlay = document.getElementById('mobileNavOverlay');
+  const container = document.querySelector('#runTrialInterface .run-trial-container');
+  const nav = document.querySelector('#runTrialInterface .run-trial-nav');
+  const scrim = document.getElementById('mobileNavScrim');
+  if (nav && nav.classList.contains('open')) { closeMobileNav(); return; }
   if (nav) nav.classList.add('open');
-  if (overlay) overlay.classList.add('open');
+  if (container) container.classList.add('mobile-nav-open');
+  if (scrim) scrim.classList.add('open');
   document.body.classList.add('no-scroll');
 }
 
 function closeMobileNav() {
-  const nav = document.querySelector('.run-trial-nav');
-  const overlay = document.getElementById('mobileNavOverlay');
+  const container = document.querySelector('#runTrialInterface .run-trial-container');
+  const nav = document.querySelector('#runTrialInterface .run-trial-nav');
+  const scrim = document.getElementById('mobileNavScrim');
   if (nav) nav.classList.remove('open');
-  if (overlay) overlay.classList.remove('open');
+  if (container) container.classList.remove('mobile-nav-open');
+  if (scrim) scrim.classList.remove('open');
   document.body.classList.remove('no-scroll');
 }
 
@@ -5140,6 +6252,8 @@ function showTrialActionPopup(event, trialId) {
   
   const hasLayout = trial.areas && trial.areas.length > 0 && trial.areas.some(a => a.layout?.result);
   
+  const hasAgronomy = trial.agronomyMonitoring && trial.agronomyItems && trial.agronomyItems.length > 0 && !trial.archived;
+  
   const overlay = document.createElement('div');
   overlay.className = 'trial-action-popup-overlay';
   overlay.innerHTML = `
@@ -5167,11 +6281,13 @@ function showTrialActionPopup(event, trialId) {
             <span class="trial-action-option-desc">${!hasLayout ? 'No layout available' : trial.archived ? 'Trial is archived' : 'Start or continue observations'}</span>
           </div>
         </button>
-        <button class="trial-action-option disabled" disabled>
-          <span class="material-symbols-rounded">local_florist</span>
+        <button class="trial-action-option ${!hasAgronomy ? 'disabled' : ''}" 
+                onclick="${hasAgronomy ? `closeTrialActionPopup(); startAgronomyMonitoring('${trialId}');` : ''}"
+                ${!hasAgronomy ? 'disabled' : ''}>
+          <span class="material-symbols-rounded">agriculture</span>
           <div class="trial-action-option-text">
             <span class="trial-action-option-title">Agronomy Monitoring</span>
-            <span class="trial-action-option-desc">Coming soon</span>
+            <span class="trial-action-option-desc">${!hasAgronomy ? (trial.archived ? 'Trial is archived' : 'No agronomy items assigned') : 'Start or continue agronomy monitoring'}</span>
           </div>
         </button>
       </div>
@@ -5288,6 +6404,7 @@ function showTrialDetail(trialId) {
         <div class='td-label'>Description</div>
         <div class='td-value'>${escapeHtml(trial.description)}</div>
         <div class='td-text'>${progress.completed}/${progress.total} observations completed</div>
+        ${trial.plantingDate ? `<div class='td-text' style='margin-top:0.25rem'><span class="material-symbols-rounded" style="font-size:.85rem;vertical-align:middle;margin-right:0.25rem">event</span>Planting Date: ${new Date(trial.plantingDate + 'T00:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}</div>` : ''}
       </div>
     </div>
 
@@ -5352,6 +6469,37 @@ function showTrialDetail(trialId) {
       </div>
     </div>
 
+    ${trial.agronomyMonitoring ? (() => {
+      const agronomyDetails = (trial.agronomyItems || []).map(itemId => {
+        return inventoryState.items.agronomy?.find(a => a.id === itemId);
+      }).filter(Boolean);
+      return `
+    <div class='td-section td-agronomy'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-section-icon">agriculture</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Agronomy Monitoring</div>
+        ${agronomyDetails.length > 0 ? `
+        <div class='td-grid grid-4'>
+          ${agronomyDetails.map(item => {
+            const dap = item.dapMin != null && item.dapMax != null && item.dapMax !== '' && item.dapMax !== item.dapMin
+              ? item.dapMin + '-' + item.dapMax + ' DAP'
+              : item.dapMin != null ? item.dapMin + ' DAP' : '';
+            const meta = [dap, item.chemical, item.dose].filter(Boolean).join(' · ');
+            return `
+            <div class='td-item'>
+              <span class="material-symbols-rounded td-param-icon">agriculture</span>
+              <span class="td-param-name">${escapeHtml(item.activity || item.name || '-')}${meta ? '<br><small style="color:var(--text-tertiary);font-weight:400">' + escapeHtml(meta) + '</small>' : ''}</span>
+            </div>`;
+          }).join('')}
+        </div>
+        ` : `No agronomy items assigned.`}
+      </div>
+    </div>
+`;
+    })() : ''}
+
   </div>
 
   <div class='td-title'>
@@ -5386,7 +6534,7 @@ function showTrialDetail(trialId) {
       </div>
       <div class='td-content'>
         <div class='td-label'>Exp. No. of Plants per Plot</div>
-        <div class='td-value'>XXX</div>
+        <div class='td-value'>${trial.expectedPlantsPerPlot != null ? Math.round(trial.expectedPlantsPerPlot).toLocaleString() + ' plants' : '-'}</div>
       </div>
     </div>
 
@@ -5406,7 +6554,7 @@ function showTrialDetail(trialId) {
       </div>
       <div class='td-content'>
         <div class='td-label'>Plot Area</div>
-        <div class='td-value'>XXX m²</div>
+        <div class='td-value'>${trial.plotArea != null ? trial.plotArea.toFixed(2) + ' m²' : '-'}</div>
       </div>
     </div>
 
@@ -5416,7 +6564,7 @@ function showTrialDetail(trialId) {
       </div>
       <div class='td-content'>
         <div class='td-label'>Population per Hectare</div>
-        <div class='td-value'>XXX plants</div>
+        <div class='td-value'>${trial.populationPerHa != null ? Math.round(trial.populationPerHa).toLocaleString() + ' plants' : '-'}</div>
       </div>
     </div>
 
@@ -5469,19 +6617,19 @@ function showTrialDetail(trialId) {
             <span class="material-symbols-rounded"> location_on </span>
             <p>${escapeHtml(area.address)}</p>
           </div>
-          <div class='td-area-'>
+          <div class='td-area-ranges'>
             <span class="material-symbols-rounded">grid_3x3</span>
             <p>Ranges: ${area.layout.numRanges || 0}</p>
           </div>
-          <div class='td-area-'>
+          <div class='td-area-replication'>
             <span class="material-symbols-rounded">repeat</span>
             <p>Reps: ${area.layout.result?.length || 0}</p>
           </div>
-          <div class='td-area-'>
+          <div class='td-area-direction'>
             <span class="material-symbols-rounded">compare_arrows</span>
             <p>Direction: ${escapeHtml(area.layout.direction === "serpentine" ? "Serpentine" : "Straight")}</p>
           </div>
-          <div class='td-area-'>
+          <div class='td-area-randomization'>
             <span class="material-symbols-rounded">shuffle</span>
             <p>Randomization: ${escapeHtml(area.layout.randomization === "random" ? "Random" : "Normal")}</p>
           </div>
@@ -5489,12 +6637,14 @@ function showTrialDetail(trialId) {
       </div>
       ${uniqueLines.length > 0 ? `
       <div class='td-area-lines'>
-        <div class='td-area-lines-title'>
+        <div class='td-icon'>
           <span class="material-symbols-rounded">grass</span>
-          Lines (${uniqueLines.length})
         </div>
-        <div class='td-area-lines-list'>
-          ${uniqueLines.map(line => `<span class="td-area-line-chip">${escapeHtml(line.name)}</span>`).join('')}
+        <div class='td-content'>
+          <div class='td-label'>Lines used (${uniqueLines.length}):</div>
+          <div class='td-lines-flex'>
+            ${uniqueLines.map(line => `<div class='td-item'><span class="td-param-name">${escapeHtml(line.name)}</span></div>`).join('')}
+          </div>
         </div>
       </div>
       ` : ''}
