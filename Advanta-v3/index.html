@@ -8,6 +8,9 @@
     <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Rounded" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
     <link rel="stylesheet" href="assets/css/styles.css">
+    
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#ffffff">
   </head>
 
   <body>
@@ -234,10 +237,21 @@
             <div class="inventory-container">
               <div class="inventory-header">
                 <h3 id="categoryTitle">Crops</h3>
-                <button id="addItemBtn" class="btn btn-primary">
-                  <span class="material-symbols-rounded">add</span>
-                  <span>Add New Item</span>
-                </button>
+                <div class="inventory-toolbar">
+                  <div class="inventory-filter-container" id="inventoryFilterContainer" style="display:none;">
+                    <select id="inventoryFilterCrop" class="inventory-filter-select">
+                      <option value="">All Crops</option>
+                    </select>
+                    <select id="inventorySortBy" class="inventory-filter-select">
+                      <option value="name">Sort by Name</option>
+                      <option value="updatedAt">Sort by Last Updated</option>
+                    </select>
+                  </div>
+                  <button id="addItemBtn" class="btn btn-primary">
+                    <span class="material-symbols-rounded">add</span>
+                    <span>Add New Item</span>
+                  </button>
+                </div>
               </div>
         
               <div class="inventory-list" id="inventoryList">
@@ -969,6 +983,19 @@
           <button class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
           <button class="btn btn-primary" id="modalSaveBtn">Save</button>
         </div>
+      </div>
+      <!-- Days of Observation side panel (parameters only) -->
+      <div class="modal-doo-panel hidden" id="modalDooPanel">
+        <h4 class="modal-doo-title">Days of Observation</h4>
+        <select id="dooCropSelect" class="modal-doo-select">
+          <option value="">Select crop</option>
+        </select>
+        <div class="modal-doo-range">
+          <input type="number" id="dooRangeMin" class="modal-doo-input" placeholder="From" min="0" step="1">
+          <span class="range-separator">–</span>
+          <input type="number" id="dooRangeMax" class="modal-doo-input" placeholder="To" min="0" step="1">
+        </div>
+        <div id="dooSummary" class="modal-doo-summary"></div>
       </div>
     </div>
 
