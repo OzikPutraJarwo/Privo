@@ -1,4 +1,11 @@
-// Main App Controller
+// Service Worker
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/Privo/Advanta-v3/sw.js")
+      .then(reg => console.log("SW registered", reg))
+      .catch(err => console.log("SW failed", err));
+  });
+}
 
 // Loading & Caching Helpers
 const CACHE_VERSION = 1;
@@ -822,6 +829,22 @@ function setupEventListeners() {
   document.getElementById("addItemBtn").addEventListener("click", () => {
     openAddModal();
   });
+
+  // Inventory filter controls
+  const invFilterCrop = document.getElementById("inventoryFilterCrop");
+  const invSortBy = document.getElementById("inventorySortBy");
+  if (invFilterCrop) {
+    invFilterCrop.addEventListener("change", (e) => {
+      inventoryState.filterCrop = e.target.value;
+      renderInventoryItems();
+    });
+  }
+  if (invSortBy) {
+    invSortBy.addEventListener("change", (e) => {
+      inventoryState.sortBy = e.target.value;
+      renderInventoryItems();
+    });
+  }
 
   // Add trial button
   const addTrialBtn = document.getElementById("addTrialBtn");
