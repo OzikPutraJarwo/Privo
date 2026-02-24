@@ -2073,14 +2073,14 @@ function setupImportDropzone() {
     e.preventDefault();
     newDropzone.classList.remove("dragover");
     const file = e.dataTransfer.files[0];
-    if (file) handleImportFile(file);
+    if (file) handleInventoryImportFile(file);
   });
   newFileInput.addEventListener("change", (e) => {
-    if (e.target.files[0]) handleImportFile(e.target.files[0]);
+    if (e.target.files[0]) handleInventoryImportFile(e.target.files[0]);
   });
 }
 
-function handleImportFile(file) {
+function handleInventoryImportFile(file) {
   const validTypes = [
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel",

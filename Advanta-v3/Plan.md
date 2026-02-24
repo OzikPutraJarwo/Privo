@@ -41,6 +41,7 @@
 - [x] `Trial` Run Observation: Preview photo after uploaded
 - [x] `Trial` Agronomy Monitoring: Per area, table [Activity, DAP, Date, Chemical, Dose, Remark]
 - [x] `Trial` Agronomy Monitoring: Fieldbook: Actual Application Date, Photo
+- [x] `Inventory` Import and export system
 - [x] `Inventory > Parameters` Last updated per param
 - [x] `Inventory > Parameters` Days of Observation per crop, with range
 - [x] `Inventory > Parameters` Filter per crop

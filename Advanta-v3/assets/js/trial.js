@@ -27,7 +27,6 @@ async function initializeTrials(options = {}) {
       hasCache = true;
 
       renderTrials();
-      renderDashboardTrialProgress();
 
       if (onProgress) {
         onProgress(0.2, "Loaded trials from device");
@@ -43,7 +42,6 @@ async function initializeTrials(options = {}) {
           run: async () => {
             trialState.trials = await loadTrialsFromGoogleDrive();
             renderTrials();
-            renderDashboardTrialProgress();
 
             if (typeof saveLocalCache === "function") {
               saveLocalCache("trials", { trials: trialState.trials });
@@ -57,7 +55,6 @@ async function initializeTrials(options = {}) {
       } else {
         trialState.trials = await loadTrialsFromGoogleDrive();
         renderTrials();
-        renderDashboardTrialProgress();
 
         if (typeof saveLocalCache === "function") {
           saveLocalCache("trials", { trials: trialState.trials });
@@ -87,7 +84,7 @@ function renderTrials() {
   const archivedTrials = trialState.trials.filter(t => t.archived);
 
   const renderTrialCard = (trial) => {
-    const progress = calculateTrialProgress(trial);
+    const progress = calculateCombinedTrialProgress(trial);
     const progressPercent = progress.percentage;
     const hasLayout = trial.areas && trial.areas.length > 0 && trial.areas.some(a => a.layout?.result);
 
@@ -112,7 +109,7 @@ function renderTrials() {
   };
 
   const renderArchivedTrialCard = (trial) => {
-    const progress = calculateTrialProgress(trial);
+    const progress = calculateCombinedTrialProgress(trial);
     const progressPercent = progress.percentage;
 
     return `
@@ -165,6 +162,9 @@ function renderTrials() {
   } else {
     if (archivedPanel) archivedPanel.style.display = "none";
   }
+
+  // Keep dashboard in sync
+  renderDashboardTrialProgress();
 }
 
 // Format month-year for display
@@ -2570,6 +2570,34 @@ async function loadTrialsFromGoogleDrive() {
           trial.responses = responses;
         }
 
+        // Load agronomy responses from agronomy/ subfolder
+        const agronomyFolder = await findFolder("agronomy", folder.id);
+        if (agronomyFolder) {
+          const agroFiles = await gapi.client.drive.files.list({
+            q: `'${agronomyFolder.id}' in parents and mimeType='application/json' and trashed=false`,
+            fields: "files(id, name)",
+            pageSize: 1000,
+          });
+
+          const agronomyResponses = {};
+          for (const agroFile of (agroFiles.result.files || [])) {
+            try {
+              const agroData = await getFileContent(agroFile.id);
+              const fileName = agroFile.name.replace(".json", "");
+              // Format: {areaIndex}~{itemId}
+              const parts = fileName.split("~");
+              if (parts.length < 2) continue;
+              const areaIndex = parts[0];
+              const itemId = parts[1];
+              if (!agronomyResponses[areaIndex]) agronomyResponses[areaIndex] = {};
+              agronomyResponses[areaIndex][itemId] = agroData;
+            } catch (e) {
+              console.error(`Error loading agronomy response ${agroFile.name}:`, e);
+            }
+          }
+          trial.agronomyResponses = agronomyResponses;
+        }
+
         trials.push(trial);
       } catch (e) {
         console.error(`Error loading trial folder ${folder.name}:`, e);
@@ -3402,6 +3430,20 @@ function calculateAgronomyProgress(trial) {
   return { total, completed, percentage };
 }
 
+// Combined Observation + Agronomy progress
+function calculateCombinedTrialProgress(trial) {
+  const obs = calculateTrialProgress(trial);
+  const hasAgronomy = trial.agronomyMonitoring && trial.agronomyItems && trial.agronomyItems.length > 0;
+  const agro = hasAgronomy ? calculateAgronomyProgress(trial) : { completed: 0, total: 0, percentage: 0 };
+  const total = obs.total + agro.total;
+  const completed = obs.completed + agro.completed;
+  return {
+    completed, total,
+    percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+    obs, agro,
+  };
+}
+
 // Check if an agronomy item is complete
 function isAgronomyItemComplete(areaIndex, itemId) {
   const resp = agronomyMonitoringState.responses[areaIndex]?.[itemId];
@@ -3888,6 +3930,9 @@ async function autoSaveAgronomyProgress() {
     }
 
     renderAgronomyNavTree();
+
+    // Keep dashboard in sync even during agronomy monitoring
+    renderDashboardTrialProgress();
   } finally {
     setTimeout(() => {
       agronomyAutoSaveInProgress = false;
@@ -4160,7 +4205,7 @@ function renderRunTrialList() {
       }, 0) || 0;
 
       // Calculate progress using the correct response format
-      const progress = calculateTrialProgress(trial);
+      const progress = calculateCombinedTrialProgress(trial);
       const progressPercent = progress.percentage;
       const statusText = progressPercent === 0 ? 'Not Started' : progressPercent === 100 ? 'Completed' : 'In Progress';
       const statusColor = progressPercent === 0 ? 'var(--text-secondary)' : progressPercent === 100 ? 'var(--success)' : 'var(--warning)';
@@ -5911,6 +5956,9 @@ async function autoSaveProgress() {
     // Update nav and progress display
     renderRunTrialNavTree();
     updateRunTrialProgress();
+
+    // Keep dashboard in sync even during run trial
+    renderDashboardTrialProgress();
   } finally {
     // Remove saving state after short delay
     setTimeout(() => {
@@ -6239,8 +6287,8 @@ function showTrialDetail(trialId) {
   // Resolve location
   const location = inventoryState.items.locations?.find(l => l.id === trial.locationId);
 
-  // Progress
-  const progress = calculateTrialProgress(trial);
+  // Progress (combined observation + agronomy)
+  const progress = calculateCombinedTrialProgress(trial);
   const progressColor = progress.percentage === 100 ? 'var(--success)' 
                       : progress.percentage > 50 ? 'var(--primary)' 
                       : progress.percentage > 0 ? 'var(--warning)' 
@@ -6274,6 +6322,10 @@ function showTrialDetail(trialId) {
     return sum;
   }, 0) || 0;
 
+  // Detailed progress text
+  const obsText = `${progress.obs.completed}/${progress.obs.total} observations`;
+  const agroText = progress.agro.total > 0 ? ` · ${progress.agro.completed}/${progress.agro.total} agronomy` : '';
+
   body.innerHTML = `
 
   <div class='td-container grid-2 td-intro'>
@@ -6289,7 +6341,7 @@ function showTrialDetail(trialId) {
       <div class='td-content'>
         <div class='td-label'>Description</div>
         <div class='td-value'>${escapeHtml(trial.description)}</div>
-        <div class='td-text'>${progress.completed}/${progress.total} observations completed</div>
+        <div class='td-text'>${obsText}${agroText} completed</div>
         ${trial.plantingDate ? `<div class='td-text' style='margin-top:0.25rem'><span class="material-symbols-rounded" style="font-size:.85rem;vertical-align:middle;margin-right:0.25rem">event</span>Planting Date: ${new Date(trial.plantingDate + 'T00:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}</div>` : ''}
       </div>
     </div>
