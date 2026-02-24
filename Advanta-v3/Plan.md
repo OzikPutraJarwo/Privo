@@ -30,12 +30,10 @@
 - [x] `Trial > Run Trial` Popup "are you sure?" message everytime move to another line
 - [x] `Trial > Run Trial` Popup "are you sure?" with autosave when #runTrialBackBtn clicked
 - [x] `Reminder` Add new navigation, with Agronomy and Observation submenu
-- [ ] `Reminder > Observation` Reminders for data retrieval per parameters
-- [ ] `Reminder > Agronomy` Reminders for agronomy things (fertilizing, spraying, etc)
-- [ ] `Dashboard` Reminder linking
 
 ### Feb 21, 2026
 
+- [x] `SPECTRA` Init
 - [x] `Trial` Click on trial item > Detail, Run Observation, Agronomy Monitoring
 - [x] `Trial` Trial detail modal: Lines list per areas
 - [x] `Trial` Run Observation: After last question UI
@@ -44,7 +42,10 @@
 - [x] `Trial` Agronomy Monitoring: Per area, table [Activity, DAP, Date, Chemical, Dose, Remark]
 - [x] `Trial` Agronomy Monitoring: Fieldbook: Actual Application Date, Photo
 - [x] `Inventory > Parameters` Last updated per param
-- [ ] `Inventory > Parameters` Days of Observation per crop, with range
-- [ ] `Inventory > Parameters` Filter per crop
+- [x] `Inventory > Parameters` Days of Observation per crop, with range
+- [x] `Inventory > Parameters` Filter per crop
 - [x] `Inventory > Agronomy` Agronomy scheduler
 - [x] `Inventory > Agronomy` Crop, Activity, DAP, Chemical, Dose, Remark
+- [x] `Reminder > Observation` Reminders for data retrieval per parameters
+- [x] `Reminder > Agronomy` Reminders for agronomy things (fertilizing, spraying, etc)
+- [x] `Dashboard` Reminder linking

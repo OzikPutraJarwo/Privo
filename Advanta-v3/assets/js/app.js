@@ -1,3 +1,33 @@
+// ── Toast Notification ──────────────────────────────────────
+function showToast(message, type = "info", duration = 3000) {
+  let container = document.getElementById("toastContainer");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toastContainer";
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `
+    <span class="toast-icon">${
+      type === "success" ? "✓" : type === "error" ? "✕" : type === "warning" ? "⚠" : "ℹ"
+    }</span>
+    <span class="toast-msg">${message}</span>
+  `;
+  container.appendChild(toast);
+
+  // trigger entrance animation
+  requestAnimationFrame(() => toast.classList.add("toast-show"));
+
+  setTimeout(() => {
+    toast.classList.remove("toast-show");
+    toast.addEventListener("transitionend", () => toast.remove());
+    // fallback removal
+    setTimeout(() => toast.remove(), 400);
+  }, duration);
+}
+
 // Service Worker
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -893,13 +923,41 @@ function setupEventListeners() {
   });
 
   // Make dashboard cards clickable to go to inventory
-  document.querySelectorAll(".dashboard-card").forEach((card, index) => {
+  document.querySelectorAll(".dashboard-card").forEach((card) => {
     card.addEventListener("click", () => {
-      const categories = ["crops", "lines", "locations", "parameters"];
-      switchPage("inventory");
-      switchCategory(categories[index]);
+      const category = card.dataset.category;
+      if (category) {
+        switchPage("inventory");
+        switchCategory(category);
+      }
     });
   });
+
+  // "View All" trials button on dashboard
+  const dashViewAllTrials = document.getElementById("dashViewAllTrials");
+  if (dashViewAllTrials) {
+    dashViewAllTrials.addEventListener("click", () => {
+      switchPage("trial");
+    });
+  }
+
+  // "View All" observation reminders button on dashboard
+  const dashViewAllObs = document.getElementById("dashViewAllObsReminders");
+  if (dashViewAllObs) {
+    dashViewAllObs.addEventListener("click", () => {
+      switchPage("reminder");
+      switchReminderTab("observation");
+    });
+  }
+
+  // "View All" agronomy reminders button on dashboard
+  const dashViewAllAgro = document.getElementById("dashViewAllAgroReminders");
+  if (dashViewAllAgro) {
+    dashViewAllAgro.addEventListener("click", () => {
+      switchPage("reminder");
+      switchReminderTab("agronomy");
+    });
+  }
 
   // Sync down button
   const syncDownBtn = document.getElementById("syncDownBtn");
@@ -951,6 +1009,9 @@ function switchReminderTab(tabName) {
   const contentId = tabName === "observation" ? "reminderObservationContent" : "reminderAgronomyContent";
   const content = document.getElementById(contentId);
   if (content) content.classList.add("active");
+
+  // Render reminders for the active tab
+  if (typeof renderReminders === "function") renderReminders(tabName);
 
   // Update sidebar subnav
   syncReminderNavState(tabName);

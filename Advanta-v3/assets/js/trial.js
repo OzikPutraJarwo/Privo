@@ -567,8 +567,19 @@ function populateTrialParameters(selectedIds = []) {
   const moveUpBtn = document.getElementById("parameterMoveUp");
   const moveDownBtn = document.getElementById("parameterMoveDown");
   const removeBtn = document.getElementById("parameterRemove");
-  const parameters = inventoryState.items.parameters || [];
+  const allParameters = inventoryState.items.parameters || [];
   if (!availableList || !selectedList || !searchInput) return;
+
+  // Filter parameters by selected crop's DoO
+  const cropId = document.getElementById("trialCrops")?.value || "";
+  const parameters = cropId
+    ? allParameters.filter(p => {
+        if (!p.daysOfObservation) return false;
+        const val = p.daysOfObservation[cropId];
+        if (val == null) return false;
+        return typeof val === 'object' ? (val.min != null || val.max != null) : true;
+      })
+    : allParameters;
 
   trialState.selectedParametersOrder = Array.isArray(selectedIds)
     ? [...selectedIds]
@@ -1074,10 +1085,13 @@ function setupAgronomyMonitoringListeners() {
     checkbox.addEventListener('change', checkbox._agronomyToggle);
   }
 
-  // When crop changes, refresh agronomy available list
+  // When crop changes, refresh agronomy available list and parameters list
   if (cropSelect) {
     cropSelect.removeEventListener('change', cropSelect._agronomyCropChange);
     cropSelect._agronomyCropChange = () => {
+      // Refresh parameters list (filter by crop DoO)
+      populateTrialParameters(trialState.selectedParametersOrder || []);
+      // Refresh agronomy list
       if (checkbox?.checked) {
         populateTrialAgronomy(trialState.selectedAgronomyOrder || []);
       }
@@ -3426,7 +3440,6 @@ function startAgronomyMonitoring(trialId) {
   const pageTitle = document.getElementById("pageTitle");
   const menuToggle = document.querySelector(".menu-toggle");
   const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
-  const viewProgressBtn = document.getElementById("viewProgressBtn");
 
   if (topbar) topbar.classList.add("run-trial-mode");
   if (pageTitle) pageTitle.textContent = `${trial.name}`;
@@ -3434,7 +3447,6 @@ function startAgronomyMonitoring(trialId) {
     menuToggle.onclick = confirmExitAgronomyMonitoring;
     menuToggle.innerHTML = '<span class="material-symbols-rounded">arrow_back</span>';
   }
-  if (viewProgressBtn) { viewProgressBtn.style.display = "none"; viewProgressBtn.classList.add("hidden"); }
 
   const runTrialNavBtn = document.getElementById("runTrialNavBtn");
   const runTrialSaveBtn = document.getElementById("runTrialSaveBtn");
@@ -3449,7 +3461,7 @@ function startAgronomyMonitoring(trialId) {
     runTrialSaveBtn.onclick = manualSaveAgronomyProgress;
   }
   syncButtons.forEach(btn => {
-    if (btn.id !== "runTrialNavBtn" && btn.id !== "viewProgressBtn") btn.style.display = "none";
+    if (btn.id !== "runTrialNavBtn") btn.style.display = "none";
   });
 
   document.body.classList.add("run-trial-active", "sidebar-collapsed");
@@ -3476,7 +3488,6 @@ function exitAgronomyMonitoring() {
   const pageTitle = document.getElementById("pageTitle");
   const menuToggle = document.querySelector(".menu-toggle");
   const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
-  const viewProgressBtn = document.getElementById("viewProgressBtn");
 
   if (topbar) topbar.classList.remove("run-trial-mode");
   if (pageTitle) pageTitle.textContent = "Trial";
@@ -3484,13 +3495,12 @@ function exitAgronomyMonitoring() {
     menuToggle.onclick = null;
     menuToggle.innerHTML = '<span class="material-symbols-rounded">menu</span>';
   }
-  if (viewProgressBtn) { viewProgressBtn.style.display = "none"; viewProgressBtn.classList.add("hidden"); }
   const runTrialNavBtn = document.getElementById("runTrialNavBtn");
   const runTrialSaveBtn = document.getElementById("runTrialSaveBtn");
   if (runTrialNavBtn) { runTrialNavBtn.style.display = "none"; runTrialNavBtn.classList.add("hidden"); runTrialNavBtn.onclick = openMobileNav; }
   if (runTrialSaveBtn) { runTrialSaveBtn.style.display = "none"; runTrialSaveBtn.classList.add("hidden"); runTrialSaveBtn.onclick = () => manualSaveProgress(); }
   syncButtons.forEach(btn => {
-    if (btn.id !== "viewProgressBtn") btn.style.display = "";
+    btn.style.display = "";
   });
 
   document.body.classList.remove("run-trial-active", "sidebar-collapsed");
@@ -4087,21 +4097,25 @@ function openAgronomyMobileNav() {
   const container = document.querySelector('#agronomyMonitoringInterface .run-trial-container');
   const nav = document.querySelector('#agronomyMonitoringInterface .run-trial-nav');
   const scrim = document.getElementById('agronomyMobileNavScrim');
+  const navBtn = document.getElementById('runTrialNavBtn');
   if (nav && nav.classList.contains('open')) { closeAgronomyMobileNav(); return; }
   if (nav) nav.classList.add('open');
   if (container) container.classList.add('mobile-nav-open');
   if (scrim) scrim.classList.add('open');
-  document.body.classList.add('no-scroll');
+  document.body.classList.add('no-scroll', 'mobile-nav-active');
+  if (navBtn) navBtn.querySelector('.material-symbols-rounded').textContent = 'close';
 }
 
 function closeAgronomyMobileNav() {
   const container = document.querySelector('#agronomyMonitoringInterface .run-trial-container');
   const nav = document.querySelector('#agronomyMonitoringInterface .run-trial-nav');
   const scrim = document.getElementById('agronomyMobileNavScrim');
+  const navBtn = document.getElementById('runTrialNavBtn');
   if (nav) nav.classList.remove('open');
   if (container) container.classList.remove('mobile-nav-open');
   if (scrim) scrim.classList.remove('open');
-  document.body.classList.remove('no-scroll');
+  document.body.classList.remove('no-scroll', 'mobile-nav-active');
+  if (navBtn) navBtn.querySelector('.material-symbols-rounded').textContent = 'menu';
 }
 
 // ===========================
@@ -4262,7 +4276,6 @@ function startRunTrial(trialId) {
   const topbar = document.querySelector(".topbar");
   const pageTitle = document.getElementById("pageTitle");
   const menuToggle = document.querySelector(".menu-toggle");
-  const viewProgressBtn = document.getElementById("viewProgressBtn");
   const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
   
   if (topbar) topbar.classList.add("run-trial-mode");
@@ -4271,17 +4284,13 @@ function startRunTrial(trialId) {
     menuToggle.onclick = confirmExitRunTrial;
     menuToggle.innerHTML = '<span class="material-symbols-rounded">arrow_back</span>';
   }
-  if (viewProgressBtn) {
-    viewProgressBtn.style.display = "flex";
-    viewProgressBtn.classList.remove("hidden");
-  }
   const runTrialNavBtn = document.getElementById("runTrialNavBtn");
   const runTrialSaveBtn = document.getElementById("runTrialSaveBtn");
   if (runTrialNavBtn) { runTrialNavBtn.style.display = "flex"; runTrialNavBtn.classList.remove("hidden"); }
   if (runTrialSaveBtn) { runTrialSaveBtn.style.display = "flex"; runTrialSaveBtn.classList.remove("hidden"); }
   // Hide sync buttons in run trial mode
   syncButtons.forEach(btn => {
-    if (btn.id !== "viewProgressBtn") btn.style.display = "none";
+    if (btn.id !== "runTrialNavBtn") btn.style.display = "none";
   });
 
   document.body.classList.add("run-trial-active", "sidebar-collapsed");
@@ -4315,7 +4324,6 @@ function exitRunTrial() {
   const topbar = document.querySelector(".topbar");
   const pageTitle = document.getElementById("pageTitle");
   const menuToggle = document.querySelector(".menu-toggle");
-  const viewProgressBtn = document.getElementById("viewProgressBtn");
   const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
   
   if (topbar) topbar.classList.remove("run-trial-mode");
@@ -4324,17 +4332,13 @@ function exitRunTrial() {
     menuToggle.onclick = null;
     menuToggle.innerHTML = '<span class="material-symbols-rounded">menu</span>';
   }
-  if (viewProgressBtn) {
-    viewProgressBtn.style.display = "none";
-    viewProgressBtn.classList.add("hidden");
-  }
   const runTrialNavBtn = document.getElementById("runTrialNavBtn");
   const runTrialSaveBtn = document.getElementById("runTrialSaveBtn");
   if (runTrialNavBtn) { runTrialNavBtn.style.display = "none"; runTrialNavBtn.classList.add("hidden"); }
   if (runTrialSaveBtn) { runTrialSaveBtn.style.display = "none"; runTrialSaveBtn.classList.add("hidden"); }
   // Show sync buttons again
   syncButtons.forEach(btn => {
-    if (btn.id !== "viewProgressBtn") btn.style.display = "";
+    btn.style.display = "";
   });
 
   document.body.classList.remove("run-trial-active", "sidebar-collapsed");
@@ -5124,21 +5128,25 @@ function openMobileNav() {
   const container = document.querySelector('#runTrialInterface .run-trial-container');
   const nav = document.querySelector('#runTrialInterface .run-trial-nav');
   const scrim = document.getElementById('mobileNavScrim');
+  const navBtn = document.getElementById('runTrialNavBtn');
   if (nav && nav.classList.contains('open')) { closeMobileNav(); return; }
   if (nav) nav.classList.add('open');
   if (container) container.classList.add('mobile-nav-open');
   if (scrim) scrim.classList.add('open');
-  document.body.classList.add('no-scroll');
+  document.body.classList.add('no-scroll', 'mobile-nav-active');
+  if (navBtn) navBtn.querySelector('.material-symbols-rounded').textContent = 'close';
 }
 
 function closeMobileNav() {
   const container = document.querySelector('#runTrialInterface .run-trial-container');
   const nav = document.querySelector('#runTrialInterface .run-trial-nav');
   const scrim = document.getElementById('mobileNavScrim');
+  const navBtn = document.getElementById('runTrialNavBtn');
   if (nav) nav.classList.remove('open');
   if (container) container.classList.remove('mobile-nav-open');
   if (scrim) scrim.classList.remove('open');
-  document.body.classList.remove('no-scroll');
+  document.body.classList.remove('no-scroll', 'mobile-nav-active');
+  if (navBtn) navBtn.querySelector('.material-symbols-rounded').textContent = 'menu';
 }
 
 // Show photo upload choice popup (camera vs file)
@@ -5931,188 +5939,6 @@ async function manualSaveProgress() {
 }
 
 // ===========================
-// VIEW PROGRESS FUNCTIONALITY
-// ===========================
-
-function showViewProgress() {
-  const modal = document.getElementById('viewProgressModal');
-  if (modal) {
-    modal.classList.add('active');
-    renderViewProgress();
-  }
-}
-
-function closeViewProgress() {
-  const modal = document.getElementById('viewProgressModal');
-  if (modal) {
-    modal.classList.remove('active');
-  }
-  closeLineProgressDetail();
-}
-
-function renderViewProgress() {
-  const container = document.getElementById('viewProgressContent');
-  const trial = runTrialState.currentTrial;
-  if (!container || !trial) return;
-
-  const parameters = (trial.parameters || [])
-    .map((paramId) => inventoryState.items.parameters.find((p) => p.id === paramId))
-    .filter(Boolean);
-
-  let html = '';
-
-  trial.areas.forEach((area, areaIndex) => {
-    if (!area.layout?.result) return;
-
-    html += `
-      <div class="progress-area">
-        <div class="progress-area-header">
-          <span class="material-symbols-rounded">location_on</span>
-          <span>${escapeHtml(area.name || `Area ${areaIndex + 1}`)}</span>
-        </div>
-    `;
-
-    // For each replication
-    area.layout.result.forEach((rep, repIndex) => {
-      const maxCols = rep.reduce((max, row) => {
-        if (!row) return max;
-        return Math.max(max, row.length);
-      }, 0);
-
-      html += `
-        <div class="progress-rep">
-          <div class="progress-rep-header">Replication ${repIndex + 1}</div>
-          <div class="progress-layout-grid">
-      `;
-
-      // Render grid
-      rep.forEach((row) => {
-        html += `<div class="progress-layout-row">`;
-        // Iterate through row by index to ensure we handle sparse arrays properly
-        for (let colIdx = 0; colIdx < maxCols; colIdx++) {
-          const cell = row?.[colIdx];
-          if (!cell) {
-            html += `<div class="progress-layout-cell empty"></div>`;
-            continue;
-          }
-
-          // Check completion status across all params
-          let completedParams = 0;
-          let totalParams = parameters.length;
-          parameters.forEach((param) => {
-            const lineKey = `${cell.id}_${repIndex}`;
-            if (hasResponse(areaIndex, param.id, lineKey)) {
-              completedParams++;
-            }
-          });
-
-          let statusClass = 'none';
-          if (completedParams === totalParams && totalParams > 0) {
-            statusClass = 'complete';
-          } else if (completedParams > 0) {
-            statusClass = 'partial';
-          }
-
-          html += `
-            <div class="progress-layout-cell ${statusClass}" 
-                 onclick="showLineProgress(${areaIndex}, '${cell.id}', ${repIndex})"
-                 data-cell-id="${cell.id}">
-              <span class="cell-name">${escapeHtml(cell.name)}</span>
-              <span class="cell-status">${completedParams}/${totalParams}</span>
-            </div>
-          `;
-        }
-        html += `</div>`;
-      });
-
-      html += `
-          </div>
-        </div>
-      `;
-    });
-
-    html += `</div>`;
-  });
-
-  container.innerHTML = html;
-}
-
-function showLineProgress(areaIndex, lineId, repIndex) {
-  const trial = runTrialState.currentTrial;
-  const area = trial.areas[areaIndex];
-  const line = area.layout.lines.find((l) => l.id === lineId);
-  const parameters = (trial.parameters || [])
-    .map((paramId) => inventoryState.items.parameters.find((p) => p.id === paramId))
-    .filter(Boolean);
-
-  let html = `
-    <div class="line-progress-header">
-      <div>
-        <h4>${escapeHtml(line?.name || 'Line')}</h4>
-        <span>Rep ${repIndex + 1} · ${escapeHtml(area.name || `Area ${areaIndex + 1}`)}</span>
-      </div>
-      <button class="btn-icon-close line-progress-close" onclick="closeLineProgressDetail()">
-        <span class="material-symbols-rounded">close</span>
-      </button>
-    </div>
-    <div class="line-progress-params">
-  `;
-
-  parameters.forEach((param) => {
-    const lineKey = `${lineId}_${repIndex}`;
-    const response = runTrialState.responses[areaIndex]?.[param.id]?.[lineKey];
-    const isAnswered = hasResponse(areaIndex, param.id, lineKey);
-
-    html += `
-      <div class="line-progress-param ${isAnswered ? 'answered' : ''}">
-        <div class="param-info">
-          <span class="param-name">${escapeHtml(param.name)}</span>
-          <span class="param-initial">(${param.initial || ''})</span>
-        </div>
-        <div class="param-status">
-          ${isAnswered 
-            ? `<span class="material-symbols-rounded status-icon-success">check_circle</span>
-               <span class="param-value">${escapeHtml(response.value || '')}${response.photos?.length ? ` + ${response.photos.length} photo(s)` : ''}</span>`
-            : '<span class="material-symbols-rounded status-icon-muted">radio_button_unchecked</span>'
-          }
-        </div>
-      </div>
-    `;
-  });
-
-  html += `
-    </div>
-    <button class="btn btn-primary" onclick="goToLine(${areaIndex}, '${lineId}', ${repIndex})">
-      <span class="material-symbols-rounded">edit</span>
-      Edit Responses
-    </button>
-  `;
-
-  const detail = document.getElementById('lineProgressDetail');
-  if (detail) {
-    detail.innerHTML = html;
-    detail.classList.add('active');
-  }
-}
-
-function closeLineProgressDetail() {
-  const detail = document.getElementById('lineProgressDetail');
-  if (detail) {
-    detail.classList.remove('active');
-  }
-}
-
-function goToLine(areaIndex, lineId, repIndex) {
-  closeViewProgress();
-  // Get first param to start with
-  const trial = runTrialState.currentTrial;
-  const firstParamId = trial.parameters?.[0];
-  if (firstParamId) {
-    selectLine(areaIndex, firstParamId, lineId, repIndex);
-  }
-}
-
-// ===========================
 // DASHBOARD TRIAL PROGRESS
 // ===========================
 
@@ -6198,14 +6024,19 @@ function getProgressGradientColor(percentage) {
 }
 
 function renderDashboardTrialProgress() {
-  const container = document.getElementById('dashboardTrialProgress');
+  // Kept for backwards compat – now delegates to the new summary renderer
+  renderDashboardTrialSummary();
+}
+
+function renderDashboardTrialSummary() {
+  const container = document.getElementById('dashboardTrialSummary');
   if (!container) return;
 
-  const runnableTrials = trialState.trials.filter(
-    (t) => t.areas && t.areas.length > 0 && t.areas.some((a) => a.layout?.result)
+  const activeTrials = trialState.trials.filter(
+    (t) => !t.archived && t.areas && t.areas.length > 0 && t.areas.some((a) => a.layout?.result)
   );
 
-  if (runnableTrials.length === 0) {
+  if (activeTrials.length === 0) {
     container.innerHTML = `
       <div class="empty-state-small">
         <span class="material-symbols-rounded">science</span>
@@ -6215,28 +6046,83 @@ function renderDashboardTrialProgress() {
     return;
   }
 
-  container.innerHTML = runnableTrials.map((trial) => {
-    const progress = calculateTrialProgress(trial);
-    const progressColor = progress.percentage === 100 ? 'var(--success)' 
-                        : progress.percentage > 50 ? 'var(--primary)' 
-                        : progress.percentage > 0 ? 'var(--warning)' 
-                        : 'var(--text-tertiary)';
+  container.innerHTML = activeTrials.map((trial) => {
+    // Observation progress
+    const obs = calculateTrialProgress(trial);
+    const obsColor = obs.percentage === 100 ? 'var(--success)'
+      : obs.percentage > 50 ? 'var(--primary)'
+      : obs.percentage > 0 ? 'var(--warning)'
+      : 'var(--text-tertiary)';
+
+    // Agronomy progress
+    const hasAgronomy = trial.agronomyMonitoring && trial.agronomyItems && trial.agronomyItems.length > 0;
+    const agro = hasAgronomy ? calculateAgronomyProgress(trial) : null;
+    const agroColor = agro
+      ? (agro.percentage === 100 ? 'var(--success)'
+        : agro.percentage > 50 ? 'var(--primary)'
+        : agro.percentage > 0 ? 'var(--warning)'
+        : 'var(--text-tertiary)')
+      : 'var(--text-tertiary)';
+
+    // Overall status badge
+    const overallPct = agro
+      ? Math.round(((obs.completed + agro.completed) / Math.max(obs.total + agro.total, 1)) * 100)
+      : obs.percentage;
+    const badgeClass = overallPct === 100 ? 'complete' : overallPct > 0 ? 'in-progress' : 'not-started';
+    const badgeText = overallPct === 100 ? 'Complete' : overallPct > 0 ? 'In Progress' : 'Not Started';
+
+    const cropName = trial.cropName || 'Unknown Crop';
+    const plantDate = trial.plantingDate
+      ? new Date(trial.plantingDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : '–';
 
     return `
-      <div class="dashboard-trial-item">
-        <div class="trial-item-info">
-          <span class="trial-item-name">${escapeHtml(trial.name)}</span>
-          <span class="trial-item-meta">${trial.areas?.length || 0} area(s) · ${trial.parameters?.length || 0} param(s)</span>
-        </div>
-        <div class="trial-item-progress">
-          <div class="progress-bar-container">
-            <div class="progress-bar-fill" style="width: ${progress.percentage}%; background: ${progressColor};"></div>
+      <div class="dash-trial-card" data-trial-id="${trial.id}">
+        <div class="dash-trial-top">
+          <div class="dash-trial-info">
+            <span class="dash-trial-name">${escapeHtml(trial.name)}</span>
+            <span class="dash-trial-meta">${escapeHtml(cropName)} · ${trial.areas.length} area(s) · Planted ${plantDate}</span>
           </div>
-          <span class="progress-text">${progress.percentage}%</span>
+          <span class="dash-trial-status-badge ${badgeClass}">${badgeText}</span>
+        </div>
+        <div class="dash-trial-progress-rows">
+          <div class="dash-progress-row">
+            <span class="dash-progress-label">
+              <span class="material-symbols-rounded">visibility</span> Observation
+            </span>
+            <div class="dash-progress-bar">
+              <div class="dash-progress-bar-fill" style="width:${obs.percentage}%; background:${obsColor}"></div>
+            </div>
+            <span class="dash-progress-text">${obs.completed}/${obs.total} (${obs.percentage}%)</span>
+          </div>
+          ${hasAgronomy ? `
+          <div class="dash-progress-row">
+            <span class="dash-progress-label">
+              <span class="material-symbols-rounded">eco</span> Agronomy
+            </span>
+            <div class="dash-progress-bar">
+              <div class="dash-progress-bar-fill" style="width:${agro.percentage}%; background:${agroColor}"></div>
+            </div>
+            <span class="dash-progress-text">${agro.completed}/${agro.total} (${agro.percentage}%)</span>
+          </div>` : ''}
         </div>
       </div>
     `;
   }).join('');
+
+  // Click handler – navigate to trial page
+  container.querySelectorAll('.dash-trial-card[data-trial-id]').forEach(card => {
+    card.addEventListener('click', () => {
+      const trialId = card.dataset.trialId;
+      if (typeof switchPage === 'function') switchPage('trial');
+      // Small delay so the page switches first
+      setTimeout(() => {
+        if (typeof showTrialActionPopup === 'function') {
+          showTrialActionPopup(new Event('click'), trialId);
+        }
+      }, 100);
+    });
+  });
 }
 
 // Show trial action popup when clicking a trial card

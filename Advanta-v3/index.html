@@ -11,6 +11,7 @@
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#ffffff">
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
   </head>
 
   <body>
@@ -135,12 +136,8 @@
               <span class="material-symbols-rounded">cached</span>
               <span id="syncQueueCount" class="sync-badge">0</span>
             </button>
-            <button id="viewProgressBtn" class="btn btn-secondary btn-icon-only hidden" onclick="showViewProgress()" style="display: none;">
-              <span class="material-symbols-rounded">analytics</span>
-            </button>
             <button id="runTrialNavBtn" class="btn btn-secondary hidden mobile-nav-toggle" onclick="openMobileNav()" style="display: none;">
               <span class="material-symbols-rounded">menu</span>
-              <span>Navigation</span>
             </button>
             <button id="runTrialSaveBtn" class="btn btn-secondary btn-icon-only run-save-icon hidden" onclick="manualSaveProgress()" style="display: none;" title="Save progress">
               <span class="material-symbols-rounded">save</span>
@@ -179,8 +176,9 @@
         <!-- Content Area -->
         <div class="content">
           <div id="dashboardContent" class="page-content active">
+            <!-- Inventory Summary Cards -->
             <div class="dashboard-grid">
-              <div class="dashboard-card">
+              <div class="dashboard-card" data-category="crops">
                 <div class="card-icon crops">
                   <span class="material-symbols-rounded">agriculture</span>
                 </div>
@@ -189,7 +187,7 @@
                   <p id="cropsCount" class="card-count">0 items</p>
                 </div>
               </div>
-              <div class="dashboard-card">
+              <div class="dashboard-card" data-category="crops">
                 <div class="card-icon lines">
                   <span class="material-symbols-rounded">timeline</span>
                 </div>
@@ -198,7 +196,7 @@
                   <p id="linesCount" class="card-count">0 items</p>
                 </div>
               </div>
-              <div class="dashboard-card">
+              <div class="dashboard-card" data-category="locations">
                 <div class="card-icon locations">
                   <span class="material-symbols-rounded">location_on</span>
                 </div>
@@ -207,7 +205,7 @@
                   <p id="locationsCount" class="card-count">0 items</p>
                 </div>
               </div>
-              <div class="dashboard-card">
+              <div class="dashboard-card" data-category="parameters">
                 <div class="card-icon parameters">
                   <span class="material-symbols-rounded">tune</span>
                 </div>
@@ -216,18 +214,62 @@
                   <p id="parametersCount" class="card-count">0 items</p>
                 </div>
               </div>
+              <div class="dashboard-card" data-category="agronomy">
+                <div class="card-icon agronomy">
+                  <span class="material-symbols-rounded">eco</span>
+                </div>
+                <div class="card-content">
+                  <h3>Agronomy</h3>
+                  <p id="agronomyCount" class="card-count">0 items</p>
+                </div>
+              </div>
             </div>
-        
-            <!-- Trial Progress Section -->
+
+            <!-- Trial Summary Section (Observation & Agronomy) -->
             <div class="dashboard-section">
               <div class="dashboard-section-header">
                 <h3>
                   <span class="material-symbols-rounded">science</span>
-                  Trial Progress
+                  Trial
                 </h3>
+                <button class="dash-view-all-btn" id="dashViewAllTrials">
+                  View All <span class="material-symbols-rounded" style="font-size:16px">arrow_forward</span>
+                </button>
               </div>
-              <div id="dashboardTrialProgress" class="dashboard-trial-progress">
-                <!-- Trial progress items will be rendered here -->
+              <div id="dashboardTrialSummary" class="dashboard-trial-summary">
+                <!-- Trial summary items rendered by JS -->
+              </div>
+            </div>
+
+            <!-- Observation Reminders Section -->
+            <div class="dashboard-section">
+              <div class="dashboard-section-header">
+                <h3>
+                  <span class="material-symbols-rounded">visibility</span>
+                  Observation Reminders
+                </h3>
+                <button class="dash-view-all-btn" id="dashViewAllObsReminders">
+                  View All <span class="material-symbols-rounded" style="font-size:16px">arrow_forward</span>
+                </button>
+              </div>
+              <div id="dashboardObsReminders" class="dashboard-reminders">
+                <!-- Observation reminder preview rendered by JS -->
+              </div>
+            </div>
+
+            <!-- Agronomy Reminders Section -->
+            <div class="dashboard-section">
+              <div class="dashboard-section-header">
+                <h3>
+                  <span class="material-symbols-rounded">eco</span>
+                  Agronomy Reminders
+                </h3>
+                <button class="dash-view-all-btn" id="dashViewAllAgroReminders">
+                  View All <span class="material-symbols-rounded" style="font-size:16px">arrow_forward</span>
+                </button>
+              </div>
+              <div id="dashboardAgroReminders" class="dashboard-reminders">
+                <!-- Agronomy reminder preview rendered by JS -->
               </div>
             </div>
           </div>
@@ -247,6 +289,16 @@
                       <option value="updatedAt">Sort by Last Updated</option>
                     </select>
                   </div>
+                  <div class="inventory-io-btns" id="inventoryIoBtns" style="display:none;">
+                    <button class="btn btn-secondary btn-sm" onclick="exportInventoryData()" title="Export to Excel">
+                      <span class="material-symbols-rounded">download</span>
+                      <span>Export</span>
+                    </button>
+                    <button class="btn btn-secondary btn-sm" onclick="openImportModal()" title="Import from Excel/CSV">
+                      <span class="material-symbols-rounded">upload</span>
+                      <span>Import</span>
+                    </button>
+                  </div>
                   <button id="addItemBtn" class="btn btn-primary">
                     <span class="material-symbols-rounded">add</span>
                     <span>Add New Item</span>
@@ -256,6 +308,81 @@
         
               <div class="inventory-list" id="inventoryList">
                 <!-- Items will be populated here -->
+              </div>
+            </div>
+
+            <!-- Import Modal -->
+            <div id="importModal" class="import-modal-overlay hidden">
+              <div class="import-modal">
+                <div class="import-modal-header">
+                  <h3 id="importModalTitle">Import Data</h3>
+                  <button class="btn-icon-close" onclick="closeImportModal()">
+                    <span class="material-symbols-rounded">close</span>
+                  </button>
+                </div>
+
+                <!-- Step 1: Upload File -->
+                <div id="importStep1" class="import-step">
+                  <div class="import-dropzone" id="importDropzone">
+                    <span class="material-symbols-rounded">upload_file</span>
+                    <p>Drag & drop your Excel or CSV file here</p>
+                    <span class="import-dropzone-sub">or click to browse</span>
+                    <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" hidden>
+                  </div>
+                  <div class="import-file-info hidden" id="importFileInfo">
+                    <span class="material-symbols-rounded">description</span>
+                    <span id="importFileName"></span>
+                    <button class="btn-icon-close" onclick="clearImportFile()" title="Remove file">
+                      <span class="material-symbols-rounded">close</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Step 2: Map Columns -->
+                <div id="importStep2" class="import-step hidden">
+                  <p class="import-step-desc">Map your file columns to the data fields. Select the correct header for each field.</p>
+                  <div id="importColumnMapping" class="import-column-mapping">
+                    <!-- Column mapping dropdowns rendered by JS -->
+                  </div>
+                </div>
+
+                <!-- Step 3: Preview -->
+                <div id="importStep3" class="import-step hidden">
+                  <div class="import-preview-header">
+                    <span id="importPreviewCount"></span>
+                  </div>
+                  <div class="import-preview-table-wrap">
+                    <table class="import-preview-table" id="importPreviewTable">
+                      <!-- Preview table rendered by JS -->
+                    </table>
+                  </div>
+                  <div id="importDuplicateWarning" class="import-duplicate-warning hidden">
+                    <span class="material-symbols-rounded">warning</span>
+                    <div>
+                      <strong id="importDuplicateCount">0</strong> duplicate item(s) found.
+                      <p class="import-duplicate-desc">These items have identical data to existing entries.</p>
+                    </div>
+                    <div class="import-duplicate-actions">
+                      <label><input type="radio" name="duplicateAction" value="skip" checked> Skip duplicates</label>
+                      <label><input type="radio" name="duplicateAction" value="replace"> Replace existing</label>
+                      <label><input type="radio" name="duplicateAction" value="add"> Add as new</label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="import-modal-footer">
+                  <button class="btn btn-secondary" id="importBackBtn" onclick="importStepBack()" style="display:none;">
+                    <span class="material-symbols-rounded">arrow_back</span> Back
+                  </button>
+                  <div class="import-modal-footer-right">
+                    <button class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
+                    <button class="btn btn-primary" id="importNextBtn" onclick="importStepNext()" disabled>
+                      <span id="importNextLabel">Next</span>
+                      <span class="material-symbols-rounded" id="importNextIcon">arrow_forward</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -594,12 +721,6 @@
         
                   <!-- Navigation Sidebar -->
                   <div class="run-trial-nav">
-                    <div class="mobile-nav-header">
-                      <div class="nav-header-progress"></div>
-                      <button class="btn-icon-close" onclick="closeMobileNav()">
-                        <span class="material-symbols-rounded">close</span>
-                      </button>
-                    </div>
                     <div id="runTrialNavTree" class="run-nav-tree">
                       <!-- Navigation tree will be generated here -->
                     </div>
@@ -624,12 +745,6 @@
               <div class="run-trial-shell">
                 <div class="run-trial-container">
                   <div class="run-trial-nav">
-                    <div class="mobile-nav-header">
-                      <div class="nav-header-progress"></div>
-                      <button class="btn-icon-close" onclick="closeAgronomyMobileNav()">
-                        <span class="material-symbols-rounded">close</span>
-                      </button>
-                    </div>
                     <div id="agronomyNavTree" class="run-nav-tree"></div>
                   </div>
                   <div class="run-trial-content">
@@ -663,25 +778,7 @@
               </div>
             </div>
         
-            <!-- View Progress Modal -->
-            <div id="viewProgressModal" class="view-progress-modal">
-              <div class="view-progress-container">
-                <div class="view-progress-header">
-                  <h3>View Progress</h3>
-                  <button class="btn-icon-close" onclick="closeViewProgress()">
-                    <span class="material-symbols-rounded">close</span>
-                  </button>
-                </div>
-                <div class="view-progress-body">
-                  <div id="viewProgressContent" class="view-progress-content">
-                    <!-- Progress layout will be rendered here -->
-                  </div>
-                  <div id="lineProgressDetail" class="line-progress-detail">
-                    <!-- Line detail will be shown here -->
-                  </div>
-                </div>
-              </div>
-            </div>
+
           </div>
         
           <div id="libraryContent" class="page-content">
@@ -783,19 +880,9 @@
         
           <div id="reminderContent" class="page-content">
             <div id="reminderObservationContent" class="reminder-tab-content active">
-              <div class="empty-state">
-                <span class="material-symbols-rounded">schedule</span>
-                <h3>Coming Soon</h3>
-                <p>Observation reminders are under development</p>
-              </div>
             </div>
         
             <div id="reminderAgronomyContent" class="reminder-tab-content">
-              <div class="empty-state">
-                <span class="material-symbols-rounded">schedule</span>
-                <h3>Coming Soon</h3>
-                <p>Agronomy reminders are under development</p>
-              </div>
             </div>
           </div>
         </div>
@@ -947,11 +1034,7 @@
               </div>
             </div>
             <!-- Agronomy Fields -->
-            <div class="form-group hidden" id="agronomyCropGroup">
-              <label for="agronomyCrops">Crops</label>
-              <div id="agronomyCropCheckboxes" class="agronomy-crop-checkboxes"></div>
-              <small class="form-hint">Select one or more crops this agronomy applies to</small>
-            </div>
+            <div class="form-group hidden" id="agronomyCropGroup" style="display:none !important"></div>
             <div class="form-group hidden" id="agronomyActivityGroup">
               <label for="agronomyActivity">Activity</label>
               <input type="text" id="agronomyActivity" placeholder="e.g., Fertilizer Application">
@@ -983,6 +1066,25 @@
           <button class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
           <button class="btn btn-primary" id="modalSaveBtn">Save</button>
         </div>
+      </div>
+      <!-- Agronomy Crops side panel -->
+      <div class="modal-agro-crops-panel hidden" id="modalAgroCropsPanel">
+        <h4 class="modal-doo-title">Crops</h4>
+        <div class="agro-crops-search">
+          <span class="material-symbols-rounded" style="font-size:16px;color:var(--text-tertiary)">search</span>
+          <input type="text" id="agroCropSearch" placeholder="Search crops...">
+        </div>
+        <div class="agro-crops-picklist">
+          <div class="agro-crops-col">
+            <div class="agro-crops-col-header form-hint">Available</div>
+            <div id="agroCropAvailable" class="agro-crops-list" data-list="available"></div>
+          </div>
+          <div class="agro-crops-col">
+            <div class="agro-crops-col-header form-hint">Selected</div>
+            <div id="agroCropSelected" class="agro-crops-list" data-list="selected"></div>
+          </div>
+        </div>
+        <div id="agroCropSummary" class="agro-crops-summary"></div>
       </div>
       <!-- Days of Observation side panel (parameters only) -->
       <div class="modal-doo-panel hidden" id="modalDooPanel">
@@ -1118,6 +1220,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-draw/1.0.4/leaflet.draw.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-draw/1.0.4/leaflet.draw.min.js"></script>
 
+    <!-- SheetJS for Excel/CSV import/export -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
     <!-- App Scripts -->
     <script src="assets/js/auth.js"></script>
     <script src="assets/js/drive.js"></script>
@@ -1125,6 +1230,7 @@
     <script src="assets/js/locations.js"></script>
     <script src="assets/js/trial.js"></script>
     <script src="assets/js/library.js"></script>
+    <script src="assets/js/reminder.js"></script>
     <script src="assets/js/app.js"></script>
   </body>
 
