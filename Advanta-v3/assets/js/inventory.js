@@ -107,6 +107,7 @@ function toggleParameterFields(show) {
       "paramRangeGroup",
       "paramRadioGroup",
       "paramCheckboxGroup",
+      "paramFormulaGroup",
     ];
     conditionalGroups.forEach((id) => {
       const group = document.getElementById(id);
@@ -125,6 +126,7 @@ function handleParameterTypeChange() {
   document.getElementById("paramRangeGroup")?.classList.add("hidden");
   document.getElementById("paramRadioGroup")?.classList.add("hidden");
   document.getElementById("paramCheckboxGroup")?.classList.add("hidden");
+  document.getElementById("paramFormulaGroup")?.classList.add("hidden");
 
   // Show relevant field based on type
   if (type === "range") {
@@ -133,7 +135,152 @@ function handleParameterTypeChange() {
     document.getElementById("paramRadioGroup")?.classList.remove("hidden");
   } else if (type === "checkbox") {
     document.getElementById("paramCheckboxGroup")?.classList.remove("hidden");
+  } else if (type === "formula") {
+    document.getElementById("paramFormulaGroup")?.classList.remove("hidden");
+    populateFormulaParameterList();
   }
+
+  const quantityGroup = document.getElementById("paramQuantityGroup");
+  const photoGroup = document.getElementById("paramPhotoGroup");
+  const dooPanel = document.getElementById("modalDooPanel");
+  const modal = document.getElementById("itemModal");
+  const isFormula = type === "formula";
+
+  if (quantityGroup) quantityGroup.classList.toggle("hidden", isFormula);
+  if (photoGroup) photoGroup.classList.toggle("hidden", isFormula);
+  if (dooPanel) dooPanel.classList.toggle("hidden", isFormula);
+  if (modal) modal.classList.toggle("has-doo-panel", !isFormula);
+
+  if (isFormula) {
+    const qtyInput = document.getElementById("paramQuantity");
+    if (qtyInput) qtyInput.value = "1";
+    const photoCheckbox = document.getElementById("paramPhoto");
+    if (photoCheckbox) photoCheckbox.checked = false;
+    togglePhotoModeGroup();
+  }
+
+  const formulaError = document.getElementById("paramFormulaError");
+  if (formulaError) formulaError.classList.add("hidden");
+}
+
+function getAvailableFormulaParameters() {
+  return (inventoryState.items.parameters || [])
+    .filter((param) => {
+      if (!param || !param.id) return false;
+      if (inventoryState.editingItemId && param.id === inventoryState.editingItemId) return false;
+      if ((param.type || "").toLowerCase() === "formula") return false;
+      return true;
+    });
+}
+
+function populateFormulaParameterList() {
+  const list = document.getElementById("paramFormulaParamList");
+  if (!list) return;
+
+  const params = getAvailableFormulaParameters();
+  if (params.length === 0) {
+    list.innerHTML = '<span class="formula-param-empty">No parameter references available</span>';
+    return;
+  }
+
+  list.innerHTML = params
+    .map((param) => {
+      const token = (param.initial || param.name || "").trim();
+      const label = `${param.name || ""}${param.initial ? ` (${param.initial})` : ""}`;
+      return `<button type="button" class="formula-param-chip" data-token="${escapeHtml(token)}" title="Insert ${escapeHtml(label)}">${escapeHtml(token)}</button>`;
+    })
+    .join("");
+
+  list.querySelectorAll(".formula-param-chip").forEach((button) => {
+    button.addEventListener("click", () => {
+      insertTokenIntoFormula(button.dataset.token || "");
+    });
+  });
+}
+
+function insertTokenIntoFormula(token) {
+  const input = document.getElementById("paramFormula");
+  if (!input || !token) return;
+
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  const before = input.value.slice(0, start);
+  const after = input.value.slice(end);
+
+  const needLeftSpace = before.length > 0 && !/[\s(*/+\-]$/.test(before);
+  const needRightSpace = after.length > 0 && !/^[\s)*/+\-]/.test(after);
+  const insertion = `${needLeftSpace ? " " : ""}${token}${needRightSpace ? " " : ""}`;
+
+  input.value = before + insertion + after;
+  const cursorPos = before.length + insertion.length;
+  input.focus();
+  input.setSelectionRange(cursorPos, cursorPos);
+
+  const errorEl = document.getElementById("paramFormulaError");
+  if (errorEl) errorEl.classList.add("hidden");
+}
+
+function validateFormulaExpression(formula) {
+  const source = String(formula || "").trim();
+  if (!source) return { ok: false, message: "Formula is required for Formula type" };
+
+  if (!/^[0-9A-Za-z_+\-*/().\s]+$/.test(source)) {
+    return { ok: false, message: "Formula contains invalid characters" };
+  }
+
+  const compact = source.replace(/\s+/g, "");
+  const tokens = compact.match(/([A-Za-z_][A-Za-z0-9_]*|\d*\.?\d+|[()+\-*/])/g);
+  if (!tokens || tokens.join("") !== compact) {
+    return { ok: false, message: "Formula format is invalid" };
+  }
+
+  let expectOperand = true;
+  let parenDepth = 0;
+  const operators = new Set(["+", "-", "*", "/"]);
+
+  for (const token of tokens) {
+    if (token === "(") {
+      if (!expectOperand) return { ok: false, message: 'Missing operator before "("' };
+      parenDepth += 1;
+      continue;
+    }
+    if (token === ")") {
+      if (expectOperand) return { ok: false, message: 'Unexpected ")" or missing operand' };
+      parenDepth -= 1;
+      if (parenDepth < 0) return { ok: false, message: "Unbalanced parentheses" };
+      expectOperand = false;
+      continue;
+    }
+    if (operators.has(token)) {
+      if (expectOperand) return { ok: false, message: `Invalid operator sequence near "${token}"` };
+      expectOperand = true;
+      continue;
+    }
+
+    if (!expectOperand) return { ok: false, message: "Missing operator between values" };
+    expectOperand = false;
+  }
+
+  if (expectOperand) return { ok: false, message: "Formula cannot end with an operator" };
+  if (parenDepth !== 0) return { ok: false, message: "Unbalanced parentheses" };
+
+  const references = tokens.filter((t) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(t));
+  if (references.length > 0) {
+    const validRefs = new Set(
+      getAvailableFormulaParameters().flatMap((p) => {
+        const refs = [];
+        if (p.initial) refs.push(String(p.initial).trim());
+        if (p.name) refs.push(String(p.name).trim().replace(/\s+/g, "_"));
+        return refs.filter(Boolean);
+      }),
+    );
+    const invalidRef = references.find((ref) => !validRefs.has(ref));
+    if (invalidRef) {
+      return { ok: false, message: `Unknown parameter reference: ${invalidRef}` };
+    }
+  }
+
+  return { ok: true, message: "" };
 }
 
 function togglePhotoModeGroup() {
@@ -446,6 +593,107 @@ function renderDooSummary() {
 // Collect DoO values from temp store
 function collectParamDoo() {
   return { ..._dooTempData };
+}
+
+function serializeParamDooForExport(daysOfObservation) {
+  if (!daysOfObservation || typeof daysOfObservation !== "object") return "";
+  const crops = inventoryState.items.crops || [];
+  const parts = [];
+
+  Object.entries(daysOfObservation).forEach(([cropId, value]) => {
+    if (value == null) return;
+    const crop = crops.find((c) => c.id === cropId);
+    const cropLabel = crop?.name || cropId;
+    let formatted = "";
+
+    if (typeof value === "object" && value.min != null) {
+      const min = Number(value.min);
+      const max = value.max != null ? Number(value.max) : min;
+      formatted = min === max ? `${min}` : `${min}-${max}`;
+    } else {
+      const numeric = Number(value);
+      if (!Number.isNaN(numeric)) {
+        formatted = `${numeric}`;
+      }
+    }
+
+    if (formatted) {
+      parts.push(`${cropLabel}:${formatted}`);
+    }
+  });
+
+  return parts.join(" | ");
+}
+
+function parseParamDooImport(raw) {
+  const result = {};
+  const input = String(raw || "").trim();
+  if (!input) return result;
+
+  const crops = inventoryState.items.crops || [];
+  const byName = new Map(crops.map((c) => [(c.name || "").toLowerCase().trim(), c.id]));
+  const byId = new Set(crops.map((c) => c.id));
+
+  const resolveCropId = (token) => {
+    const key = String(token || "").trim();
+    if (!key) return null;
+    if (byId.has(key)) return key;
+    return byName.get(key.toLowerCase()) || null;
+  };
+
+  const normalizeValue = (val) => {
+    if (val == null || val === "") return null;
+    if (typeof val === "object" && val.min != null) {
+      const min = Number(val.min);
+      const max = val.max != null ? Number(val.max) : min;
+      if (Number.isNaN(min) || Number.isNaN(max)) return null;
+      return { min, max };
+    }
+    const str = String(val).trim();
+    if (!str) return null;
+    const rangeMatch = str.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
+    if (rangeMatch) {
+      const min = Number(rangeMatch[1]);
+      const max = Number(rangeMatch[2]);
+      if (Number.isNaN(min) || Number.isNaN(max)) return null;
+      return { min, max };
+    }
+    const single = Number(str);
+    if (Number.isNaN(single)) return null;
+    return { min: single, max: single };
+  };
+
+  if (input.startsWith("{") && input.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(input);
+      Object.entries(parsed || {}).forEach(([cropToken, val]) => {
+        const cropId = resolveCropId(cropToken);
+        const normalized = normalizeValue(val);
+        if (cropId && normalized) {
+          result[cropId] = normalized;
+        }
+      });
+      return result;
+    } catch (_) {
+      // fallback to plain parser below
+    }
+  }
+
+  input.split(/[|;]+/).forEach((part) => {
+    const segment = part.trim();
+    if (!segment) return;
+    const sep = segment.indexOf(":");
+    if (sep < 0) return;
+    const cropToken = segment.slice(0, sep).trim();
+    const valueToken = segment.slice(sep + 1).trim();
+    const cropId = resolveCropId(cropToken);
+    const normalized = normalizeValue(valueToken);
+    if (cropId && normalized) {
+      result[cropId] = normalized;
+    }
+  });
+
+  return result;
 }
 
 // Update inventory filter controls based on current category
@@ -948,6 +1196,9 @@ function openAddModal() {
     document.getElementById("paramRangeMax").value = "";
     document.getElementById("paramRadio").value = "";
     document.getElementById("paramCheckbox").value = "";
+    document.getElementById("paramFormula").value = "";
+    const formulaError = document.getElementById("paramFormulaError");
+    if (formulaError) formulaError.classList.add("hidden");
     document.getElementById("paramUnit").value = "";
     document.getElementById("paramQuantity").value = "1";
     document.getElementById("paramPhoto").checked = false;
@@ -972,6 +1223,15 @@ function openAddModal() {
       typeSelect.removeEventListener("change", handleParameterTypeChange);
       typeSelect.addEventListener("change", handleParameterTypeChange);
     }
+
+    const formulaInput = document.getElementById("paramFormula");
+    if (formulaInput) {
+      formulaInput.oninput = () => {
+        const errorEl = document.getElementById("paramFormulaError");
+        if (errorEl) errorEl.classList.add("hidden");
+      };
+    }
+    populateFormulaParameterList();
     
     // Populate DoO inputs
     populateParamDoo();
@@ -1014,6 +1274,14 @@ function showCropLinesPopup(cropId) {
           <p class="library-detail-meta">${crop.cropType ? escapeHtml(crop.cropType) + ' · ' : ''}${relatedLines.length} line(s)</p>
         </div>
         <div class="library-detail-actions">
+          <button class="btn btn-secondary btn-sm" id="cropLinesExportBtn" title="Export Lines to Excel">
+            <span class="material-symbols-rounded">download</span>
+            <span>Export</span>
+          </button>
+          <button class="btn btn-secondary btn-sm" id="cropLinesImportBtn" title="Import Lines from Excel/CSV">
+            <span class="material-symbols-rounded">upload</span>
+            <span>Import</span>
+          </button>
           <button class="btn btn-primary" id="cropLinesAddBtn">
             <span class="material-symbols-rounded">add</span>
             <span>Add Line</span>
@@ -1084,18 +1352,25 @@ function showCropLinesPopup(cropId) {
     openAddLineForCropModal(crop);
   });
 
+  // Export lines button
+  popup.querySelector("#cropLinesExportBtn").addEventListener("click", () => {
+    exportCropLines(crop.id);
+  });
+
+  // Import lines button
+  popup.querySelector("#cropLinesImportBtn").addEventListener("click", () => {
+    popup.remove();
+    importCropLines(crop.id);
+  });
+
   // Edit line buttons
   popup.querySelectorAll(".popup-line-edit-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const lineId = btn.dataset.id;
       popup.remove();
-      const prevCategory = inventoryState.currentCategory;
       inventoryState.currentCategory = "lines";
       openEditModal(lineId);
-      setTimeout(() => {
-        inventoryState.currentCategory = prevCategory;
-      }, 0);
     });
   });
 
@@ -1104,11 +1379,36 @@ function showCropLinesPopup(cropId) {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const lineId = btn.dataset.id;
-      const prevCategory = inventoryState.currentCategory;
-      inventoryState.currentCategory = "lines";
-      deleteItem(lineId);
-      inventoryState.currentCategory = prevCategory;
-      popup.remove();
+      const line = inventoryState.items.lines.find(l => l.id === lineId);
+      const lineName = line ? line.name : lineId;
+      showConfirmModal(
+        "Delete Line",
+        `Are you sure you want to delete line "${escapeHtml(lineName)}"? This action cannot be undone.`,
+        async () => {
+          try {
+            const idx = inventoryState.items.lines.findIndex(l => l.id === lineId);
+            if (idx >= 0) {
+              inventoryState.items.lines.splice(idx, 1);
+            }
+            enqueueSync({
+              label: `Delete Lines: ${lineName} from Crops: ${escapeHtml(crop.name)}`,
+              run: () => deleteItemFromGoogleDrive("Lines", lineId),
+            });
+            updateDashboardCounts();
+            renderInventoryItems();
+            if (typeof saveLocalCache === "function") {
+              saveLocalCache("inventory", { items: inventoryState.items });
+            }
+            showToast("Line deleted", "success");
+            // Re-open the crop lines popup to reflect changes
+            popup.remove();
+            showCropLinesPopup(crop.id);
+          } catch (error) {
+            console.error("Error deleting line:", error);
+            showToast("Error deleting line. Please try again.", "error");
+          }
+        }
+      );
     });
   });
 }
@@ -1212,6 +1512,7 @@ function openEditModal(itemId) {
     
     document.getElementById("paramRadio").value = item.radioOptions || "";
     document.getElementById("paramCheckbox").value = item.checkboxOptions || "";
+    document.getElementById("paramFormula").value = item.formula || "";
     document.getElementById("paramUnit").value = item.unit || "";
     document.getElementById("paramQuantity").value = item.numberOfSamples ?? item.quantity ?? 1;
     document.getElementById("paramPhoto").checked = item.requirePhoto || false;
@@ -1231,6 +1532,15 @@ function openEditModal(itemId) {
       typeSelect.addEventListener("change", handleParameterTypeChange);
       handleParameterTypeChange(); // Trigger to show correct conditional field
     }
+
+    const formulaInput = document.getElementById("paramFormula");
+    if (formulaInput) {
+      formulaInput.oninput = () => {
+        const errorEl = document.getElementById("paramFormulaError");
+        if (errorEl) errorEl.classList.add("hidden");
+      };
+    }
+    populateFormulaParameterList();
     
     // Setup photo checkbox listener
     const photoCheckbox = document.getElementById("paramPhoto");
@@ -1293,6 +1603,7 @@ function closeModal() {
     "paramRangeMax",
     "paramRadio",
     "paramCheckbox",
+    "paramFormula",
     "paramUnit",
     "paramQuantity",
   ];
@@ -1302,6 +1613,8 @@ function closeModal() {
   });
   const paramPhoto = document.getElementById("paramPhoto");
   if (paramPhoto) paramPhoto.checked = false;
+  const formulaError = document.getElementById("paramFormulaError");
+  if (formulaError) formulaError.classList.add("hidden");
 
   // Reset DoO panel
   _dooTempData = {};
@@ -1424,6 +1737,9 @@ async function saveItem() {
   const paramCheckbox = isParameters
     ? document.getElementById("paramCheckbox")?.value.trim()
     : "";
+  const paramFormula = isParameters
+    ? document.getElementById("paramFormula")?.value.trim()
+    : "";
   const paramUnit = isParameters
     ? document.getElementById("paramUnit")?.value.trim()
     : "";
@@ -1436,7 +1752,9 @@ async function saveItem() {
   const paramPhotoMode = isParameters && paramPhoto
     ? document.querySelector('input[name="photoMode"]:checked')?.value || 'per-sample'
     : undefined;
-  const paramDoo = isParameters ? collectParamDoo() : {};
+  const paramDoo = isParameters
+    ? (paramType === "formula" ? {} : collectParamDoo())
+    : {};
 
   // Agronomy fields
   const agronomyCropIds = isAgronomy
@@ -1522,6 +1840,18 @@ async function saveItem() {
       showToast("Please enter checkbox options", "error");
       return;
     }
+    if (paramType === "formula") {
+      const result = validateFormulaExpression(paramFormula);
+      if (!result.ok) {
+        const errorEl = document.getElementById("paramFormulaError");
+        if (errorEl) {
+          errorEl.textContent = result.message;
+          errorEl.classList.remove("hidden");
+        }
+        showToast(result.message, "error");
+        return;
+      }
+    }
   }
 
   if (isAgronomy) {
@@ -1575,11 +1905,12 @@ async function saveItem() {
           item.radioOptions = paramType === "radio" ? paramRadio : undefined;
           item.checkboxOptions =
             paramType === "checkbox" ? paramCheckbox : undefined;
+          item.formula = paramType === "formula" ? paramFormula : undefined;
           item.unit = paramUnit;
-          item.numberOfSamples = paramQuantity ? Number(paramQuantity) : 1;
-          item.requirePhoto = paramPhoto;
-          item.photoMode = paramPhotoMode;
-          item.daysOfObservation = paramDoo;
+          item.numberOfSamples = paramType === "formula" ? 1 : (paramQuantity ? Number(paramQuantity) : 1);
+          item.requirePhoto = paramType === "formula" ? false : paramPhoto;
+          item.photoMode = paramType === "formula" ? undefined : paramPhotoMode;
+          item.daysOfObservation = paramType === "formula" ? {} : paramDoo;
         }
         if (isAgronomy) {
           item.cropIds = agronomyCropIds;
@@ -1626,11 +1957,13 @@ async function saveItem() {
           isParameters && paramType === "radio" ? paramRadio : undefined,
         checkboxOptions:
           isParameters && paramType === "checkbox" ? paramCheckbox : undefined,
+        formula:
+          isParameters && paramType === "formula" ? paramFormula : undefined,
         unit: isParameters ? paramUnit : undefined,
-        numberOfSamples: isParameters && paramQuantity ? Number(paramQuantity) : 1,
-        requirePhoto: isParameters ? paramPhoto : undefined,
-        photoMode: isParameters ? paramPhotoMode : undefined,
-        daysOfObservation: isParameters ? paramDoo : undefined,
+        numberOfSamples: isParameters ? (paramType === "formula" ? 1 : (paramQuantity ? Number(paramQuantity) : 1)) : 1,
+        requirePhoto: isParameters ? (paramType === "formula" ? false : paramPhoto) : undefined,
+        photoMode: isParameters ? (paramType === "formula" ? undefined : paramPhotoMode) : undefined,
+        daysOfObservation: isParameters ? (paramType === "formula" ? {} : paramDoo) : undefined,
         cropIds: isAgronomy ? agronomyCropIds : undefined,
         activity: isAgronomy ? agronomyActivity : undefined,
         dapMin: isAgronomy && agronomyDapMin ? Number(agronomyDapMin) : undefined,
@@ -1884,7 +2217,9 @@ function getImportFields(category) {
         { key: "rangeMax", label: "Range Max", icon: "arrow_upward", required: false },
         { key: "radioOptions", label: "Radio Options", icon: "radio_button_checked", required: false, hint: "comma-separated" },
         { key: "checkboxOptions", label: "Checkbox Options", icon: "check_box", required: false, hint: "comma-separated" },
+        { key: "formula", label: "Formula", icon: "calculate", required: false, hint: "e.g. 100/A * B" },
         { key: "unit", label: "Unit", icon: "straighten", required: false },
+        { key: "daysOfObservation", label: "Days of Observation", icon: "event", required: false, hint: "CropName:min-max | CropName2:10" },
         { key: "numberOfSamples", label: "Number of Samples", icon: "tag", required: false },
         { key: "requirePhoto", label: "Require Photo", icon: "photo_camera", required: false, hint: "true / false" },
         { key: "photoMode", label: "Photo Mode", icon: "burst_mode", required: false, hint: "per-sample / per-line" },
@@ -1898,6 +2233,19 @@ function getImportFields(category) {
         { key: "chemical", label: "Chemical", icon: "science", required: false },
         { key: "dose", label: "Dose", icon: "medication", required: false },
         { key: "remark", label: "Remark", icon: "notes", required: false },
+      ];
+    case "lines":
+      return [
+        { key: "name", label: "Line Name", icon: "label", required: true },
+        { key: "quantity", label: "Quantity", icon: "tag", required: false },
+        { key: "stage", label: "Stage", icon: "trending_up", required: false, hint: "Breeder Seed / Pre Basic 1 / Pre Basic 2 / Basic Seed / Parent Seed / Commercial" },
+        { key: "seedOrigin", label: "Seed Origin", icon: "eco", required: false },
+        { key: "arrivalDate", label: "Arrival Date", icon: "event", required: false, hint: "YYYY-MM-DD" },
+        { key: "registeredDate", label: "Registered Date", icon: "event", required: false, hint: "YYYY-MM-DD" },
+        { key: "parentCode", label: "Parent Code", icon: "code", required: false },
+        { key: "hybridCode", label: "Hybrid Code", icon: "code", required: false },
+        { key: "sprCode", label: "SPR Code", icon: "code", required: false },
+        { key: "role", label: "Role", icon: "person", required: false, hint: "Male / Female / Both" },
       ];
     default:
       return [];
@@ -1963,9 +2311,10 @@ function exportInventoryData() {
     });
   } else if (cat === "parameters") {
     rows.push(["Parameter Name", "Initial", "Type", "Range Min", "Range Max",
-      "Radio Options", "Checkbox Options", "Unit", "Number of Samples",
+      "Radio Options", "Checkbox Options", "Formula", "Unit", "Days of Observation", "Number of Samples",
       "Require Photo", "Photo Mode"]);
     items.forEach(item => {
+      const isFormula = (item.type || "").toLowerCase() === "formula";
       rows.push([
         item.name || "",
         item.initial || "",
@@ -1974,10 +2323,12 @@ function exportInventoryData() {
         item.rangeMax ?? "",
         item.radioOptions || "",
         item.checkboxOptions || "",
+        item.formula || "",
         item.unit || "",
-        item.numberOfSamples ?? 1,
-        item.requirePhoto ? "true" : "false",
-        item.photoMode || "",
+        isFormula ? "" : serializeParamDooForExport(item.daysOfObservation),
+        isFormula ? 1 : (item.numberOfSamples ?? 1),
+        isFormula ? "" : (item.requirePhoto ? "true" : "false"),
+        isFormula ? "" : (item.photoMode || ""),
       ]);
     });
   } else if (cat === "agronomy") {
@@ -2021,6 +2372,103 @@ function exportInventoryData() {
 }
 
 // ===========================
+// EXPORT LINES PER CROP
+// ===========================
+function exportCropLines(cropId) {
+  const crop = inventoryState.items.crops.find(c => c.id === cropId);
+  if (!crop) return;
+
+  const lines = (inventoryState.items.lines || []).filter(l => l.cropId === cropId || l.crop === cropId);
+  if (lines.length === 0) {
+    showToast("No lines to export for this crop", "error");
+    return;
+  }
+
+  if (typeof XLSX === "undefined") {
+    showToast("Excel library not loaded. Please try again.", "error");
+    return;
+  }
+
+  const rows = [];
+  rows.push(["Line Name", "Quantity", "Stage", "Seed Origin", "Arrival Date", "Registered Date", "Parent Code", "Hybrid Code", "SPR Code", "Role"]);
+  lines.forEach(line => {
+    rows.push([
+      line.name || "",
+      line.quantity ?? "",
+      line.stage || "",
+      line.seedOrigin || "",
+      line.arrivalDate || "",
+      line.registeredDate || "",
+      line.parentCode || "",
+      line.hybridCode || "",
+      line.sprCode || "",
+      line.role || "",
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const colWidths = rows[0].map((_, colIdx) => {
+    let max = 10;
+    rows.forEach(row => {
+      const val = String(row[colIdx] || "");
+      if (val.length > max) max = val.length;
+    });
+    return { wch: Math.min(max + 2, 40) };
+  });
+  ws["!cols"] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  const safeName = (crop.name || "Lines").replace(/[^a-zA-Z0-9_ ]/g, "").substring(0, 30);
+  XLSX.utils.book_append_sheet(wb, ws, safeName);
+  XLSX.writeFile(wb, `${safeName}_Lines_Export.xlsx`);
+  showToast(`Exported ${lines.length} line(s) for ${crop.name}`, "success");
+}
+
+// ===========================
+// IMPORT LINES PER CROP
+// ===========================
+function importCropLines(cropId) {
+  const crop = inventoryState.items.crops.find(c => c.id === cropId);
+  if (!crop) return;
+
+  // Temporarily switch category to "lines" so the import modal works for lines
+  const prevCategory = inventoryState.currentCategory;
+  inventoryState.currentCategory = "lines";
+  // Store the target cropId for this import session
+  importState.targetCropId = cropId;
+  importState.targetCropName = crop.name;
+  importState.returnCategory = prevCategory;
+
+  const fields = getImportFields("lines");
+  if (fields.length === 0) {
+    showToast("Import not supported", "error");
+    inventoryState.currentCategory = prevCategory;
+    return;
+  }
+
+  importState.step = 1;
+  importState.fileData = null;
+  importState.headers = null;
+  importState.mapping = {};
+  importState.parsedItems = [];
+  importState.duplicates = [];
+
+  document.getElementById("importModalTitle").textContent = `Import Lines — ${escapeHtml(crop.name)}`;
+  document.getElementById("importStep1").classList.remove("hidden");
+  document.getElementById("importStep2").classList.add("hidden");
+  document.getElementById("importStep3").classList.add("hidden");
+  document.getElementById("importFileInfo").classList.add("hidden");
+  document.getElementById("importDropzone").style.display = "";
+  document.getElementById("importBackBtn").style.display = "none";
+  document.getElementById("importNextBtn").disabled = true;
+  document.getElementById("importNextLabel").textContent = "Next";
+  document.getElementById("importNextIcon").textContent = "arrow_forward";
+  document.getElementById("importModal").classList.remove("hidden");
+
+  setupImportDropzone();
+}
+
+// ===========================
 // IMPORT
 // ===========================
 
@@ -2054,6 +2502,10 @@ function openImportModal() {
 
 function closeImportModal() {
   document.getElementById("importModal").classList.add("hidden");
+  // Restore previous category if we were importing lines
+  if (importState.returnCategory) {
+    inventoryState.currentCategory = importState.returnCategory;
+  }
   importState = { step: 1, fileData: null, headers: null, mapping: {}, parsedItems: [], duplicates: [] };
 }
 
@@ -2322,6 +2774,12 @@ function renderImportPreview() {
       isDup = existingItems.some(existing =>
         (existing.activity || existing.name || "").toLowerCase().trim() === (item.activity || "").toLowerCase().trim()
       );
+    } else if (cat === "lines") {
+      const targetCropId = importState.targetCropId;
+      isDup = existingItems.some(existing =>
+        (existing.cropId === targetCropId || existing.crop === targetCropId) &&
+        (existing.name || "").toLowerCase().trim() === (item.name || "").toLowerCase().trim()
+      );
     }
     if (isDup) importState.duplicates.push(idx);
   });
@@ -2419,7 +2877,6 @@ async function executeImport() {
     }
 
     // Update UI
-    renderInventoryItems();
     updateDashboardCounts();
 
     let msg = `Imported ${imported} new item(s)`;
@@ -2427,7 +2884,16 @@ async function executeImport() {
     if (skipped > 0) msg += `, skipped ${skipped} duplicate(s)`;
     showToast(msg, "success");
 
+    // Re-open crop lines popup if we were importing lines
+    const targetCropId = importState.targetCropId;
     closeImportModal();
+
+    // Render after closing modal so category is restored
+    renderInventoryItems();
+
+    if (cat === "lines" && targetCropId) {
+      showCropLinesPopup(targetCropId);
+    }
   } catch (err) {
     console.error("Import error:", err);
     showToast("Import failed: " + err.message, "error");
@@ -2473,6 +2939,12 @@ function findExistingDuplicate(cat, existingItems, rawItem) {
     return existingItems.findIndex(ex =>
       (ex.activity || ex.name || "").toLowerCase().trim() === (rawItem.activity || "").toLowerCase().trim()
     );
+  } else if (cat === "lines") {
+    const targetCropId = importState.targetCropId;
+    return existingItems.findIndex(ex =>
+      (ex.cropId === targetCropId || ex.crop === targetCropId) &&
+      (ex.name || "").toLowerCase().trim() === (rawItem.name || "").toLowerCase().trim()
+    );
   }
   return -1;
 }
@@ -2485,6 +2957,8 @@ function applyImportUpdate(cat, existing, rawItem) {
     existing.name = rawItem.name;
     existing.cropType = rawItem.cropType;
   } else if (cat === "parameters") {
+    const normalizedType = (rawItem.type || "").toLowerCase().trim();
+    const importedDoo = parseParamDooImport(rawItem.daysOfObservation);
     existing.name = rawItem.name;
     existing.initial = rawItem.initial;
     existing.type = rawItem.type;
@@ -2493,10 +2967,16 @@ function applyImportUpdate(cat, existing, rawItem) {
     if (rawItem.rangeMin && rawItem.rangeMax) existing.rangeDefinition = `${rawItem.rangeMin}-${rawItem.rangeMax}`;
     if (rawItem.radioOptions) existing.radioOptions = rawItem.radioOptions;
     if (rawItem.checkboxOptions) existing.checkboxOptions = rawItem.checkboxOptions;
+    existing.formula = (rawItem.type || "").toLowerCase().trim() === "formula"
+      ? (rawItem.formula || "")
+      : undefined;
     if (rawItem.unit) existing.unit = rawItem.unit;
-    if (rawItem.numberOfSamples) existing.numberOfSamples = Number(rawItem.numberOfSamples) || 1;
-    existing.requirePhoto = rawItem.requirePhoto === "true";
-    if (rawItem.photoMode) existing.photoMode = rawItem.photoMode;
+    existing.numberOfSamples = normalizedType === "formula"
+      ? 1
+      : (rawItem.numberOfSamples ? Number(rawItem.numberOfSamples) || 1 : (existing.numberOfSamples || 1));
+    existing.requirePhoto = normalizedType === "formula" ? false : (rawItem.requirePhoto === "true");
+    existing.photoMode = normalizedType === "formula" ? undefined : (rawItem.photoMode || existing.photoMode);
+    existing.daysOfObservation = normalizedType === "formula" ? {} : importedDoo;
   } else if (cat === "agronomy") {
     existing.activity = rawItem.activity;
     existing.name = rawItem.activity;
@@ -2506,6 +2986,17 @@ function applyImportUpdate(cat, existing, rawItem) {
     if (rawItem.chemical !== undefined) existing.chemical = rawItem.chemical;
     if (rawItem.dose !== undefined) existing.dose = rawItem.dose;
     if (rawItem.remark !== undefined) existing.remark = rawItem.remark;
+  } else if (cat === "lines") {
+    existing.name = rawItem.name || existing.name;
+    if (rawItem.quantity) existing.quantity = rawItem.quantity;
+    if (rawItem.stage) existing.stage = rawItem.stage;
+    if (rawItem.seedOrigin) existing.seedOrigin = rawItem.seedOrigin;
+    if (rawItem.arrivalDate) existing.arrivalDate = rawItem.arrivalDate;
+    if (rawItem.registeredDate) existing.registeredDate = rawItem.registeredDate;
+    if (rawItem.parentCode) existing.parentCode = rawItem.parentCode;
+    if (rawItem.hybridCode) existing.hybridCode = rawItem.hybridCode;
+    if (rawItem.sprCode) existing.sprCode = rawItem.sprCode;
+    if (rawItem.role) existing.role = rawItem.role;
   }
 }
 
@@ -2527,15 +3018,17 @@ function buildNewItem(cat, rawItem, idx) {
     };
   } else if (cat === "parameters") {
     const type = (rawItem.type || "text").toLowerCase().trim();
+    const importedDoo = parseParamDooImport(rawItem.daysOfObservation);
     const item = {
       id, name: rawItem.name || "Unnamed",
       initial: rawItem.initial || "",
       type: type,
+      formula: type === "formula" ? (rawItem.formula || "") : undefined,
       unit: rawItem.unit || "",
-      numberOfSamples: Number(rawItem.numberOfSamples) || 1,
-      requirePhoto: rawItem.requirePhoto === "true",
-      photoMode: rawItem.photoMode || "",
-      daysOfObservation: {},
+      numberOfSamples: type === "formula" ? 1 : (Number(rawItem.numberOfSamples) || 1),
+      requirePhoto: type === "formula" ? false : (rawItem.requirePhoto === "true"),
+      photoMode: type === "formula" ? undefined : (rawItem.photoMode || ""),
+      daysOfObservation: type === "formula" ? {} : importedDoo,
       createdAt: now, updatedAt: now,
     };
     if (type === "range") {
@@ -2556,6 +3049,21 @@ function buildNewItem(cat, rawItem, idx) {
       chemical: rawItem.chemical || "",
       dose: rawItem.dose || "",
       remark: rawItem.remark || "",
+      createdAt: now, updatedAt: now,
+    };
+  } else if (cat === "lines") {
+    return {
+      id, name: rawItem.name || "Unnamed",
+      cropId: importState.targetCropId || "",
+      quantity: rawItem.quantity || "",
+      stage: rawItem.stage || "",
+      seedOrigin: rawItem.seedOrigin || "",
+      arrivalDate: rawItem.arrivalDate || "",
+      registeredDate: rawItem.registeredDate || "",
+      parentCode: rawItem.parentCode || "",
+      hybridCode: rawItem.hybridCode || "",
+      sprCode: rawItem.sprCode || "",
+      role: rawItem.role || "",
       createdAt: now, updatedAt: now,
     };
   }

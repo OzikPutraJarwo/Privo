@@ -130,7 +130,7 @@ function buildAgronomyReminders() {
 
         // Check completion
         const resp = trial.agronomyResponses && trial.agronomyResponses[areaIndex] && trial.agronomyResponses[areaIndex][agItem.id];
-        const done = !!(resp && resp.applicationDate);
+        const done = !!(resp && resp.applicationDate && resp.photos && resp.photos.length > 0);
 
         let status = "no-date";
         if (dateMin && dateMax) {
@@ -469,6 +469,7 @@ function _renderDashReminderSection(type) {
 
   if (shown.length === 0) {
     const label = type === "observation" ? "observation" : "agronomy";
+    container.classList.add("empty-grid")
     container.innerHTML = `
       <div class="empty-state-small">
         <span class="material-symbols-rounded">event_available</span>

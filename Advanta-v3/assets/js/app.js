@@ -7,15 +7,37 @@ function showToast(message, type = "info", duration = 3000) {
     document.body.appendChild(container);
   }
 
+  const iconMap = {
+    success: "check_circle",
+    error: "error",
+    warning: "warning",
+    info: "info",
+  };
+  const titleMap = {
+    success: "Success",
+    error: "Error",
+    warning: "Warning",
+    info: "Info",
+  };
+
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
   toast.innerHTML = `
-    <span class="toast-icon">${
-      type === "success" ? "✓" : type === "error" ? "✕" : type === "warning" ? "⚠" : "ℹ"
-    }</span>
-    <span class="toast-msg">${message}</span>
+    <span class="toast-icon"><span class="material-symbols-rounded">${iconMap[type] || "info"}</span></span>
+    <div class="toast-body">
+      <div class="toast-title">${titleMap[type] || "Info"}</div>
+      <span class="toast-msg">${message}</span>
+    </div>
+    <button class="toast-close" aria-label="Close"><span class="material-symbols-rounded">close</span></button>
   `;
   container.appendChild(toast);
+
+  // Close button
+  toast.querySelector(".toast-close").addEventListener("click", () => {
+    toast.classList.remove("toast-show");
+    toast.addEventListener("transitionend", () => toast.remove());
+    setTimeout(() => toast.remove(), 400);
+  });
 
   // trigger entrance animation
   requestAnimationFrame(() => toast.classList.add("toast-show"));

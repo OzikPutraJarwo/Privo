@@ -11,7 +11,7 @@
 - [x] `Inventory > Parameters` Range definition using 2 column (min - max)
 - [x] `Inventory > Parameters` No unit compability
 - [x] `Inventory > Parameters` Insert photo for question per sample/line radio
-- [ ] `Inventory > Parameters` New type: Formula, a calculate parameters with custom formula
+- [x] `Inventory > Parameters` New type: Formula, a calculate parameters with custom formula
 - [x] `Trial > Trial Management` Archived trials
 - [x] `Trial > Trial Management` General: List for selected param and line with 2 columns, draggable
 - [x] `Trial > Trial Management` General: Add number of rows per plot (number)
@@ -50,3 +50,22 @@
 - [x] `Reminder > Observation` Reminders for data retrieval per parameters
 - [x] `Reminder > Agronomy` Reminders for agronomy things (fertilizing, spraying, etc)
 - [x] `Dashboard` Reminder linking
+
+### Feb 24, 2026
+
+#### Update
+- [x] `Inventory > Crops` Import and export using Excel/CSV
+- [ ] `Trial > Report` Per-trial complete information
+- [x] `Trial > Edit, Detail` Experimental design
+- [x] `Inventory > Parameters` Formula type definition
+#### Bug Fixes and Redesigns
+- [x] `syncPanel` animation and position
+- [x] Progress bar for Agronomy in `Dashboard` and `Trial`
+- [x] Empty state grid columns
+- [x] `Reminder > Agronomy` progress bug with no photo
+- [x] Toast redesign
+- [x] Missing preview map on `Trial > Edit/New`
+- [x] Days of Observation on import and export in `Inventory > Parameters`
+- [ ] Grid and list layout
+- [x] Remove .modal-header from Create and Edit Trial
+- [x] Edit trial selected parameters bug (now showing all, only with DoO)

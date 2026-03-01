@@ -207,8 +207,6 @@ function openAddTrialModal() {
   trialState.editingTrialId = null;
   trialState.currentAreas = [];
   trialState.currentSection = "general";
-
-  document.getElementById("trialModalTitle").textContent = "Create New Trial";
   document.getElementById("trialForm").reset();
 
   // Show general section
@@ -266,8 +264,6 @@ function openEditTrialModal(trialId) {
   const trial = trialState.trials.find((t) => t.id === trialId);
 
   if (!trial) return;
-
-  document.getElementById("trialModalTitle").textContent = "Edit Trial";
   document.getElementById("trialName").value = trial.name;
   document.getElementById("trialDescription").value = trial.description || "";
   document.getElementById("trialPlantingStart").value =
@@ -275,6 +271,8 @@ function openEditTrialModal(trialId) {
   document.getElementById("trialPlantingEnd").value = trial.plantingEnd || "";
   document.getElementById("trialPlantingDate").value = trial.plantingDate || "";
   document.getElementById("trialType").value = trial.trialType || "";
+  document.getElementById("trialExpDesign").value = trial.expDesign || "";
+  document.getElementById("trialFactors").value = trial.trialFactors || "";
   document.getElementById("trialRowsPerPlot").value = trial.rowsPerPlot ?? "";
   document.getElementById("trialPlotLength").value = trial.plotLength ?? "";
   document.getElementById("trialPlantSpacingWidth").value = trial.plantSpacingWidth ?? "";
@@ -344,11 +342,88 @@ function toggleTrialEditor(show) {
     editor.classList.add("active");
     panel.classList.add("hidden");
     if (archive) archive.classList.add("hidden");
+    enterTrialFullscreenMode({
+      title: trialState.editingTrialId ? "Edit Trial" : "Create Trial",
+      onClose: closeTrialModal,
+    });
   } else {
     editor.classList.remove("active");
     panel.classList.remove("hidden");
     if (archive) archive.classList.remove("hidden");
+    exitTrialFullscreenMode();
   }
+}
+
+let trialFullscreenState = {
+  active: false,
+  previousPageTitle: "Trial",
+  previousMenuHtml: '<span class="material-symbols-rounded">menu</span>',
+  previousMenuOnclick: null,
+  previousDisplays: {},
+};
+
+function enterTrialFullscreenMode({ title, onClose }) {
+  const topbar = document.querySelector(".topbar");
+  const pageTitle = document.getElementById("pageTitle");
+  const menuToggle = document.querySelector(".menu-toggle");
+
+  const managedIds = [
+    "syncDownBtn",
+    "syncStatusBtn",
+    "runTrialNavBtn",
+    "runTrialSaveBtn",
+    "trialReportSheetSelect",
+    "trialReportTopbarDownloadBtn",
+    "userMenu",
+  ];
+
+  trialFullscreenState.previousDisplays = {};
+  managedIds.forEach((id) => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    trialFullscreenState.previousDisplays[id] = element.style.display;
+    element.style.display = "none";
+  });
+
+  trialFullscreenState.previousPageTitle = pageTitle?.textContent || "Trial";
+  if (menuToggle) {
+    trialFullscreenState.previousMenuHtml = menuToggle.innerHTML;
+    trialFullscreenState.previousMenuOnclick = menuToggle.onclick;
+  }
+
+  if (topbar) topbar.classList.add("run-trial-mode");
+  if (pageTitle) pageTitle.textContent = title || "Trial";
+  if (menuToggle) {
+    menuToggle.innerHTML = '<span class="material-symbols-rounded">close</span>';
+    menuToggle.onclick = onClose;
+  }
+
+  document.body.classList.add("trial-fullscreen-active", "sidebar-collapsed");
+  trialFullscreenState.active = true;
+}
+
+function exitTrialFullscreenMode() {
+  if (!trialFullscreenState.active) return;
+
+  const topbar = document.querySelector(".topbar");
+  const pageTitle = document.getElementById("pageTitle");
+  const menuToggle = document.querySelector(".menu-toggle");
+
+  if (topbar) topbar.classList.remove("run-trial-mode");
+  if (pageTitle) pageTitle.textContent = trialFullscreenState.previousPageTitle || "Trial";
+  if (menuToggle) {
+    menuToggle.innerHTML = trialFullscreenState.previousMenuHtml || '<span class="material-symbols-rounded">menu</span>';
+    menuToggle.onclick = trialFullscreenState.previousMenuOnclick || null;
+  }
+
+  Object.entries(trialFullscreenState.previousDisplays || {}).forEach(([id, display]) => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.style.display = display || "";
+  });
+
+  document.body.classList.remove("trial-fullscreen-active", "sidebar-collapsed");
+  trialFullscreenState.active = false;
 }
 
 function switchTrialTab(tabName) {
@@ -407,21 +482,44 @@ function showTrialSection(sectionName) {
     prevBtn.classList.remove("hidden");
     nextBtn.classList.remove("hidden");
     saveBtn.classList.add("hidden");
-    // Initialize map when entering location section
-    if (!trialMapInstance) {
-      const trial = trialState.editingTrialId
-        ? trialState.trials.find((t) => t.id === trialState.editingTrialId)
-        : null;
-      initializeTrialMap(trial?.locationCoordinates);
+    const trial = trialState.editingTrialId
+      ? trialState.trials.find((t) => t.id === trialState.editingTrialId)
+      : null;
 
-      // Render saved areas if editing
-      if (trial && trialState.currentAreas.length > 0) {
+    // Ensure map exists for location section
+    if (!trialMapInstance) {
+      initializeTrialMap(trial?.locationCoordinates);
+    }
+
+    // Re-sync area layers every time entering location section
+    if (trialMapInstance) {
+      trialDrawnLayers.forEach((entry) => {
+        if (entry?.layer && trialMapInstance.hasLayer(entry.layer)) {
+          trialMapInstance.removeLayer(entry.layer);
+        }
+      });
+      trialDrawnLayers = [];
+
+      if (trialState.currentPolygon?.polygon && trialMapInstance.hasLayer(trialState.currentPolygon.polygon)) {
+        trialMapInstance.removeLayer(trialState.currentPolygon.polygon);
+      }
+      trialState.currentPolygon = null;
+
+      if (trialState.currentAreas.length > 0) {
         trialState.currentAreas.forEach((area, index) => {
           drawSavedArea(area, index);
         });
-        renderAreasList();
       }
     }
+
+    // Always rebuild area list + preview maps when entering location section
+    renderAreasList();
+
+    // Ensure both main map and preview maps layout correctly after section becomes visible
+    setTimeout(() => {
+      if (trialMapInstance) trialMapInstance.invalidateSize();
+      invalidateAllPreviewMaps();
+    }, 100);
   } else if (sectionName === "layouting") {
     prevBtn.classList.remove("hidden");
     nextBtn.classList.add("hidden");
@@ -574,6 +672,7 @@ function populateTrialParameters(selectedIds = []) {
   const cropId = document.getElementById("trialCrops")?.value || "";
   const parameters = cropId
     ? allParameters.filter(p => {
+        if ((p.type || "").toLowerCase() === "formula") return true;
         if (!p.daysOfObservation) return false;
         const val = p.daysOfObservation[cropId];
         if (val == null) return false;
@@ -646,7 +745,7 @@ function populateTrialParameters(selectedIds = []) {
 
     selectedList.innerHTML = trialState.selectedParametersOrder
       .map((id) => {
-        const param = parameters.find((p) => p.id === id);
+        const param = allParameters.find((p) => p.id === id);
         if (!param) return "";
         return `
           <div class="picklist-item" draggable="true" data-id="${param.id}">
@@ -825,6 +924,13 @@ function getSelectedParameterIds() {
   return Array.isArray(trialState.selectedParametersOrder)
     ? trialState.selectedParametersOrder
     : [];
+}
+
+function getRunnableTrialParameters(trial) {
+  if (!trial) return [];
+  return (trial.parameters || [])
+    .map((paramId) => inventoryState.items.parameters.find((p) => p.id === paramId))
+    .filter((param) => param && (param.type || "").toLowerCase() !== "formula");
 }
 
 // ═══════════════════════════════════════════════
@@ -1878,9 +1984,9 @@ function renderAreaPreviewMap(area, index) {
   if (!mapContainer) return;
 
   // Remove old map if exists
-  if (window[`areaPreviewMap${index}`]) {
-    window[`areaPreviewMap${index}`].remove();
-  }
+  // if (window[`areaPreviewMap${index}`]) {
+  //   window[`areaPreviewMap${index}`].remove();
+  // }
 
   // Create map instance (with no zoom control)
   const map = L.map(mapContainer, {
@@ -1929,8 +2035,33 @@ function renderAreaPreviewMap(area, index) {
   // Store map instance
   window[`areaPreviewMap${index}`] = map;
   
-  // Fix map size
-  setTimeout(() => map.invalidateSize(), 100);
+  // Fix map size — multiple attempts to handle layout timing
+  const fixSize = () => {
+    map.invalidateSize();
+    if (area.coordinates && area.coordinates.length > 0) {
+      const latlngs = area.coordinates.map(coord => [coord[0], coord[1]]);
+      map.fitBounds(latlngs, { padding: [10, 10] });
+    }
+  };
+  setTimeout(fixSize, 50);
+  setTimeout(fixSize, 200);
+  setTimeout(fixSize, 500);
+}
+
+// Re-invalidate all existing preview maps (e.g. when returning to location section)
+function invalidateAllPreviewMaps() {
+  trialState.currentAreas.forEach((area, index) => {
+    const map = window[`areaPreviewMap${index}`];
+    if (map) {
+      setTimeout(() => {
+        map.invalidateSize();
+        if (area.coordinates && area.coordinates.length > 0) {
+          const latlngs = area.coordinates.map(coord => [coord[0], coord[1]]);
+          map.fitBounds(latlngs, { padding: [10, 10] });
+        }
+      }, 100);
+    }
+  });
 }
 
 // Remove area
@@ -1974,6 +2105,13 @@ function clearAllAreas() {
 
 // Destroy trial map
 function destroyTrialMap() {
+  // Clean up preview map instances
+  for (let i = 0; i < 20; i++) {
+    if (window[`areaPreviewMap${i}`]) {
+      window[`areaPreviewMap${i}`].remove();
+      delete window[`areaPreviewMap${i}`];
+    }
+  }
   if (trialMapInstance) {
     trialMapInstance.remove();
     trialMapInstance = null;
@@ -1994,6 +2132,8 @@ async function saveTrial() {
   const cropName =
     cropSelect.options[cropSelect.selectedIndex].dataset.name || "";
   const trialType = document.getElementById("trialType").value;
+  const expDesign = document.getElementById("trialExpDesign").value;
+  const trialFactors = document.getElementById("trialFactors").value;
   const rowsPerPlot = parseFloat(
     document.getElementById("trialRowsPerPlot").value || "",
   );
@@ -2145,6 +2285,8 @@ async function saveTrial() {
         trial.cropId = cropId;
         trial.cropName = cropName;
         trial.trialType = trialType;
+        trial.expDesign = expDesign;
+        trial.trialFactors = trialFactors;
         trial.rowsPerPlot = Number.isFinite(rowsPerPlot) ? rowsPerPlot : null;
         trial.plotLength = Number.isFinite(plotLength) ? plotLength : null;
         trial.plantSpacingWidth = Number.isFinite(plantSpacingWidth)
@@ -2181,6 +2323,8 @@ async function saveTrial() {
         cropId: cropId,
         cropName: cropName,
         trialType: trialType,
+        expDesign: expDesign,
+        trialFactors: trialFactors,
         rowsPerPlot: Number.isFinite(rowsPerPlot) ? rowsPerPlot : null,
         plotLength: Number.isFinite(plotLength) ? plotLength : null,
         plantSpacingWidth: Number.isFinite(plantSpacingWidth)
@@ -3423,7 +3567,7 @@ function calculateAgronomyProgress(trial) {
     items.forEach(item => {
       total++;
       const resp = responses[areaIndex]?.[item.id];
-      if (resp && resp.applicationDate) completed++;
+      if (resp && resp.applicationDate && resp.photos && resp.photos.length > 0) completed++;
     });
   });
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -4199,7 +4343,7 @@ function renderRunTrialList() {
   container.innerHTML = runnableTrials
     .map((trial) => {
       const areaCount = trial.areas?.length || 0;
-      const paramCount = trial.parameters?.length || 0;
+      const paramCount = getRunnableTrialParameters(trial).length;
       const totalLines = trial.areas?.reduce((sum, area) => {
         return sum + (area.layout?.lines?.length || 0);
       }, 0) || 0;
@@ -4301,6 +4445,11 @@ function handleRunTrialKeyboard(e) {
 function startRunTrial(trialId) {
   const trial = trialState.trials.find((t) => t.id === trialId);
   if (!trial) return;
+
+  if (getRunnableTrialParameters(trial).length === 0) {
+    showToast("This trial has no runnable observation parameters (formula parameters are excluded)", "warning");
+    return;
+  }
 
   runTrialState.currentTrialId = trialId;
   runTrialState.currentTrial = trial;
@@ -4417,10 +4566,8 @@ function renderRunTrialNavTree() {
   const trial = runTrialState.currentTrial;
   if (!container || !trial) return;
 
-  // Get parameters info
-  const parameters = (trial.parameters || []).map((paramId) => {
-    return inventoryState.items.parameters.find((p) => p.id === paramId);
-  }).filter(Boolean);
+  // Get runnable parameters (exclude formula type)
+  const parameters = getRunnableTrialParameters(trial);
 
   // Calculate overall progress
   let overallTotal = 0;
@@ -5782,9 +5929,7 @@ function getAllLinesList() {
   const trial = runTrialState.currentTrial;
   const lines = [];
 
-  const parameters = (trial.parameters || [])
-    .map((paramId) => inventoryState.items.parameters.find((p) => p.id === paramId))
-    .filter(Boolean);
+  const parameters = getRunnableTrialParameters(trial);
 
   trial.areas.forEach((area, areaIndex) => {
     if (!area.layout?.result) return;
@@ -5993,7 +6138,7 @@ async function manualSaveProgress() {
 function calculateTrialProgress(trial) {
   if (!trial.areas || !trial.parameters) return { completed: 0, total: 0, percentage: 0 };
   
-  const parameters = trial.parameters;
+  const parameters = getRunnableTrialParameters(trial).map((param) => param.id);
   const responses = trial.responses || {};
   let total = 0;
   let completed = 0;
@@ -6085,6 +6230,7 @@ function renderDashboardTrialSummary() {
   );
 
   if (activeTrials.length === 0) {
+    container.classList.add("empty-grid");
     container.innerHTML = `
       <div class="empty-state-small">
         <span class="material-symbols-rounded">science</span>
@@ -6224,6 +6370,13 @@ function showTrialActionPopup(event, trialId) {
             <span class="trial-action-option-desc">${!hasAgronomy ? (trial.archived ? 'Trial is archived' : 'No agronomy items assigned') : 'Start or continue agronomy monitoring'}</span>
           </div>
         </button>
+        <button class="trial-action-option" onclick="closeTrialActionPopup(); showTrialReport('${trialId}');">
+          <span class="material-symbols-rounded">description</span>
+          <div class="trial-action-option-text">
+            <span class="trial-action-option-title">Report</span>
+            <span class="trial-action-option-desc">Preview and download trial report (Excel)</span>
+          </div>
+        </button>
       </div>
     </div>
   `;
@@ -6241,6 +6394,822 @@ function closeTrialActionPopup() {
   if (overlay) {
     overlay.classList.remove('active');
     setTimeout(() => overlay.remove(), 200);
+  }
+}
+
+let trialReportState = {
+  currentTrialId: null,
+  trialName: "",
+  sheets: [],
+  activeSheetName: "",
+  filters: {},
+  sort: {},
+  columnMenusBound: false,
+};
+
+function showTrialReport(trialId) {
+  const trial = trialState.trials.find((t) => t.id === trialId);
+  if (!trial) return;
+
+  const reportInterface = document.getElementById("trialReportInterface");
+  if (!reportInterface) return;
+
+  const reportData = buildTrialReportWorkbookData(trial);
+  trialReportState.currentTrialId = trial.id;
+  trialReportState.trialName = trial.name || "Trial";
+  trialReportState.sheets = reportData.sheets;
+  trialReportState.activeSheetName = reportData.sheets[0]?.name || "";
+  trialReportState.filters = {};
+  trialReportState.sort = {};
+
+  renderTrialReportSheetSelect();
+  renderTrialReportPreview();
+
+  toggleTrialReportInterface(true, trialReportState.trialName);
+}
+
+function closeTrialReportModal() {
+  toggleTrialReportInterface(false);
+}
+
+function toggleTrialReportInterface(show, title) {
+  const reportInterface = document.getElementById("trialReportInterface");
+  const panel = document.getElementById("trialManagementPanel");
+  const archive = document.getElementById("archivedTrialManagementPanel");
+
+  if (!reportInterface || !panel) return;
+
+  if (show) {
+    reportInterface.classList.add("active");
+    panel.classList.add("hidden");
+    if (archive) archive.classList.add("hidden");
+    enterTrialFullscreenMode({
+      title: title || trialReportState.trialName || "Trial",
+      onClose: closeTrialReportModal,
+    });
+    setTrialReportTopbarControls(true);
+  } else {
+    reportInterface.classList.remove("active");
+    panel.classList.remove("hidden");
+    if (archive) archive.classList.remove("hidden");
+    setTrialReportTopbarControls(false);
+    exitTrialFullscreenMode();
+  }
+}
+
+function setTrialReportTopbarControls(show) {
+  const sheetSelect = document.getElementById("trialReportSheetSelect");
+  const downloadBtn = document.getElementById("trialReportTopbarDownloadBtn");
+
+  if (show) {
+    renderTrialReportSheetSelect();
+    if (sheetSelect) {
+      sheetSelect.classList.remove("hidden");
+      sheetSelect.style.display = "";
+    }
+    if (downloadBtn) {
+      downloadBtn.classList.remove("hidden");
+      downloadBtn.style.display = "flex";
+    }
+  } else {
+    if (sheetSelect) {
+      sheetSelect.classList.add("hidden");
+      sheetSelect.style.display = "none";
+    }
+    if (downloadBtn) {
+      downloadBtn.classList.add("hidden");
+      downloadBtn.style.display = "none";
+    }
+  }
+}
+
+function renderTrialReportSheetSelect() {
+  const selectEl = document.getElementById("trialReportSheetSelect");
+  if (!selectEl) return;
+
+  const sheets = trialReportState.sheets || [];
+  if (sheets.length === 0) {
+    selectEl.innerHTML = "";
+    return;
+  }
+
+  selectEl.innerHTML = sheets
+    .map((sheet) => {
+      const selected = sheet.name === trialReportState.activeSheetName ? "selected" : "";
+      return `<option value="${escapeHtml(sheet.name)}" ${selected}>${escapeHtml(sheet.name)}</option>`;
+    })
+    .join("");
+}
+
+function handleTrialReportSheetSelect(sheetName) {
+  selectTrialReportSheet(sheetName);
+}
+
+function selectTrialReportSheet(sheetName) {
+  trialReportState.activeSheetName = sheetName;
+  closeTrialReportColumnMenus();
+  renderTrialReportSheetSelect();
+  renderTrialReportPreview();
+}
+
+function bindTrialReportMenuGlobalClose() {
+  if (trialReportState.columnMenusBound) return;
+  document.addEventListener("click", (event) => {
+    const insideMenu = event.target.closest(".trial-report-column-menu-container");
+    const insideHeaderButton = event.target.closest(".trial-report-th-btn");
+    if (!insideMenu && !insideHeaderButton) {
+      closeTrialReportColumnMenus();
+    }
+  });
+  trialReportState.columnMenusBound = true;
+}
+
+function getTrialReportSheetData() {
+  const sheet = (trialReportState.sheets || []).find((s) => s.name === trialReportState.activeSheetName);
+  if (!sheet || !Array.isArray(sheet.rows) || sheet.rows.length === 0) {
+    return { sheet: null, header: [], bodyRows: [] };
+  }
+  return {
+    sheet,
+    header: sheet.rows[0] || [],
+    bodyRows: sheet.rows.slice(1),
+  };
+}
+
+function normalizeTrialReportFilterValue(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "__BLANK__";
+  return text;
+}
+
+function getTrialReportFilterLabel(filterValue) {
+  return filterValue === "__BLANK__" ? "(blank)" : filterValue;
+}
+
+function getTrialReportColumnFilterSetting(sheetName, colIndex) {
+  if (!trialReportState.filters[sheetName]) {
+    trialReportState.filters[sheetName] = {};
+  }
+  if (!trialReportState.filters[sheetName][colIndex]) {
+    trialReportState.filters[sheetName][colIndex] = {
+      mode: "default",
+      selectedValues: [],
+    };
+  }
+  return trialReportState.filters[sheetName][colIndex];
+}
+
+function getTrialReportUniqueColumnValues(rows, colIndex) {
+  const unique = new Set();
+  rows.forEach((row) => {
+    unique.add(normalizeTrialReportFilterValue(row?.[colIndex]));
+  });
+  return Array.from(unique).sort((a, b) =>
+    getTrialReportFilterLabel(a).localeCompare(getTrialReportFilterLabel(b), undefined, { numeric: true, sensitivity: "base" }),
+  );
+}
+
+function applyTrialReportFilters(rows, sheetName) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const sheetFilters = trialReportState.filters?.[sheetName] || {};
+  const hasCustomFilter = Object.values(sheetFilters).some((setting) => setting?.mode === "custom");
+  if (!hasCustomFilter) return rows;
+
+  return rows.filter((row) => {
+    return Object.entries(sheetFilters).every(([colIdxText, setting]) => {
+      if (!setting || setting.mode !== "custom") return true;
+      const selected = Array.isArray(setting.selectedValues) ? setting.selectedValues : [];
+      if (selected.length === 0) return false;
+      const colIdx = Number(colIdxText);
+      const value = normalizeTrialReportFilterValue(row?.[colIdx]);
+      return selected.includes(value);
+    });
+  });
+}
+
+function applyTrialReportSort(rows, sheetName) {
+  const sortSetting = trialReportState.sort?.[sheetName];
+  if (!sortSetting || sortSetting.mode === "default") return rows;
+
+  const colIndex = Number(sortSetting.colIndex);
+  const direction = sortSetting.mode === "desc" ? -1 : 1;
+  const sorted = [...rows];
+
+  sorted.sort((left, right) => {
+    const a = String(left?.[colIndex] ?? "");
+    const b = String(right?.[colIndex] ?? "");
+    const cmp = a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+    return cmp * direction;
+  });
+
+  return sorted;
+}
+
+function setTrialReportColumnSort(colIndex, mode) {
+  const sheetName = trialReportState.activeSheetName;
+  if (!sheetName) return;
+  if (mode === "default") {
+    delete trialReportState.sort[sheetName];
+  } else {
+    trialReportState.sort[sheetName] = {
+      colIndex,
+      mode,
+    };
+  }
+  closeTrialReportColumnMenus();
+  renderTrialReportPreview();
+}
+
+function resetTrialReportColumnSetting(colIndex) {
+  const sheetName = trialReportState.activeSheetName;
+  if (!sheetName) return;
+  const setting = getTrialReportColumnFilterSetting(sheetName, colIndex);
+  setting.mode = "default";
+  setting.selectedValues = [];
+
+  const sortSetting = trialReportState.sort?.[sheetName];
+  if (sortSetting && Number(sortSetting.colIndex) === Number(colIndex)) {
+    delete trialReportState.sort[sheetName];
+  }
+
+  closeTrialReportColumnMenus();
+  renderTrialReportPreview();
+}
+
+function setTrialReportColumnCustomMode(colIndex) {
+  const { sheet, bodyRows } = getTrialReportSheetData();
+  if (!sheet) return;
+
+  const setting = getTrialReportColumnFilterSetting(sheet.name, colIndex);
+  const allValues = getTrialReportUniqueColumnValues(bodyRows, colIndex);
+  setting.mode = "custom";
+  if (!Array.isArray(setting.selectedValues) || setting.selectedValues.length === 0) {
+    setting.selectedValues = [...allValues];
+  }
+  renderTrialReportPreview();
+  openTrialReportColumnMenuByIndex(colIndex, true);
+}
+
+function clearAllTrialReportCustomValues(colIndex) {
+  const sheetName = trialReportState.activeSheetName;
+  if (!sheetName) return;
+  const setting = getTrialReportColumnFilterSetting(sheetName, colIndex);
+  setting.mode = "custom";
+  setting.selectedValues = [];
+  renderTrialReportPreview();
+  openTrialReportColumnMenuByIndex(colIndex, true);
+}
+
+function toggleTrialReportCustomValue(colIndex, value, checked) {
+  const sheetName = trialReportState.activeSheetName;
+  if (!sheetName) return;
+
+  const setting = getTrialReportColumnFilterSetting(sheetName, colIndex);
+  setting.mode = "custom";
+  const selectedSet = new Set(Array.isArray(setting.selectedValues) ? setting.selectedValues : []);
+  if (checked) selectedSet.add(value);
+  else selectedSet.delete(value);
+  setting.selectedValues = Array.from(selectedSet);
+
+  renderTrialReportPreview();
+  openTrialReportColumnMenuByIndex(colIndex, true);
+}
+
+function toggleTrialReportCustomValueEncoded(colIndex, encodedValue, checked) {
+  const decoded = decodeURIComponent(String(encodedValue || ""));
+  toggleTrialReportCustomValue(colIndex, decoded, checked);
+}
+
+function closeTrialReportColumnMenus() {
+  document.querySelectorAll(".trial-report-column-menu-container").forEach((el) => el.remove());
+}
+
+function openTrialReportColumnMenuByIndex(colIndex, forceCustom) {
+  const headerButton = document.querySelector(`.trial-report-th-btn[data-col-index="${colIndex}"]`);
+  if (!headerButton) return;
+  const fakeEvent = { currentTarget: headerButton, stopPropagation: () => {} };
+  openTrialReportColumnMenu(fakeEvent, colIndex, !!forceCustom);
+}
+
+function openTrialReportColumnMenu(event, colIndex, openCustomSubmenu = false) {
+  event.stopPropagation();
+  bindTrialReportMenuGlobalClose();
+
+  const { sheet, bodyRows } = getTrialReportSheetData();
+  if (!sheet) return;
+
+  const target = event.currentTarget;
+  if (!target) return;
+
+  closeTrialReportColumnMenus();
+
+  const setting = getTrialReportColumnFilterSetting(sheet.name, colIndex);
+  const sortSetting = trialReportState.sort?.[sheet.name];
+  const currentSort = sortSetting && Number(sortSetting.colIndex) === Number(colIndex) ? sortSetting.mode : "default";
+
+  const menu = document.createElement("div");
+  menu.className = "trial-report-column-menu-container";
+  menu.innerHTML = `
+    <div class="trial-report-column-menu" onclick="event.stopPropagation()">
+      <button type="button" class="trial-report-menu-item ${currentSort === "asc" ? "active" : ""}" onclick="setTrialReportColumnSort(${colIndex}, 'asc')">Ascending</button>
+      <button type="button" class="trial-report-menu-item ${currentSort === "desc" ? "active" : ""}" onclick="setTrialReportColumnSort(${colIndex}, 'desc')">Descending</button>
+      <button type="button" class="trial-report-menu-item ${setting.mode === "custom" ? "active" : ""}" onclick="setTrialReportColumnCustomMode(${colIndex})">Custom</button>
+      <button type="button" class="trial-report-menu-item" onclick="resetTrialReportColumnSetting(${colIndex})">Default</button>
+      <div class="trial-report-custom-submenu ${openCustomSubmenu || setting.mode === "custom" ? "active" : ""}">
+        <div class="trial-report-custom-actions">
+          <button type="button" class="trial-report-menu-item subtle" onclick="clearAllTrialReportCustomValues(${colIndex})">Clear all</button>
+        </div>
+        <div class="trial-report-custom-list">
+          ${getTrialReportUniqueColumnValues(bodyRows, colIndex)
+            .map((value) => {
+              const selected = Array.isArray(setting.selectedValues) && setting.selectedValues.includes(value);
+              const encodedValue = encodeURIComponent(value);
+              return `
+                <label class="trial-report-custom-item">
+                  <input type="checkbox" ${selected ? "checked" : ""} onchange="toggleTrialReportCustomValueEncoded(${colIndex}, '${encodedValue}', this.checked)">
+                  <span>${escapeHtml(getTrialReportFilterLabel(value))}</span>
+                </label>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(menu);
+
+  const rect = target.getBoundingClientRect();
+  const top = rect.bottom + 4;
+  const left = rect.left;
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+}
+
+function getTrialReportColumnMode(sheetName, colIndex) {
+  const setting = trialReportState.filters?.[sheetName]?.[colIndex];
+  const sortSetting = trialReportState.sort?.[sheetName];
+  if (sortSetting && Number(sortSetting.colIndex) === Number(colIndex)) {
+    return sortSetting.mode;
+  }
+  return setting?.mode || "default";
+}
+
+function renderTrialReportPreview() {
+  const tableEl = document.getElementById("trialReportPreviewTable");
+  if (!tableEl) return;
+
+  closeTrialReportColumnMenus();
+
+  const { sheet, header, bodyRows } = getTrialReportSheetData();
+  if (!sheet || header.length === 0) {
+    tableEl.innerHTML = "";
+    return;
+  }
+
+  const filteredRows = applyTrialReportFilters(bodyRows, sheet.name);
+  const finalRows = applyTrialReportSort(filteredRows, sheet.name);
+
+  const headHtml = `
+    <thead>
+      <tr>
+        ${header
+          .map((cell, colIdx) => {
+            const mode = getTrialReportColumnMode(sheet.name, colIdx);
+            const marker = mode === "asc"
+              ? "▲"
+              : mode === "desc"
+                ? "▼"
+                : mode === "custom"
+                  ? "●"
+                  : "";
+            const isFirstCol = colIdx === 0;
+            const displayText = isFirstCol ? "" : String(cell ?? "");
+            return `
+              <th class="${isFirstCol ? "trial-report-col-first" : ""}">
+                <button type="button" class="trial-report-th-btn ${isFirstCol ? "trial-report-th-btn-first" : ""}" data-col-index="${colIdx}" onclick="openTrialReportColumnMenu(event, ${colIdx})">
+                  <span class="trial-report-th-text">${escapeHtml(displayText)}</span>
+                  <span class="material-symbols-rounded trial-report-th-marker ">filter_alt</span>
+                </button>
+              </th>
+            `;
+          })
+          .join("")}
+      </tr>
+    </thead>
+  `;
+  const bodyHtml = finalRows.length > 0
+    ? `<tbody>${finalRows
+      .map((row) => `<tr>${header.map((_, idx) => `<td class="${idx === 0 ? "trial-report-col-first" : ""}">${escapeHtml(String(row[idx] ?? ""))}</td>`).join("")}</tr>`)
+      .join("")}</tbody>`
+    : `<tbody><tr><td colspan="${Math.max(header.length, 1)}" class="trial-report-empty">No rows</td></tr></tbody>`;
+
+  tableEl.innerHTML = `${headHtml}${bodyHtml}`;
+}
+
+function downloadTrialReportExcel() {
+  if (typeof XLSX === "undefined") {
+    showToast("Excel library not loaded. Please try again.", "error");
+    return;
+  }
+
+  const sheets = trialReportState.sheets || [];
+  if (sheets.length === 0) {
+    showToast("No report data available", "error");
+    return;
+  }
+
+  const workbook = XLSX.utils.book_new();
+
+  sheets.forEach((sheet) => {
+    const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    if (rows.length > 0) {
+      const maxScanRows = Math.min(rows.length, 300);
+      const maxCols = rows.reduce((acc, row) => Math.max(acc, row.length || 0), 0);
+      const widths = [];
+      for (let col = 0; col < maxCols; col++) {
+        let maxLen = 8;
+        for (let r = 0; r < maxScanRows; r++) {
+          const value = String(rows[r]?.[col] ?? "");
+          if (value.length > maxLen) maxLen = value.length;
+        }
+        widths.push({ wch: Math.min(maxLen + 2, 45) });
+      }
+      ws["!cols"] = widths;
+    }
+
+    XLSX.utils.book_append_sheet(workbook, ws, sheet.name);
+  });
+
+  const safeName = (trialReportState.trialName || "Trial")
+    .replace(/[^a-zA-Z0-9_\- ]/g, "")
+    .trim()
+    .replace(/\s+/g, "_") || "Trial";
+
+  XLSX.writeFile(workbook, `${safeName}_Report.xlsx`);
+  showToast("Report exported successfully", "success");
+}
+
+function buildTrialReportWorkbookData(trial) {
+  const usedNames = new Set();
+  const sheets = [];
+
+  const addSheet = (baseName, rows) => {
+    const name = makeUniqueReportSheetName(baseName, usedNames);
+    sheets.push({ name, rows: Array.isArray(rows) ? rows : [] });
+  };
+
+  addSheet("General", buildTrialGeneralSheetRows(trial));
+
+  const trialParameters = (trial.parameters || [])
+    .map((paramId) => inventoryState.items.parameters.find((p) => p.id === paramId))
+    .filter(Boolean);
+
+  (trial.areas || []).forEach((area, areaIndex) => {
+    const areaLabel = (area?.name || `Area ${areaIndex + 1}`).trim() || `Area ${areaIndex + 1}`;
+    addSheet(`${areaLabel}_Observation`, buildTrialObservationSheetRows(trial, area, areaIndex, trialParameters));
+    addSheet(`${areaLabel}_Agronomy`, buildTrialAgronomySheetRows(trial, area, areaIndex));
+  });
+
+  return { sheets };
+}
+
+function makeUniqueReportSheetName(baseName, usedNames) {
+  const fallback = "Sheet";
+  let cleaned = String(baseName || fallback)
+    .replace(/[\\/?*\[\]:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) cleaned = fallback;
+  cleaned = cleaned.slice(0, 31);
+
+  let name = cleaned;
+  let counter = 2;
+  while (usedNames.has(name)) {
+    const suffix = `_${counter}`;
+    const stem = cleaned.slice(0, Math.max(31 - suffix.length, 1));
+    name = `${stem}${suffix}`;
+    counter += 1;
+  }
+
+  usedNames.add(name);
+  return name;
+}
+
+function buildTrialGeneralSheetRows(trial) {
+  const rows = [["Field", "Value"]];
+
+  const location = inventoryState.items.locations?.find((l) => l.id === trial.locationId);
+  const progress = calculateCombinedTrialProgress(trial);
+  const trialParameters = (trial.parameters || [])
+    .map((paramId) => inventoryState.items.parameters.find((p) => p.id === paramId))
+    .filter(Boolean);
+  const formulaParams = trialParameters.filter((p) => (p.type || "").toLowerCase() === "formula");
+  const nonFormulaParams = trialParameters.filter((p) => (p.type || "").toLowerCase() !== "formula");
+  const agronomyItems = getTrialAgronomyItems(trial);
+
+  rows.push(["Trial Name", trial.name || ""]);
+  rows.push(["Description", trial.description || ""]);
+  rows.push(["Crop", trial.cropName || ""]);
+  rows.push(["Trial Type", trial.trialType || ""]);
+  rows.push(["Experimental Design", trial.expDesign || ""]);
+  rows.push(["No. of Factors", trial.trialFactors || ""]);
+  rows.push(["Planting Window", `${trial.plantingStart || ""} - ${trial.plantingEnd || ""}`.trim()]);
+  rows.push(["Planting Date", trial.plantingDate || ""]);
+  rows.push(["Location", location?.name || ""]);
+  rows.push(["Areas", String((trial.areas || []).length)]);
+  rows.push(["Observation Progress", `${progress.obs.completed}/${progress.obs.total} (${progress.obs.percentage}%)`]);
+  rows.push(["Agronomy Progress", `${progress.agro.completed}/${progress.agro.total} (${progress.agro.percentage}%)`]);
+  rows.push(["Overall Progress", `${progress.completed}/${progress.total} (${progress.percentage}%)`]);
+  rows.push(["Observation Parameters", String(nonFormulaParams.length)]);
+  rows.push([
+    "Observation Parameter List",
+    nonFormulaParams.map((p) => `${p.name || ""}${p.initial ? ` (${p.initial})` : ""}`).join("; "),
+  ]);
+  rows.push(["Formula Parameters", String(formulaParams.length)]);
+  rows.push([
+    "Formula Parameter List",
+    formulaParams.map((p) => `${p.name || ""}${p.formula ? ` = ${p.formula}` : ""}`).join("; "),
+  ]);
+  rows.push(["Agronomy Items", String(agronomyItems.length)]);
+  rows.push([
+    "Agronomy Item List",
+    agronomyItems.map((item) => item.activity || item.name || "").join("; "),
+  ]);
+  rows.push(["Created At", formatReportTimestamp(trial.createdAt)]);
+  rows.push(["Updated At", formatReportTimestamp(trial.updatedAt)]);
+
+  (trial.areas || []).forEach((area, areaIndex) => {
+    const areaName = area?.name || `Area ${areaIndex + 1}`;
+    let lineCount = 0;
+    if (area?.layout?.result) {
+      area.layout.result.forEach((rep) => {
+        rep.forEach((row) => {
+          row.forEach((cell) => {
+            if (cell) lineCount += 1;
+          });
+        });
+      });
+    }
+    rows.push([`Area ${areaIndex + 1} Name`, areaName]);
+    rows.push([`Area ${areaIndex + 1} Address`, area?.address || ""]);
+    rows.push([`Area ${areaIndex + 1} Size (ha)`, area?.areaSize?.hectares ?? ""]);
+    rows.push([`Area ${areaIndex + 1} Plot Count`, String(lineCount)]);
+  });
+
+  return rows;
+}
+
+function buildTrialObservationSheetRows(trial, area, areaIndex, trialParameters) {
+  const rows = [[
+    "Nomor",
+    "Area",
+    "Replication",
+    "Line",
+    "Sample",
+    "Parameter",
+    "Value",
+    "Unit",
+    "Timestamp",
+  ]];
+
+  if (!area?.layout?.result || !Array.isArray(trialParameters) || trialParameters.length === 0) {
+    return rows;
+  }
+
+  const areaName = area.name || `Area ${areaIndex + 1}`;
+  const formulaParams = trialParameters.filter((p) => (p.type || "").toLowerCase() === "formula");
+  const nonFormulaParams = trialParameters.filter((p) => (p.type || "").toLowerCase() !== "formula");
+  let rowNumber = 1;
+
+  area.layout.result.forEach((rep, repIndex) => {
+    rep.forEach((row) => {
+      row.forEach((cell) => {
+        if (!cell) return;
+
+        nonFormulaParams.forEach((param) => {
+          const sampleCount = Math.max(1, Number(param.numberOfSamples || 1));
+          for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+            const observation = getObservationReportEntry(
+              trial,
+              areaIndex,
+              param,
+              cell.id,
+              repIndex,
+              sampleIndex,
+            );
+
+            rows.push([
+              rowNumber++,
+              areaName,
+              repIndex + 1,
+              cell.name || "",
+              sampleIndex + 1,
+              param.name || "",
+              observation.value,
+              param.unit || "",
+              formatReportTimestamp(observation.timestamp),
+            ]);
+          }
+        });
+
+        if (formulaParams.length > 0) {
+          const formulaContext = buildFormulaObservationContext(
+            trial,
+            areaIndex,
+            cell.id,
+            repIndex,
+            nonFormulaParams,
+          );
+
+          formulaParams.forEach((formulaParam) => {
+            const formulaResult = evaluateFormulaForReport(formulaParam.formula, formulaContext.values);
+            const value = formulaResult.ok ? formulaResult.value : "";
+
+            rows.push([
+              rowNumber++,
+              areaName,
+              repIndex + 1,
+              cell.name || "",
+              1,
+              formulaParam.name || "",
+              value,
+              formulaParam.unit || "",
+              "",
+            ]);
+          });
+        }
+      });
+    });
+  });
+
+  return rows;
+}
+
+function buildTrialAgronomySheetRows(trial, area, areaIndex) {
+  const rows = [[
+    "Area",
+    "Activity",
+    "DAP Min",
+    "DAP Max",
+    "Chemical",
+    "Dose",
+    "Remark",
+    "Application Date",
+    "Timestamp",
+  ]];
+
+  const items = getTrialAgronomyItems(trial);
+  const areaName = area?.name || `Area ${areaIndex + 1}`;
+
+  if (items.length === 0) return rows;
+
+  items.forEach((item) => {
+    const response = trial.agronomyResponses?.[areaIndex]?.[item.id] || {};
+
+    rows.push([
+      areaName,
+      item.activity || item.name || "",
+      item.dapMin ?? "",
+      item.dapMax ?? "",
+      item.chemical || "",
+      item.dose || "",
+      item.remark || "",
+      formatReportTimestamp(response.applicationDate),
+      formatReportTimestamp(response.timestamp),
+    ]);
+  });
+
+  return rows;
+}
+
+function getObservationReportEntry(trial, areaIndex, param, lineId, repIndex, sampleIndex) {
+  const areaResponses = trial.responses?.[areaIndex]?.[param.id] || {};
+  const sampleKey = `${lineId}_${repIndex}_${sampleIndex}`;
+  const legacyKey = `${lineId}_${repIndex}`;
+
+  const valueEntry = areaResponses[sampleKey] || (sampleIndex === 0 ? areaResponses[legacyKey] : null) || {};
+  const value = valueEntry?.value ?? "";
+
+  let photoKey = sampleKey;
+  const photoMode = param.photoMode || "per-sample";
+  if (photoMode === "per-line") {
+    photoKey = `${lineId}_${repIndex}`;
+  }
+
+  const photoEntry = areaResponses[photoKey] || {};
+  const photoList = Array.isArray(photoEntry.photos) ? photoEntry.photos : [];
+  const timestamp = valueEntry.timestamp || photoEntry.timestamp || "";
+
+  return {
+    value,
+    hasPhoto: photoList.length > 0,
+    photoCount: photoList.length,
+    timestamp,
+  };
+}
+
+function formatReportTimestamp(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+function buildFormulaObservationContext(trial, areaIndex, lineId, repIndex, nonFormulaParams) {
+  const values = {};
+
+  nonFormulaParams.forEach((param) => {
+    const numeric = getNumericObservationAggregate(trial, areaIndex, param, lineId, repIndex);
+    if (numeric === null) return;
+
+    const tokens = [];
+    if (param.initial) tokens.push(String(param.initial).trim());
+    if (param.name) tokens.push(String(param.name).trim().replace(/\s+/g, "_"));
+
+    tokens.forEach((token) => {
+      if (!token) return;
+      values[token] = numeric;
+    });
+  });
+
+  return { values };
+}
+
+function getNumericObservationAggregate(trial, areaIndex, param, lineId, repIndex) {
+  const sampleCount = Math.max(1, Number(param.numberOfSamples || 1));
+  const nums = [];
+
+  for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+    const entry = getObservationReportEntry(trial, areaIndex, param, lineId, repIndex, sampleIndex);
+    const parsed = parseReportNumber(entry.value);
+    if (parsed !== null) nums.push(parsed);
+  }
+
+  if (nums.length === 0) return null;
+  const sum = nums.reduce((acc, val) => acc + val, 0);
+  return Number((sum / nums.length).toFixed(6));
+}
+
+function parseReportNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const normalized = String(value).trim().replace(/,/g, ".");
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function evaluateFormulaForReport(formula, contextValues) {
+  const source = String(formula || "").trim();
+  if (!source) return { ok: false, value: "", references: [] };
+
+  const compact = source.replace(/\s+/g, "");
+  const tokens = compact.match(/([A-Za-z_][A-Za-z0-9_]*|\d*\.?\d+|[()+\-*/])/g);
+  if (!tokens || tokens.join("") !== compact) {
+    return { ok: false, value: "", references: [] };
+  }
+
+  const references = [];
+  let expression = "";
+
+  for (const token of tokens) {
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) {
+      references.push(token);
+      const value = contextValues[token];
+      if (value === undefined || value === null || !Number.isFinite(Number(value))) {
+        return { ok: false, value: "", references };
+      }
+      expression += `(${Number(value)})`;
+    } else {
+      expression += token;
+    }
+  }
+
+  if (!/^[0-9()+\-*/.\s]+$/.test(expression)) {
+    return { ok: false, value: "", references };
+  }
+
+  try {
+    const result = Function(`"use strict"; return (${expression});`)();
+    if (!Number.isFinite(result)) {
+      return { ok: false, value: "", references };
+    }
+    return { ok: true, value: Number(result.toFixed(6)), references };
+  } catch (_) {
+    return { ok: false, value: "", references };
   }
 }
 
@@ -6386,6 +7355,30 @@ function showTrialDetail(trialId) {
 
   </div>
 
+  <div class='td-container grid-2'>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">dashboard_customize</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Experimental Design</div>
+        <div class='td-value'>${escapeHtml(trial.expDesign ? ({CRD:'Completely Randomized Design (CRD)',RBD:'Randomized Block Design (RBD)',LSD:'Latin Square Design (LSD)'}[trial.expDesign] || trial.expDesign) : "-")}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">category</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>No. of Factors</div>
+        <div class='td-value'>${escapeHtml(trial.trialFactors || "-")}</div>
+      </div>
+    </div>
+
+  </div>
+
   <div class='td-container'>
 
     <div class='td-section td-param'>
@@ -6427,8 +7420,8 @@ function showTrialDetail(trialId) {
             const meta = [dap, item.chemical, item.dose].filter(Boolean).join(' · ');
             return `
             <div class='td-item'>
-              <span class="material-symbols-rounded td-param-icon">agriculture</span>
-              <span class="td-param-name">${escapeHtml(item.activity || item.name || '-')}${meta ? '<br><small style="color:var(--text-tertiary);font-weight:400">' + escapeHtml(meta) + '</small>' : ''}</span>
+              <span class="material-symbols-rounded td-param-icon">radio_button_checked</span>
+              <span class="td-param-name">${escapeHtml(item.activity || item.name || '-')}</span>
             </div>`;
           }).join('')}
         </div>
