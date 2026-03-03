@@ -9,6 +9,13 @@ let driveState = {
   categoryFolderIds: {},
 };
 
+function handleDriveAuthError(error, contextMessage = "Session expired") {
+  if (typeof handleAuthExpiredError === "function") {
+    return handleAuthExpiredError(error, contextMessage);
+  }
+  return false;
+}
+
 // Initialize Drive structure
 async function initializeDriveStructure() {
   try {
@@ -32,6 +39,7 @@ async function initializeDriveStructure() {
 
     return true;
   } catch (error) {
+    handleDriveAuthError(error, "Google Drive session expired");
     console.error("Error initializing Drive structure:", error);
     throw error;
   }
@@ -50,6 +58,7 @@ async function getOrCreateFolder(folderName, parentFolderId = null) {
     const folderId = await createFolder(folderName, parentFolderId);
     return folderId;
   } catch (error) {
+    handleDriveAuthError(error, `Google Drive session expired while accessing ${folderName}`);
     console.error(`Error getting or creating folder ${folderName}:`, error);
     throw error;
   }
@@ -74,6 +83,7 @@ async function findFolder(folderName, parentFolderId = null) {
     const files = response.result.files || [];
     return files.length > 0 ? files[0] : null;
   } catch (error) {
+    handleDriveAuthError(error, `Google Drive session expired while finding ${folderName}`);
     console.error(`Error finding folder ${folderName}:`, error);
     throw error;
   }
@@ -98,6 +108,7 @@ async function createFolder(folderName, parentFolderId = null) {
 
     return response.result.id;
   } catch (error) {
+    handleDriveAuthError(error, `Google Drive session expired while creating ${folderName}`);
     console.error(`Error creating folder ${folderName}:`, error);
     throw error;
   }
@@ -192,6 +203,7 @@ async function saveItemToGoogleDrive(category, item) {
 
     return true;
   } catch (error) {
+    handleDriveAuthError(error, "Google Drive session expired while saving data");
     console.error(`Error saving item to Google Drive:`, error);
     throw error;
   }
@@ -210,6 +222,7 @@ async function saveItemsToGoogleDrive(category, items) {
     }
     return true;
   } catch (error) {
+    handleDriveAuthError(error, "Google Drive session expired while saving data");
     console.error(`Error saving items to Google Drive:`, error);
     throw error;
   }
@@ -234,6 +247,7 @@ async function findFile(fileName, parentFolderId) {
     const files = response.result.files || [];
     return files.length > 0 ? files[0] : null;
   } catch (error) {
+    handleDriveAuthError(error, `Google Drive session expired while finding ${fileName}`);
     console.error(`Error finding file ${fileName}:`, error);
     throw error;
   }
@@ -264,6 +278,7 @@ async function loadItemsFromGoogleDrive(category) {
 
     return items;
   } catch (error) {
+    handleDriveAuthError(error, "Google Drive session expired while loading data");
     console.error(`Error loading items from Google Drive:`, error);
     throw error;
   }
@@ -294,6 +309,7 @@ async function getFileContent(fileId) {
 
     return await response.json();
   } catch (error) {
+    handleDriveAuthError(error, "Google Drive session expired while fetching file content");
     console.error(`Error getting file content:`, error);
     throw error;
   }
@@ -338,6 +354,7 @@ async function deleteItemFromGoogleDrive(category, itemId) {
 
     return false;
   } catch (error) {
+    handleDriveAuthError(error, "Google Drive session expired while deleting data");
     console.error(`Error deleting item from Google Drive:`, error);
     throw error;
   }
@@ -357,6 +374,7 @@ async function getItemCount(category) {
     const files = response.result.files || [];
     return files.length;
   } catch (error) {
+    handleDriveAuthError(error, "Google Drive session expired while reading item count");
     console.error(`Error getting item count:`, error);
     return 0;
   }

@@ -469,13 +469,15 @@ function _renderDashReminderSection(type) {
 
   if (shown.length === 0) {
     const label = type === "observation" ? "observation" : "agronomy";
-    container.classList.add("empty-grid")
+    container.classList.add("empty-grid");
     container.innerHTML = `
       <div class="empty-state-small">
         <span class="material-symbols-rounded">event_available</span>
         <p>No pending ${label} reminders</p>
       </div>`;
     return;
+  } else {
+    container.classList.remove("empty-grid");
   }
 
   const iconMap = { overdue: "error", today: "today", upcoming: "schedule" };

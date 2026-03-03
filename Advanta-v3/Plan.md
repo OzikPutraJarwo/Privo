@@ -18,7 +18,7 @@
 - [x] `Trial > Trial Management` General: Add plot length (number)
 - [x] `Trial > Trial Management` General: Add plant spacing (number, 2 column, width * height in cm)
 - [x] `Trial > Trial Management` General: Add plot area (no of rows per plot * plot length * plant spacing width)
-- [x] `Trial > Trial Management` General: Add expected number of plants per plot (plot length / plant spacing height * no. of rows per plot)
+- [x] `Trial > Trial Management` General: Add expected number of plants per plot
 - [x] `Trial > Trial Management` General: Population per ha (10000m^2 / plant spacing in m)
 - [x] `Trial > Trial Management` Location: no city names on map
 - [x] `Trial > Trial Management` Location: centered to Indonesia, not to Jakarta
@@ -69,3 +69,12 @@
 - [ ] Grid and list layout
 - [x] Remove .modal-header from Create and Edit Trial
 - [x] Edit trial selected parameters bug (now showing all, only with DoO)
+
+### Mar 1, 2026
+
+#### Update
+- [x] `Trial` Planting Seasons
+- [x] `Trial` No. of Factors, Treatments
+- [x] `Trial` Type of Pollination
+#### Bug Fixes and Redesigns
+- [x] Automatic logout when error initializing happened

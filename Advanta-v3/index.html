@@ -184,7 +184,7 @@
             <div class="dashboard-grid">
               <div class="dashboard-card" data-category="crops">
                 <div class="card-icon crops">
-                  <span class="material-symbols-rounded">agriculture</span>
+                  <span class="material-symbols-rounded">psychiatry</span>
                 </div>
                 <div class="card-content">
                   <h3>Crops</h3>
@@ -220,7 +220,7 @@
               </div>
               <div class="dashboard-card" data-category="agronomy">
                 <div class="card-icon agronomy">
-                  <span class="material-symbols-rounded">eco</span>
+                  <span class="material-symbols-rounded">local_florist</span>
                 </div>
                 <div class="card-content">
                   <h3>Agronomy</h3>
@@ -265,7 +265,7 @@
             <div class="dashboard-section">
               <div class="dashboard-section-header">
                 <h3>
-                  <span class="material-symbols-rounded">eco</span>
+                  <span class="material-symbols-rounded">local_florist</span>
                   Agronomy Reminders
                 </h3>
                 <button class="dash-view-all-btn" id="dashViewAllAgroReminders">
@@ -467,24 +467,36 @@
             <div id="trialEditor" class="trial-editor trial-fullscreen-interface">
               <div class="modal-content trial-editor-content">
                 <div class="trial-section-nav">
-                  <div class="section-nav-item active" data-section="general">
+                  <div class="section-nav-item active" data-section="basic">
                     <div class="section-nav-number">1</div>
-                    <div class="section-nav-text">General</div>
+                    <div class="section-nav-text">Basic Info</div>
                   </div>
-                  <div class="section-nav-item" data-section="location">
+                  <div class="section-nav-item" data-section="experiment">
                     <div class="section-nav-number">2</div>
-                    <div class="section-nav-text">Location</div>
+                    <div class="section-nav-text">Experiment</div>
+                  </div>
+                  <div class="section-nav-item" data-section="plotspec">
+                    <div class="section-nav-number">3</div>
+                    <div class="section-nav-text">Plot Spec</div>
+                  </div>
+                  <div class="section-nav-item" data-section="observation">
+                    <div class="section-nav-number">4</div>
+                    <div class="section-nav-text">Obs & Agronomy</div>
+                  </div>
+                  <div class="section-nav-item" data-section="field">
+                    <div class="section-nav-number">5</div>
+                    <div class="section-nav-text">Field</div>
                   </div>
                   <div class="section-nav-item" data-section="layouting">
-                    <div class="section-nav-number">3</div>
+                    <div class="section-nav-number">6</div>
                     <div class="section-nav-text">Layouting</div>
                   </div>
                 </div>
         
                 <div class="modal-body modal-body-scrollable">
                   <form id="trialForm">
-                    <div class="trial-section active" id="trialSectionGeneral">
-                      <h4 class="trial-form-section-title">General Information</h4>
+                    <div class="trial-section active" id="trialSectionBasic">
+                      <h4 class="trial-form-section-title">Basic Information</h4>
                       <div class="form-group">
                         <label for="trialName">Trial Name</label>
                         <input type="text" id="trialName" placeholder="Enter trial name" required>
@@ -512,16 +524,36 @@
                         <small class="form-hint">Actual planting date (used for agronomy scheduling)</small>
                       </div>
                       <div class="form-group">
+                        <label for="trialPlantingSeason">Planting Season</label>
+                        <select id="trialPlantingSeason" required>
+                          <option value="">Select planting season</option>
+                          <option value="Wet Season">Wet Season</option>
+                          <option value="Dry Season">Dry Season</option>
+                        </select>
+                      </div>
+                      <div class="form-group">
                         <label for="trialCrops">Crops</label>
                         <select id="trialCrops" required>
                           <option value="">Select crop</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="trial-section" id="trialSectionExperiment">
+                      <h4 class="trial-form-section-title">Experiment Setup</h4>
+                      <div class="form-group">
+                        <label for="trialPollination">Type of Pollination</label>
+                        <select id="trialPollination" required>
+                          <option value="">Select type of pollination</option>
+                          <option value="Selfing">Selfing</option>
+                          <option value="Crossing">Crossing</option>
                         </select>
                       </div>
                       <div class="form-group">
                         <label for="trialType">Trial Type</label>
                         <select id="trialType" required>
                           <option value="">Select trial type</option>
-                          <option value="Parent Test">Parent Test</option>
+                          <!-- Options populated dynamically based on pollination -->
                         </select>
                       </div>
                       <div class="form-group">
@@ -535,46 +567,145 @@
                       </div>
                       <div class="form-group">
                         <label for="trialFactors">No. of Factors</label>
-                        <select id="trialFactors">
-                          <option value="">Select factors</option>
-                          <option value="Single">Single</option>
-                          <option value="Factorial">Factorial</option>
-                        </select>
+                        <input type="number" id="trialFactors" min="1" step="1" value="1" placeholder="Enter number of factors">
+                        <small class="form-hint">Minimum 1 factor</small>
                       </div>
-                      <div class="form-group">
-                        <label for="trialRowsPerPlot">Number of Rows per Plot</label>
-                        <input type="number" id="trialRowsPerPlot" min="0" step="1" placeholder="e.g., 4">
-                      </div>
-                      <div class="form-group">
-                        <label for="trialPlotLength">Plot Length (m)</label>
-                        <input type="number" id="trialPlotLength" min="0" step="0.01" placeholder="e.g., 5">
-                      </div>
-                      <div class="form-group">
-                        <label>Plant Spacing (cm)</label>
-                        <div class="form-grid-3 plant-spacing-grid">
-                          <div>
-                            <input type="number" id="trialPlantSpacingWidth" min="0" step="0.01" placeholder="Width">
-                            <small class="form-hint">Width</small>
-                          </div>
-                          <div class="form-grid-separator">×</div>
-                          <div>
-                            <input type="number" id="trialPlantSpacingHeight" min="0" step="0.01" placeholder="Height">
-                            <small class="form-hint">Height</small>
-                          </div>
+                      <div class="form-group" id="trialTreatmentsGroup">
+                        <label>Factors & Treatments</label>
+                        <div id="trialTreatmentsContainer">
+                          <!-- Dynamic factor configuration inputs -->
                         </div>
                       </div>
-                      <div class="form-group">
-                        <label for="trialPlotArea">Plot Area (m²)</label>
-                        <input type="text" id="trialPlotArea" readonly placeholder="Auto-calculated">
+                    </div>
+
+                    <div class="trial-section" id="trialSectionPlotSpec">
+                      <h4 class="trial-form-section-title">Plot Specification</h4>
+                      <div id="plotSpecLockNotice" class="form-hint-block">
+                        Pilih <strong>Type of Pollination</strong> dan <strong>Trial Type</strong> di section Experiment terlebih dahulu.
                       </div>
-                      <div class="form-group">
-                        <label for="trialExpectedPlants">Expected Number of Plants per Plot</label>
-                        <input type="text" id="trialExpectedPlants" readonly placeholder="Auto-calculated">
+                      <div id="plotSpecContent" class="hidden">
+                      <!-- Parent Test / Process Research fields -->
+                      <div id="plotSpecParentTest">
+                        <div class="form-group">
+                          <label for="trialRowsPerPlot">Number of Rows per Plot</label>
+                          <input type="number" id="trialRowsPerPlot" min="0" step="1" placeholder="e.g., 4">
+                        </div>
+                        <div class="form-group">
+                          <label for="trialPlotLength">Plot Length (m)</label>
+                          <input type="number" id="trialPlotLength" min="0" step="0.01" placeholder="e.g., 5">
+                        </div>
+                        <div class="form-group">
+                          <label>Plant Spacing (cm)</label>
+                          <div class="form-grid-3 plant-spacing-grid">
+                            <div>
+                              <input type="number" id="trialPlantSpacingWidth" min="0" step="0.01" placeholder="Width">
+                              <small class="form-hint">Width</small>
+                            </div>
+                            <div class="form-grid-separator">×</div>
+                            <div>
+                              <input type="number" id="trialPlantSpacingHeight" min="0" step="0.01" placeholder="Height">
+                              <small class="form-hint">Height</small>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="form-group">
+                          <label for="trialPlotArea">Plot Area (m²)</label>
+                          <input type="text" id="trialPlotArea" readonly placeholder="Auto-calculated">
+                        </div>
+                        <div class="form-group">
+                          <label for="trialExpectedPlants">Expected Number of Plants per Plot</label>
+                          <input type="text" id="trialExpectedPlants" readonly placeholder="Auto-calculated">
+                        </div>
+                        <div class="form-group">
+                          <label for="trialPopulationHa">Population per Hectare</label>
+                          <input type="text" id="trialPopulationHa" readonly placeholder="Auto-calculated">
+                        </div>
                       </div>
-                      <div class="form-group">
-                        <label for="trialPopulationHa">Population per Hectare</label>
-                        <input type="text" id="trialPopulationHa" readonly placeholder="Auto-calculated">
+
+                      <!-- Micropilot fields -->
+                      <div id="plotSpecMicropilot" class="hidden">
+                        <div class="form-group">
+                          <label for="trialMpPanel">Panel</label>
+                          <input type="number" id="trialMpPanel" min="0" step="1" placeholder="e.g., 3">
+                        </div>
+                        <div class="form-group">
+                          <label for="trialRatioFemale">Ratio Female : Male</label>
+                          <div class="form-grid-3 plant-spacing-grid">
+                            <div>
+                              <input type="number" id="trialRatioFemale" min="0" step="1" placeholder="Female">
+                              <small class="form-hint">Female</small>
+                            </div>
+                            <div class="form-grid-separator">:</div>
+                            <div>
+                              <input type="number" id="trialRatioMale" min="0" step="1" placeholder="Male">
+                              <small class="form-hint">Male</small>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="form-group">
+                          <label for="trialMpFemaleLineNames">Name Female Lines</label>
+                          <textarea id="trialMpFemaleLineNames" rows="2" placeholder="e.g., UBASK F1, UBASK F2"></textarea>
+                        </div>
+                        <div class="td-grid grid-3">
+                          <div class="form-group">
+                            <label for="trialMpTotalFemaleRows">Total Female Rows</label>
+                            <input type="text" id="trialMpTotalFemaleRows" readonly placeholder="Auto-calculated">
+                          </div>
+                          <div class="form-group">
+                            <label for="trialMpExpectedFemale">Female Population/plot</label>
+                            <input type="text" id="trialMpExpectedFemale" readonly placeholder="Auto-calculated">
+                          </div>
+                          <div class="form-group">
+                            <label for="trialMpPopFemale">Female Population/ha</label>
+                            <input type="text" id="trialMpPopFemale" readonly placeholder="Auto-calculated">
+                          </div>
+                        </div>
+                        <div class="form-group">
+                          <label for="trialMpMaleLineNames">Name Male Lines</label>
+                          <textarea id="trialMpMaleLineNames" rows="2" placeholder="e.g., UBASK M1"></textarea>
+                        </div>
+                        <div class="td-grid grid-3">
+                          <div class="form-group">
+                            <label for="trialMpTotalMaleRows">Total Male Rows</label>
+                            <input type="text" id="trialMpTotalMaleRows" readonly placeholder="Auto-calculated">
+                          </div>
+                          <div class="form-group">
+                            <label for="trialMpExpectedMale">Male Population/plot</label>
+                            <input type="text" id="trialMpExpectedMale" readonly placeholder="Auto-calculated">
+                          </div>
+                          <div class="form-group">
+                            <label for="trialMpPopMale">Male Population/ha</label>
+                            <input type="text" id="trialMpPopMale" readonly placeholder="Auto-calculated">
+                          </div>
+                        </div>
+                        <div class="form-group">
+                          <label for="trialMpPlotLength">Plot Length (m)</label>
+                          <input type="number" id="trialMpPlotLength" min="0" step="0.01" placeholder="e.g., 5">
+                        </div>
+                        <div class="form-group">
+                          <label>Plant Spacing (cm)</label>
+                          <div class="form-grid-3 plant-spacing-grid">
+                            <div>
+                              <input type="number" id="trialMpSpacingWidth" min="0" step="0.01" placeholder="Width">
+                              <small class="form-hint">Width</small>
+                            </div>
+                            <div class="form-grid-separator">×</div>
+                            <div>
+                              <input type="number" id="trialMpSpacingHeight" min="0" step="0.01" placeholder="Height">
+                              <small class="form-hint">Height</small>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="form-group">
+                          <label for="trialMpPlotArea">Plot Area (ha)</label>
+                          <input type="text" id="trialMpPlotArea" readonly placeholder="Auto-calculated">
+                        </div>
                       </div>
+                      </div>
+                    </div>
+
+                    <div class="trial-section" id="trialSectionObservation">
+                      <h4 class="trial-form-section-title">Observation & Agronomy Setup</h4>
                       <div class="form-group">
                         <label for="parameterSearch">Observation Parameters</label>
                         <div class="dual-picklist">
@@ -656,8 +787,8 @@
                       </div>
                     </div>
         
-                    <div class="trial-section" id="trialSectionLocation">
-                      <h4 class="trial-form-section-title">Location & Area Drawing</h4>
+                    <div class="trial-section" id="trialSectionField">
+                      <h4 class="trial-form-section-title">Field Mapping</h4>
                       <div class="form-group">
                         <label for="trialLocation">Location (from Inventory)</label>
                         <select id="trialLocation">
@@ -722,7 +853,7 @@
                         </small>
                       </div>
                     </div>
-        
+
                     <div class="trial-section" id="trialSectionLayouting">
                       <h4 class="trial-section-title">Trial Layouting</h4>
                       <div id="layoutingAreasContainer" class="layouting-areas">
@@ -733,9 +864,8 @@
                 </div>
         
                 <div class="modal-footer modal-footer-spaced">
-                  <button class="btn btn-secondary" id="trialModalCancelBtn">Cancel</button>
-                  <div class="modal-footer-actions">
-                    <button class="btn btn-secondary hidden" id="trialPrevBtn">Previous</button>
+                  <button class="btn btn-secondary hidden" id="trialPrevBtn">Previous</button>
+                  <div class="modal-footer-actions" style="margin-left: auto;">
                     <button class="btn btn-primary" id="trialNextBtn">Next</button>
                     <button class="btn btn-primary hidden" id="trialModalSaveBtn">Save Trial</button>
                   </div>
@@ -779,7 +909,7 @@
                   <div class="run-trial-content">
                     <div id="agronomyQuestionCard" class="run-question-card">
                       <div class="run-empty-state">
-                        <span class="material-symbols-rounded">agriculture</span>
+                        <span class="material-symbols-rounded">local_florist</span>
                         <p>Select an agronomy item from the navigation to start monitoring</p>
                       </div>
                     </div>

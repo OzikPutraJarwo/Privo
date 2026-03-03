@@ -937,6 +937,7 @@ function renderInventoryItems() {
   container.classList.toggle("agronomy-view", isAgronomy);
 
   if (items.length === 0) {
+    container.classList.add("empty-grid");
     container.innerHTML = `
             <div class="empty-state">
                 <span class="material-symbols-rounded">inbox</span>
@@ -944,6 +945,8 @@ function renderInventoryItems() {
             </div>
         `;
     return;
+  } else {
+    container.classList.remove("empty-grid");
   }
 
   // Special rendering for Crops with nested Lines
@@ -1294,7 +1297,7 @@ function showCropLinesPopup(cropId) {
       <div class="library-preview crop-lines-preview">
         ${relatedLines.length === 0
           ? `<div class="crop-lines-empty">
-              <span class="material-symbols-rounded">eco</span>
+              <span class="material-symbols-rounded">psychiatry</span>
               <p>No lines yet for this crop.</p>
             </div>`
           : `<div class="crop-lines-list">

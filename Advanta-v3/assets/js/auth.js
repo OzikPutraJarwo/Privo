@@ -22,6 +22,7 @@ let accessToken = null;
 let tokenExpiresAt = null;
 let tokenRefreshTimer = null;
 let tokenCountdownTimer = null;
+let authExpiryHandlingInProgress = false;
 
 // Token refresh interval: 50 minutes (tokens expire at ~60min)
 const TOKEN_REFRESH_INTERVAL = 50 * 60 * 1000;
@@ -315,6 +316,49 @@ function getAccessToken() {
   return accessToken || localStorage.getItem("accessToken");
 }
 
+function isAuthenticationError(error) {
+  if (!error) return false;
+
+  const status = Number(error?.status || error?.result?.error?.code || 0);
+  if (status === 401) return true;
+
+  const message = String(
+    error?.message || error?.result?.error?.message || error?.body || "",
+  ).toLowerCase();
+
+  return (
+    message.includes("unauthenticated") ||
+    message.includes("unauthorized") ||
+    message.includes("invalid credentials") ||
+    message.includes("login required") ||
+    message.includes("401")
+  );
+}
+
+function handleAuthExpiredError(error, contextMessage = "Session expired") {
+  if (!isAuthenticationError(error) || currentUser?.isGuest) {
+    return false;
+  }
+
+  if (authExpiryHandlingInProgress) {
+    return true;
+  }
+
+  authExpiryHandlingInProgress = true;
+  console.warn("Authentication expired:", error);
+
+  showToast(`${contextMessage}. Please login again.`, "warning", 5000);
+
+  setTimeout(() => {
+    logout();
+  }, 250);
+
+  return true;
+}
+
+window.isAuthenticationError = isAuthenticationError;
+window.handleAuthExpiredError = handleAuthExpiredError;
+
 // Initialize on page load
 document.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -357,12 +401,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         // Check if token is still valid
         if (!isTokenExpired()) {
-          // Token still valid, use it and schedule refresh
-          showView("app");
-          scheduleTokenRefresh();
-          // Start countdown UI update based on stored expiry
-          startTokenCountdown();
-          initializeApp();
+          // Token may still be revoked server-side, validate before entering app
+          try {
+            await gapi.client.drive.about.get({ fields: "user" });
+            showView("app");
+            scheduleTokenRefresh();
+            // Start countdown UI update based on stored expiry
+            startTokenCountdown();
+            initializeApp();
+          } catch (validationError) {
+            console.warn("Stored token invalid on startup:", validationError);
+            handleAuthExpiredError(validationError, "Session expired");
+          }
         } else {
           // Token expired, try silent refresh
           console.log("Stored token expired, attempting silent refresh...");

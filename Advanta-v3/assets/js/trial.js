@@ -5,7 +5,7 @@ let trialState = {
   currentAreas: [],
   isDrawing: false,
   currentPolygon: null,
-  currentSection: "general", // Track current section
+  currentSection: "basic", // Track current section
 };
 
 let trialMapInstance = null;
@@ -206,11 +206,11 @@ function toggleArchivedTrials() {
 function openAddTrialModal() {
   trialState.editingTrialId = null;
   trialState.currentAreas = [];
-  trialState.currentSection = "general";
+  trialState.currentSection = "basic";
   document.getElementById("trialForm").reset();
 
-  // Show general section
-  showTrialSection("general");
+  // Show first section
+  showTrialSection("basic");
 
   // Populate crops from inventory
   populateTrialCrops();
@@ -228,8 +228,17 @@ function openAddTrialModal() {
   if (agronomyContainer) agronomyContainer.classList.add('hidden');
   trialState.selectedAgronomyOrder = [];
 
+  // Setup pollination → trial type cascade
+  setupPollinationTrialTypeCascade();
+  updateTrialTypeOptions();
+  updatePlotSpecVisibility();
+
   // Setup calculation listeners and reset calculated fields
   setupTrialGeneralCalculations();
+
+  // Setup factors/treatments fields
+  setupTrialFactorsAndTreatments();
+  renderTrialTreatmentsInputs(1, []);
 
   // Setup agronomy monitoring listeners
   setupAgronomyMonitoringListeners();
@@ -250,6 +259,10 @@ function setupSectionNavHandlers() {
   document.querySelectorAll(".section-nav-item").forEach((item) => {
     item.onclick = () => {
       const targetSection = item.dataset.section;
+      if (targetSection === "plotspec" && !canAccessPlotSpecSection()) {
+        showToast("Please select type of pollination and trial type first", "error");
+        return;
+      }
       // Only allow navigation to completed or current section
       // For now, allow free navigation during development
       showTrialSection(targetSection);
@@ -260,7 +273,7 @@ function setupSectionNavHandlers() {
 // Open edit trial modal
 function openEditTrialModal(trialId) {
   trialState.editingTrialId = trialId;
-  trialState.currentSection = "general";
+  trialState.currentSection = "basic";
   const trial = trialState.trials.find((t) => t.id === trialId);
 
   if (!trial) return;
@@ -270,13 +283,34 @@ function openEditTrialModal(trialId) {
     trial.plantingStart || "";
   document.getElementById("trialPlantingEnd").value = trial.plantingEnd || "";
   document.getElementById("trialPlantingDate").value = trial.plantingDate || "";
+  document.getElementById("trialPlantingSeason").value = trial.plantingSeason || "";
+
+  // Set pollination first so trial type options get populated
+  document.getElementById("trialPollination").value = trial.pollination || "";
+  updateTrialTypeOptions();
   document.getElementById("trialType").value = trial.trialType || "";
+  updatePlotSpecVisibility();
+
   document.getElementById("trialExpDesign").value = trial.expDesign || "";
-  document.getElementById("trialFactors").value = trial.trialFactors || "";
+  const factorCount = normalizeTrialFactorsCount(trial.trialFactors);
+  document.getElementById("trialFactors").value = String(factorCount);
+  renderTrialTreatmentsInputs(factorCount, normalizeTrialFactorDefinitions(trial));
+
+  // Restore Parent Test / Process Research fields
   document.getElementById("trialRowsPerPlot").value = trial.rowsPerPlot ?? "";
   document.getElementById("trialPlotLength").value = trial.plotLength ?? "";
   document.getElementById("trialPlantSpacingWidth").value = trial.plantSpacingWidth ?? "";
   document.getElementById("trialPlantSpacingHeight").value = trial.plantSpacingHeight ?? "";
+
+  // Restore Micropilot fields
+  document.getElementById("trialMpPanel").value = trial.mpPanel ?? "";
+  document.getElementById("trialRatioFemale").value = trial.ratioFemale ?? "";
+  document.getElementById("trialRatioMale").value = trial.ratioMale ?? "";
+  document.getElementById("trialMpFemaleLineNames").value = trial.mpFemaleLineNames || "";
+  document.getElementById("trialMpMaleLineNames").value = trial.mpMaleLineNames || "";
+  document.getElementById("trialMpPlotLength").value = trial.mpPlotLength ?? "";
+  document.getElementById("trialMpSpacingWidth").value = trial.mpSpacingWidth ?? "";
+  document.getElementById("trialMpSpacingHeight").value = trial.mpSpacingHeight ?? "";
 
   // Populate dropdowns
   populateTrialCrops();
@@ -302,8 +336,14 @@ function openEditTrialModal(trialId) {
     trialState.selectedAgronomyOrder = [];
   }
 
+  // Setup pollination → trial type cascade
+  setupPollinationTrialTypeCascade();
+
   // Setup calculation listeners and refresh calculated fields
   setupTrialGeneralCalculations();
+
+  // Setup factors/treatments listeners
+  setupTrialFactorsAndTreatments();
 
   // Setup agronomy monitoring listeners
   setupAgronomyMonitoringListeners();
@@ -311,8 +351,8 @@ function openEditTrialModal(trialId) {
   // Load areas
   trialState.currentAreas = trial.areas || [];
 
-  // Show general section
-  showTrialSection("general");
+  // Show first section
+  showTrialSection("basic");
 
   // Setup section nav click handlers
   setupSectionNavHandlers();
@@ -328,7 +368,7 @@ function closeTrialModal() {
   trialState.currentAreas = [];
   trialState.isDrawing = false;
   trialState.currentPolygon = null;
-  trialState.currentSection = "general";
+  trialState.currentSection = "basic";
   destroyTrialMap();
 }
 
@@ -433,6 +473,22 @@ function switchTrialTab(tabName) {
   }
 }
 
+function getTrialEditorSections() {
+  return ["basic", "experiment", "plotspec", "observation", "field", "layouting"];
+}
+
+function canAccessPlotSpecSection() {
+  const pollination = document.getElementById("trialPollination")?.value || "";
+  const trialType = document.getElementById("trialType")?.value || "";
+  return Boolean(pollination && trialType);
+}
+
+function updatePlotSpecSectionAccessState() {
+  const navItem = document.querySelector('.section-nav-item[data-section="plotspec"]');
+  if (!navItem) return;
+  navItem.classList.toggle("disabled", !canAccessPlotSpecSection());
+}
+
 // Show trial section
 function showTrialSection(sectionName) {
   trialState.currentSection = sectionName;
@@ -444,8 +500,11 @@ function showTrialSection(sectionName) {
 
   // Show selected section
   const sectionMap = {
-    general: "trialSectionGeneral",
-    location: "trialSectionLocation",
+    basic: "trialSectionBasic",
+    experiment: "trialSectionExperiment",
+    plotspec: "trialSectionPlotSpec",
+    observation: "trialSectionObservation",
+    field: "trialSectionField",
     layouting: "trialSectionLayouting",
   };
 
@@ -473,15 +532,25 @@ function showTrialSection(sectionName) {
   const prevBtn = document.getElementById("trialPrevBtn");
   const nextBtn = document.getElementById("trialNextBtn");
   const saveBtn = document.getElementById("trialModalSaveBtn");
+  const sections = getTrialEditorSections();
+  const isFirstSection = sectionName === sections[0];
+  const isLastSection = sectionName === sections[sections.length - 1];
 
-  if (sectionName === "general") {
+  if (isFirstSection) {
     prevBtn.classList.add("hidden");
     nextBtn.classList.remove("hidden");
     saveBtn.classList.add("hidden");
-  } else if (sectionName === "location") {
+  } else if (isLastSection) {
+    prevBtn.classList.remove("hidden");
+    nextBtn.classList.add("hidden");
+    saveBtn.classList.remove("hidden");
+  } else {
     prevBtn.classList.remove("hidden");
     nextBtn.classList.remove("hidden");
     saveBtn.classList.add("hidden");
+  }
+
+  if (sectionName === "field") {
     const trial = trialState.editingTrialId
       ? trialState.trials.find((t) => t.id === trialState.editingTrialId)
       : null;
@@ -521,25 +590,27 @@ function showTrialSection(sectionName) {
       invalidateAllPreviewMaps();
     }, 100);
   } else if (sectionName === "layouting") {
-    prevBtn.classList.remove("hidden");
-    nextBtn.classList.add("hidden");
-    saveBtn.classList.remove("hidden");
-    // Initialize layouting section
     initializeLayoutingSection();
+  } else if (sectionName === "plotspec") {
+    if (!canAccessPlotSpecSection()) {
+      showToast("Please select type of pollination and trial type first", "error");
+      showTrialSection("experiment");
+      return;
+    }
+    updatePlotSpecVisibility();
   }
 }
 
 // Navigate to next section
 function nextTrialSection() {
-  const sections = ["general", "location", "layouting"];
+  const sections = getTrialEditorSections();
   const currentIndex = sections.indexOf(trialState.currentSection);
 
   // Validate current section
-  if (trialState.currentSection === "general") {
-    if (!validateGeneralSection()) return;
-  } else if (trialState.currentSection === "location") {
-    if (!validateLocationSection()) return;
-  }
+  if (trialState.currentSection === "basic" && !validateBasicSection()) return;
+  if (trialState.currentSection === "experiment" && !validateExperimentSection()) return;
+  if (trialState.currentSection === "observation" && !validateObservationSection()) return;
+  if (trialState.currentSection === "field" && !validateLocationSection()) return;
 
   if (currentIndex < sections.length - 1) {
     showTrialSection(sections[currentIndex + 1]);
@@ -548,7 +619,7 @@ function nextTrialSection() {
 
 // Navigate to previous section
 function prevTrialSection() {
-  const sections = ["general", "location", "layouting"];
+  const sections = getTrialEditorSections();
   const currentIndex = sections.indexOf(trialState.currentSection);
 
   if (currentIndex > 0) {
@@ -556,14 +627,12 @@ function prevTrialSection() {
   }
 }
 
-// Validate general section
-function validateGeneralSection() {
+function validateBasicSection() {
   const name = document.getElementById("trialName").value.trim();
   const plantingStart = document.getElementById("trialPlantingStart").value;
   const plantingEnd = document.getElementById("trialPlantingEnd").value;
   const cropId = document.getElementById("trialCrops").value;
-  const trialType = document.getElementById("trialType").value;
-  const selectedParams = getSelectedParameterIds().length;
+  const plantingSeason = document.getElementById("trialPlantingSeason").value;
 
   if (!name) {
     showToast("Please enter trial name", "error");
@@ -577,16 +646,176 @@ function validateGeneralSection() {
     showToast("Please select crop", "error");
     return false;
   }
+  if (!plantingSeason) {
+    showToast("Please select planting season", "error");
+    return false;
+  }
+
+  return true;
+}
+
+function validateExperimentSection() {
+  const pollination = document.getElementById("trialPollination").value;
+  const trialType = document.getElementById("trialType").value;
+  const factorCount = normalizeTrialFactorsCount(document.getElementById("trialFactors").value);
+  const factorDefinitions = getTrialTreatmentsFromForm();
+
+  if (!pollination) {
+    showToast("Please select type of pollination", "error");
+    return false;
+  }
   if (!trialType) {
     showToast("Please select trial type", "error");
     return false;
   }
+  if (!Number.isFinite(factorCount) || factorCount < 1) {
+    showToast("No. of Factors must be at least 1", "error");
+    return false;
+  }
+  if (factorDefinitions.length !== factorCount) {
+    showToast(`Please fill ${factorCount} factor(s)`, "error");
+    return false;
+  }
+
+  const invalidIndex = factorDefinitions.findIndex((factor) => {
+    return !factor.name || !Array.isArray(factor.treatments) || factor.treatments.length === 0;
+  });
+  if (invalidIndex >= 0) {
+    showToast(`Please complete Factor ${invalidIndex + 1} name and treatments`, "error");
+    return false;
+  }
+  return true;
+}
+
+function validateObservationSection() {
+  const selectedParams = getSelectedParameterIds().length;
   if (selectedParams === 0) {
     showToast("Please select at least one observation parameter", "error");
     return false;
   }
 
   return true;
+}
+
+function normalizeTrialFactorsCount(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(1, Math.floor(value));
+  }
+
+  const parsed = parseInt(String(value || "").trim(), 10);
+  if (Number.isFinite(parsed) && parsed >= 1) {
+    return parsed;
+  }
+
+  const legacy = String(value || "").trim().toLowerCase();
+  if (legacy === "single") return 1;
+  if (legacy === "factorial") return 2;
+  return 1;
+}
+
+function setupTrialFactorsAndTreatments() {
+  const factorsInput = document.getElementById("trialFactors");
+  if (!factorsInput) return;
+
+  factorsInput.removeEventListener("input", factorsInput._treatmentSyncHandler);
+  factorsInput._treatmentSyncHandler = () => {
+    const count = normalizeTrialFactorsCount(factorsInput.value);
+    if (String(count) !== String(factorsInput.value || "")) {
+      factorsInput.value = String(count);
+    }
+    const current = getTrialTreatmentsFromForm();
+    renderTrialTreatmentsInputs(count, current);
+  };
+  factorsInput.addEventListener("input", factorsInput._treatmentSyncHandler);
+}
+
+function normalizeTrialFactorDefinitions(trial) {
+  const count = normalizeTrialFactorsCount(trial?.trialFactors);
+  const normalized = [];
+
+  if (Array.isArray(trial?.factorDefinitions) && trial.factorDefinitions.length > 0) {
+    for (let index = 0; index < count; index += 1) {
+      const item = trial.factorDefinitions[index] || {};
+      const name = String(item.name || "").trim();
+      const treatments = Array.isArray(item.treatments)
+        ? item.treatments.map((value) => String(value || "").trim()).filter(Boolean)
+        : [];
+      normalized.push({ name, treatments });
+    }
+    return normalized;
+  }
+
+  const legacy = Array.isArray(trial?.treatments) ? trial.treatments : [];
+  for (let index = 0; index < count; index += 1) {
+    normalized.push({
+      name: String(legacy[index] || "").trim(),
+      treatments: [],
+    });
+  }
+  return normalized;
+}
+
+function parseFactorTreatmentsText(value) {
+  return String(value || "")
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function renderTrialTreatmentsInputs(factorCount, factorDefinitions = []) {
+  const container = document.getElementById("trialTreatmentsContainer");
+  if (!container) return;
+
+  const count = normalizeTrialFactorsCount(factorCount);
+  const values = Array.from({ length: count }, (_, index) => {
+    const source = factorDefinitions[index] || {};
+    const factorName = typeof source === "string"
+      ? String(source || "").trim()
+      : String(source.name || "").trim();
+    const treatments = Array.isArray(source.treatments)
+      ? source.treatments.map((item) => String(item || "").trim()).filter(Boolean)
+      : [];
+    return { name: factorName, treatments };
+  });
+
+  container.innerHTML = values
+    .map(
+      (value, index) => `
+        <div class="form-group" style="margin:0 0 1rem 0; padding:0.75rem; border:1px solid var(--border); border-radius:10px;">
+          <label for="trialFactorName_${index + 1}">Factor ${index + 1} Name</label>
+          <input
+            type="text"
+            id="trialFactorName_${index + 1}"
+            class="trial-factor-name-input"
+            data-index="${index}"
+            placeholder="e.g., Line / Planting Space"
+            value="${escapeHtml(value.name)}"
+          >
+          <label for="trialFactorTreatments_${index + 1}" style="margin-top:0.5rem;">Treatments for Factor ${index + 1}</label>
+          <textarea
+            id="trialFactorTreatments_${index + 1}"
+            class="trial-factor-treatments-input"
+            data-index="${index}"
+            rows="3"
+            placeholder="One per line or separated by comma"
+          >${escapeHtml(value.treatments.join("\n"))}</textarea>
+        </div>
+      `,
+    )
+    .join("");
+}
+
+function getTrialTreatmentsFromForm() {
+  const factorNames = Array.from(document.querySelectorAll("#trialTreatmentsContainer .trial-factor-name-input"));
+  const factorTreatments = Array.from(document.querySelectorAll("#trialTreatmentsContainer .trial-factor-treatments-input"));
+
+  return factorNames.map((nameInput, index) => {
+    const treatmentsInput = factorTreatments[index];
+    return {
+      name: String(nameInput?.value || "").trim(),
+      treatments: parseFactorTreatmentsText(treatmentsInput?.value || ""),
+    };
+  });
 }
 
 // Validate location section
@@ -1204,6 +1433,175 @@ function setupAgronomyMonitoringListeners() {
     };
     cropSelect.addEventListener('change', cropSelect._agronomyCropChange);
   }
+}
+
+// ═════════════════════════════════════════════
+// Pollination → Trial Type cascade & plot spec
+// ═════════════════════════════════════════════
+
+function setupPollinationTrialTypeCascade() {
+  const pollinationSelect = document.getElementById("trialPollination");
+  const trialTypeSelect = document.getElementById("trialType");
+  if (!pollinationSelect || !trialTypeSelect) return;
+
+  pollinationSelect.removeEventListener("change", pollinationSelect._cascadeHandler);
+  pollinationSelect._cascadeHandler = () => {
+    updateTrialTypeOptions();
+    updatePlotSpecVisibility();
+  };
+  pollinationSelect.addEventListener("change", pollinationSelect._cascadeHandler);
+
+  trialTypeSelect.removeEventListener("change", trialTypeSelect._plotSpecHandler);
+  trialTypeSelect._plotSpecHandler = () => {
+    updatePlotSpecVisibility();
+  };
+  trialTypeSelect.addEventListener("change", trialTypeSelect._plotSpecHandler);
+}
+
+function updateTrialTypeOptions() {
+  const pollination = document.getElementById("trialPollination")?.value || "";
+  const trialTypeSelect = document.getElementById("trialType");
+  if (!trialTypeSelect) return;
+
+  const oldValue = trialTypeSelect.value;
+  let options = [];
+
+  if (pollination === "Selfing") {
+    options = [
+      { value: "Parent Test", label: "Parent Test" },
+      { value: "Process Research", label: "Process Research" },
+    ];
+  } else if (pollination === "Crossing") {
+    options = [
+      { value: "Micropilot", label: "Micropilot" },
+      { value: "Process Research", label: "Process Research" },
+    ];
+  }
+
+  trialTypeSelect.innerHTML = '<option value="">Select trial type</option>' +
+    options.map(o => `<option value="${o.value}">${o.label}</option>`).join("");
+
+  // Restore old value if it's still among the new options
+  if (options.some(o => o.value === oldValue)) {
+    trialTypeSelect.value = oldValue;
+  } else {
+    trialTypeSelect.value = "";
+  }
+
+  updatePlotSpecSectionAccessState();
+}
+
+function updatePlotSpecVisibility() {
+  const pollination = document.getElementById("trialPollination")?.value || "";
+  const trialType = document.getElementById("trialType")?.value || "";
+  const parentTestBlock = document.getElementById("plotSpecParentTest");
+  const micropilotBlock = document.getElementById("plotSpecMicropilot");
+  const lockNotice = document.getElementById("plotSpecLockNotice");
+  const plotSpecContent = document.getElementById("plotSpecContent");
+  if (!parentTestBlock || !micropilotBlock) return;
+
+  const isReady = Boolean(pollination && trialType);
+  if (lockNotice) lockNotice.classList.toggle("hidden", isReady);
+  if (plotSpecContent) plotSpecContent.classList.toggle("hidden", !isReady);
+  updatePlotSpecSectionAccessState();
+
+  if (!isReady) {
+    parentTestBlock.classList.remove("hidden");
+    micropilotBlock.classList.add("hidden");
+    return;
+  }
+
+  if (trialType === "Micropilot") {
+    parentTestBlock.classList.add("hidden");
+    micropilotBlock.classList.remove("hidden");
+    setupMicropilotCalculations();
+  } else {
+    parentTestBlock.classList.remove("hidden");
+    micropilotBlock.classList.add("hidden");
+  }
+}
+
+// ═══════════════════════════════════════
+// Micropilot-specific calculations
+// ═══════════════════════════════════════
+
+function setupMicropilotCalculations() {
+  const ids = ["trialMpPanel", "trialRatioFemale", "trialRatioMale", "trialMpPlotLength", "trialMpSpacingWidth", "trialMpSpacingHeight"];
+  const inputs = ids.map(id => document.getElementById(id)).filter(Boolean);
+
+  inputs.forEach(input => {
+    input.removeEventListener("input", updateMicropilotCalculations);
+    input.addEventListener("input", updateMicropilotCalculations);
+  });
+
+  updateMicropilotCalculations();
+}
+
+function updateMicropilotCalculations() {
+  const panel = parseFloat(document.getElementById("trialMpPanel")?.value || "");
+  const ratioFemale = parseFloat(document.getElementById("trialRatioFemale")?.value || "");
+  const ratioMale = parseFloat(document.getElementById("trialRatioMale")?.value || "");
+  const plotLength = parseFloat(document.getElementById("trialMpPlotLength")?.value || "");
+  const spacingWCm = parseFloat(document.getElementById("trialMpSpacingWidth")?.value || "");
+  const spacingHCm = parseFloat(document.getElementById("trialMpSpacingHeight")?.value || "");
+
+  const totalFemaleRowsEl = document.getElementById("trialMpTotalFemaleRows");
+  const totalMaleRowsEl = document.getElementById("trialMpTotalMaleRows");
+  const plotAreaEl = document.getElementById("trialMpPlotArea");
+  const expFemaleEl = document.getElementById("trialMpExpectedFemale");
+  const expMaleEl = document.getElementById("trialMpExpectedMale");
+  const popFemaleEl = document.getElementById("trialMpPopFemale");
+  const popMaleEl = document.getElementById("trialMpPopMale");
+
+  const widthM = Number.isFinite(spacingWCm) ? spacingWCm / 100 : NaN;
+  const heightM = Number.isFinite(spacingHCm) ? spacingHCm / 100 : NaN;
+
+  const totalRatio = (Number.isFinite(ratioFemale) ? ratioFemale : 0) + (Number.isFinite(ratioMale) ? ratioMale : 0);
+
+  // Based on requested Micropilot pattern:
+  // Total Female Rows = ratioMale * panel
+  // Total Male Rows = (ratioMale + 1) * panel
+  const femaleRows = Number.isFinite(ratioMale) && Number.isFinite(panel) && ratioMale >= 0 && panel >= 0
+    ? ratioMale * panel
+    : NaN;
+  const maleRows = Number.isFinite(ratioMale) && Number.isFinite(panel) && ratioMale >= 0 && panel >= 0
+    ? (ratioMale + 1) * panel
+    : NaN;
+  const totalRows = Number.isFinite(femaleRows) && Number.isFinite(maleRows)
+    ? femaleRows + maleRows
+    : NaN;
+
+  if (totalFemaleRowsEl) totalFemaleRowsEl.value = Number.isFinite(femaleRows) ? String(femaleRows) : "";
+  if (totalMaleRowsEl) totalMaleRowsEl.value = Number.isFinite(maleRows) ? String(maleRows) : "";
+
+  // Population/plot by row count and plant spacing height
+  const canCalcPopPlot = Number.isFinite(plotLength) && Number.isFinite(heightM) && plotLength > 0 && heightM > 0;
+  const femalePopPlot = canCalcPopPlot && Number.isFinite(femaleRows) ? (plotLength / heightM) * femaleRows : NaN;
+  const malePopPlot = canCalcPopPlot && Number.isFinite(maleRows) ? (plotLength / heightM) * maleRows : NaN;
+  if (expFemaleEl) expFemaleEl.value = Number.isFinite(femalePopPlot) ? Math.round(femalePopPlot).toLocaleString() : "";
+  if (expMaleEl) expMaleEl.value = Number.isFinite(malePopPlot) ? Math.round(malePopPlot).toLocaleString() : "";
+
+  // Plot Area (ha): totalRows * spacingWidth(cm) * plotLength(m) / 10000
+  const plotAreaHa = Number.isFinite(totalRows) && Number.isFinite(spacingWCm) && Number.isFinite(plotLength)
+    && totalRows > 0 && spacingWCm > 0 && plotLength > 0
+      ? (totalRows * spacingWCm * plotLength) / 10000
+      : NaN;
+  if (plotAreaEl) plotAreaEl.value = Number.isFinite(plotAreaHa) ? plotAreaHa.toFixed(2) : "";
+
+  // Population/ha = ratio part * (10000 / plotArea[m²])
+  const plotAreaM2 = Number.isFinite(totalRows) && Number.isFinite(widthM) && Number.isFinite(plotLength)
+    && totalRows > 0 && widthM > 0 && plotLength > 0
+      ? totalRows * widthM * plotLength
+      : NaN;
+  const totalPopHa = Number.isFinite(plotAreaM2) && plotAreaM2 > 0 ? 10000 / plotAreaM2 : NaN;
+  const femalePopHa = Number.isFinite(totalPopHa) && totalRatio > 0 && Number.isFinite(ratioFemale)
+    ? totalPopHa * (ratioFemale / totalRatio)
+    : NaN;
+  const malePopHa = Number.isFinite(totalPopHa) && totalRatio > 0 && Number.isFinite(ratioMale)
+    ? totalPopHa * (ratioMale / totalRatio)
+    : NaN;
+  if (popFemaleEl) popFemaleEl.value = Number.isFinite(femalePopHa) ? Math.round(femalePopHa).toLocaleString() : "";
+  if (popMaleEl) popMaleEl.value = Number.isFinite(malePopHa) ? Math.round(malePopHa).toLocaleString() : "";
 }
 
 function setupTrialGeneralCalculations() {
@@ -2127,13 +2525,20 @@ async function saveTrial() {
   const plantingStart = document.getElementById("trialPlantingStart").value;
   const plantingEnd = document.getElementById("trialPlantingEnd").value;
   const plantingDate = document.getElementById("trialPlantingDate").value;
+  const plantingSeason = document.getElementById("trialPlantingSeason").value;
   const cropSelect = document.getElementById("trialCrops");
   const cropId = cropSelect.value;
   const cropName =
     cropSelect.options[cropSelect.selectedIndex].dataset.name || "";
+  const pollination = document.getElementById("trialPollination").value;
   const trialType = document.getElementById("trialType").value;
   const expDesign = document.getElementById("trialExpDesign").value;
-  const trialFactors = document.getElementById("trialFactors").value;
+  const trialFactors = normalizeTrialFactorsCount(
+    document.getElementById("trialFactors").value,
+  );
+  const factorDefinitions = getTrialTreatmentsFromForm();
+
+  // Parent Test / Process Research fields
   const rowsPerPlot = parseFloat(
     document.getElementById("trialRowsPerPlot").value || "",
   );
@@ -2177,6 +2582,38 @@ async function saveTrial() {
     heightM > 0
       ? 10000 / (widthM * heightM)
       : null;
+
+  // Micropilot fields
+  const mpPanel = parseFloat(document.getElementById("trialMpPanel")?.value || "");
+  const ratioFemale = parseFloat(document.getElementById("trialRatioFemale")?.value || "");
+  const ratioMale = parseFloat(document.getElementById("trialRatioMale")?.value || "");
+  const mpFemaleLineNames = String(document.getElementById("trialMpFemaleLineNames")?.value || "").trim();
+  const mpMaleLineNames = String(document.getElementById("trialMpMaleLineNames")?.value || "").trim();
+  const mpPlotLength = parseFloat(document.getElementById("trialMpPlotLength")?.value || "");
+  const mpSpacingWidth = parseFloat(document.getElementById("trialMpSpacingWidth")?.value || "");
+  const mpSpacingHeight = parseFloat(document.getElementById("trialMpSpacingHeight")?.value || "");
+  const mpWidthM = Number.isFinite(mpSpacingWidth) ? mpSpacingWidth / 100 : NaN;
+  const mpHeightM = Number.isFinite(mpSpacingHeight) ? mpSpacingHeight / 100 : NaN;
+  const mpTotalFemaleRows = Number.isFinite(ratioMale) && Number.isFinite(mpPanel) ? ratioMale * mpPanel : null;
+  const mpTotalMaleRows = Number.isFinite(ratioMale) && Number.isFinite(mpPanel) ? (ratioMale + 1) * mpPanel : null;
+  const mpTotalRows = Number.isFinite(mpTotalFemaleRows) && Number.isFinite(mpTotalMaleRows)
+    ? mpTotalFemaleRows + mpTotalMaleRows
+    : null;
+  const mpPlotArea = Number.isFinite(mpTotalRows) && Number.isFinite(mpSpacingWidth) && Number.isFinite(mpPlotLength) && mpTotalRows > 0 && mpSpacingWidth > 0 && mpPlotLength > 0
+    ? (mpTotalRows * mpSpacingWidth * mpPlotLength) / 10000
+    : null;
+  const mpExpectedFemale = Number.isFinite(mpPlotLength) && mpPlotLength > 0 && Number.isFinite(mpHeightM) && mpHeightM > 0 && Number.isFinite(mpTotalFemaleRows) && mpTotalFemaleRows > 0
+    ? (mpPlotLength / mpHeightM) * mpTotalFemaleRows : null;
+  const mpExpectedMale = Number.isFinite(mpPlotLength) && mpPlotLength > 0 && Number.isFinite(mpHeightM) && mpHeightM > 0 && Number.isFinite(mpTotalMaleRows) && mpTotalMaleRows > 0
+    ? (mpPlotLength / mpHeightM) * mpTotalMaleRows : null;
+  const mpTotalRatio = (Number.isFinite(ratioFemale) ? ratioFemale : 0) + (Number.isFinite(ratioMale) ? ratioMale : 0);
+  const mpAreaM2ForPop = Number.isFinite(mpTotalRows) && Number.isFinite(mpWidthM) && Number.isFinite(mpPlotLength) && mpTotalRows > 0 && mpWidthM > 0 && mpPlotLength > 0
+    ? mpTotalRows * mpWidthM * mpPlotLength
+    : null;
+  const mpTotalPop = Number.isFinite(mpAreaM2ForPop) && mpAreaM2ForPop > 0 ? 10000 / mpAreaM2ForPop : null;
+  const mpPopFemale = mpTotalPop && mpTotalRatio > 0 && Number.isFinite(ratioFemale) ? mpTotalPop * (ratioFemale / mpTotalRatio) : null;
+  const mpPopMale = mpTotalPop && mpTotalRatio > 0 && Number.isFinite(ratioMale) ? mpTotalPop * (ratioMale / mpTotalRatio) : null;
+
   const locationEl = document.getElementById("trialLocation");
   const locationId = locationEl ? locationEl.value : (trialState.editingTrialId ? trialState.trials.find(t => t.id === trialState.editingTrialId)?.locationId : "");
 
@@ -2200,8 +2637,29 @@ async function saveTrial() {
     showToast("Please select crop", "error");
     return;
   }
+  if (!pollination) {
+    showToast("Please select type of pollination", "error");
+    return;
+  }
   if (!trialType) {
     showToast("Please select trial type", "error");
+    return;
+  }
+  if (!plantingSeason) {
+    showToast("Please select planting season", "error");
+    return;
+  }
+  if (!Number.isFinite(trialFactors) || trialFactors < 1) {
+    showToast("No. of Factors must be at least 1", "error");
+    return;
+  }
+  if (factorDefinitions.length !== trialFactors) {
+    showToast(`Please fill ${trialFactors} factor(s)`, "error");
+    return;
+  }
+  const invalidFactorIndex = factorDefinitions.findIndex((factor) => !factor.name || factor.treatments.length === 0);
+  if (invalidFactorIndex >= 0) {
+    showToast(`Please complete Factor ${invalidFactorIndex + 1} name and treatments`, "error");
     return;
   }
   if (selectedParams.length === 0) {
@@ -2282,11 +2740,15 @@ async function saveTrial() {
         trial.plantingStart = plantingStart;
         trial.plantingEnd = plantingEnd;
         trial.plantingDate = plantingDate;
+        trial.plantingSeason = plantingSeason;
         trial.cropId = cropId;
         trial.cropName = cropName;
+        trial.pollination = pollination;
         trial.trialType = trialType;
         trial.expDesign = expDesign;
         trial.trialFactors = trialFactors;
+        trial.factorDefinitions = factorDefinitions;
+        trial.treatments = factorDefinitions.map((factor) => factor.name);
         trial.rowsPerPlot = Number.isFinite(rowsPerPlot) ? rowsPerPlot : null;
         trial.plotLength = Number.isFinite(plotLength) ? plotLength : null;
         trial.plantSpacingWidth = Number.isFinite(plantSpacingWidth)
@@ -2298,6 +2760,21 @@ async function saveTrial() {
         trial.plotArea = plotArea;
         trial.expectedPlantsPerPlot = expectedPlantsPerPlot;
         trial.populationPerHa = populationPerHa;
+        trial.mpPanel = Number.isFinite(mpPanel) ? mpPanel : null;
+        trial.ratioFemale = Number.isFinite(ratioFemale) ? ratioFemale : null;
+        trial.ratioMale = Number.isFinite(ratioMale) ? ratioMale : null;
+        trial.mpFemaleLineNames = mpFemaleLineNames;
+        trial.mpMaleLineNames = mpMaleLineNames;
+        trial.mpTotalFemaleRows = Number.isFinite(mpTotalFemaleRows) ? mpTotalFemaleRows : null;
+        trial.mpTotalMaleRows = Number.isFinite(mpTotalMaleRows) ? mpTotalMaleRows : null;
+        trial.mpPlotLength = Number.isFinite(mpPlotLength) ? mpPlotLength : null;
+        trial.mpSpacingWidth = Number.isFinite(mpSpacingWidth) ? mpSpacingWidth : null;
+        trial.mpSpacingHeight = Number.isFinite(mpSpacingHeight) ? mpSpacingHeight : null;
+        trial.mpPlotArea = mpPlotArea;
+        trial.mpExpectedFemale = mpExpectedFemale;
+        trial.mpExpectedMale = mpExpectedMale;
+        trial.mpPopFemale = mpPopFemale;
+        trial.mpPopMale = mpPopMale;
         trial.locationId = locationId;
         trial.locationCoordinates = locationCoords;
         trial.parameters = selectedParams;
@@ -2320,11 +2797,15 @@ async function saveTrial() {
         plantingStart: plantingStart,
         plantingEnd: plantingEnd,
         plantingDate: plantingDate,
+        plantingSeason: plantingSeason,
         cropId: cropId,
         cropName: cropName,
+        pollination: pollination,
         trialType: trialType,
         expDesign: expDesign,
         trialFactors: trialFactors,
+        factorDefinitions: factorDefinitions,
+        treatments: factorDefinitions.map((factor) => factor.name),
         rowsPerPlot: Number.isFinite(rowsPerPlot) ? rowsPerPlot : null,
         plotLength: Number.isFinite(plotLength) ? plotLength : null,
         plantSpacingWidth: Number.isFinite(plantSpacingWidth)
@@ -2336,6 +2817,21 @@ async function saveTrial() {
         plotArea: plotArea,
         expectedPlantsPerPlot: expectedPlantsPerPlot,
         populationPerHa: populationPerHa,
+        mpPanel: Number.isFinite(mpPanel) ? mpPanel : null,
+        ratioFemale: Number.isFinite(ratioFemale) ? ratioFemale : null,
+        ratioMale: Number.isFinite(ratioMale) ? ratioMale : null,
+        mpFemaleLineNames: mpFemaleLineNames,
+        mpMaleLineNames: mpMaleLineNames,
+        mpTotalFemaleRows: Number.isFinite(mpTotalFemaleRows) ? mpTotalFemaleRows : null,
+        mpTotalMaleRows: Number.isFinite(mpTotalMaleRows) ? mpTotalMaleRows : null,
+        mpPlotLength: Number.isFinite(mpPlotLength) ? mpPlotLength : null,
+        mpSpacingWidth: Number.isFinite(mpSpacingWidth) ? mpSpacingWidth : null,
+        mpSpacingHeight: Number.isFinite(mpSpacingHeight) ? mpSpacingHeight : null,
+        mpPlotArea: mpPlotArea,
+        mpExpectedFemale: mpExpectedFemale,
+        mpExpectedMale: mpExpectedMale,
+        mpPopFemale: mpPopFemale,
+        mpPopMale: mpPopMale,
         locationId: locationId,
         locationCoordinates: locationCoords,
         parameters: selectedParams,
@@ -3717,7 +4213,7 @@ function renderAgronomyEmptyState() {
   if (!container) return;
   container.innerHTML = `
     <div class="run-empty-state">
-      <span class="material-symbols-rounded">agriculture</span>
+      <span class="material-symbols-rounded">local_florist</span>
       <p>Select an agronomy item from the navigation to start monitoring</p>
     </div>
   `;
@@ -6238,6 +6734,8 @@ function renderDashboardTrialSummary() {
       </div>
     `;
     return;
+  } else {
+    container.classList.remove("empty-grid");
   }
 
   container.innerHTML = activeTrials.map((trial) => {
@@ -6292,7 +6790,7 @@ function renderDashboardTrialSummary() {
           ${hasAgronomy ? `
           <div class="dash-progress-row">
             <span class="dash-progress-label">
-              <span class="material-symbols-rounded">eco</span> Agronomy
+              <span class="material-symbols-rounded">local_florist</span> Agronomy
             </span>
             <div class="dash-progress-bar">
               <div class="dash-progress-bar-fill" style="width:${agro.percentage}%; background:${agroColor}"></div>
@@ -6364,7 +6862,7 @@ function showTrialActionPopup(event, trialId) {
         <button class="trial-action-option ${!hasAgronomy ? 'disabled' : ''}" 
                 onclick="${hasAgronomy ? `closeTrialActionPopup(); startAgronomyMonitoring('${trialId}');` : ''}"
                 ${!hasAgronomy ? 'disabled' : ''}>
-          <span class="material-symbols-rounded">agriculture</span>
+          <span class="material-symbols-rounded">local_florist</span>
           <div class="trial-action-option-text">
             <span class="trial-action-option-title">Agronomy Monitoring</span>
             <span class="trial-action-option-desc">${!hasAgronomy ? (trial.archived ? 'Trial is archived' : 'No agronomy items assigned') : 'Start or continue agronomy monitoring'}</span>
@@ -6915,9 +7413,20 @@ function buildTrialGeneralSheetRows(trial) {
   rows.push(["Trial Name", trial.name || ""]);
   rows.push(["Description", trial.description || ""]);
   rows.push(["Crop", trial.cropName || ""]);
+  rows.push(["Type of Pollination", trial.pollination || ""]);
   rows.push(["Trial Type", trial.trialType || ""]);
+  rows.push(["Planting Season", trial.plantingSeason || ""]);
   rows.push(["Experimental Design", trial.expDesign || ""]);
-  rows.push(["No. of Factors", trial.trialFactors || ""]);
+  const factorDefinitions = normalizeTrialFactorDefinitions(trial);
+  rows.push(["No. of Factors", String(normalizeTrialFactorsCount(trial.trialFactors))]);
+  rows.push([
+    "Factor Names",
+    factorDefinitions.map((factor) => factor.name).filter(Boolean).join("; "),
+  ]);
+  factorDefinitions.forEach((factor, index) => {
+    rows.push([`Factor ${index + 1} Name`, factor.name || ""]);
+    rows.push([`Factor ${index + 1} Treatments`, (factor.treatments || []).join("; ")]);
+  });
   rows.push(["Planting Window", `${trial.plantingStart || ""} - ${trial.plantingEnd || ""}`.trim()]);
   rows.push(["Planting Date", trial.plantingDate || ""]);
   rows.push(["Location", location?.name || ""]);
@@ -6940,6 +7449,33 @@ function buildTrialGeneralSheetRows(trial) {
     "Agronomy Item List",
     agronomyItems.map((item) => item.activity || item.name || "").join("; "),
   ]);
+  // Plot specification rows
+  if (trial.trialType === 'Micropilot') {
+    rows.push(["Panel", trial.mpPanel != null ? String(trial.mpPanel) : ""]);
+    rows.push(["Ratio Female", trial.ratioFemale != null ? String(trial.ratioFemale) : ""]);
+    rows.push(["Ratio Male", trial.ratioMale != null ? String(trial.ratioMale) : ""]);
+    rows.push(["Name Female Lines", trial.mpFemaleLineNames || ""]);
+    rows.push(["Total Female Rows", trial.mpTotalFemaleRows != null ? String(trial.mpTotalFemaleRows) : ""]);
+    rows.push(["Name Male Lines", trial.mpMaleLineNames || ""]);
+    rows.push(["Total Male Rows", trial.mpTotalMaleRows != null ? String(trial.mpTotalMaleRows) : ""]);
+    rows.push(["Plot Length (m)", trial.mpPlotLength != null ? String(trial.mpPlotLength) : ""]);
+    rows.push(["Plant Spacing Width (cm)", trial.mpSpacingWidth != null ? String(trial.mpSpacingWidth) : ""]);
+    rows.push(["Plant Spacing Height (cm)", trial.mpSpacingHeight != null ? String(trial.mpSpacingHeight) : ""]);
+    rows.push(["Plot Area (ha)", trial.mpPlotArea != null ? trial.mpPlotArea.toFixed(2) : ""]);
+    rows.push(["Female Population/plot", trial.mpExpectedFemale != null ? String(Math.round(trial.mpExpectedFemale)) : ""]);
+    rows.push(["Male Population/plot", trial.mpExpectedMale != null ? String(Math.round(trial.mpExpectedMale)) : ""]);
+    rows.push(["Population/ha (Female)", trial.mpPopFemale != null ? String(Math.round(trial.mpPopFemale)) : ""]);
+    rows.push(["Population/ha (Male)", trial.mpPopMale != null ? String(Math.round(trial.mpPopMale)) : ""]);
+  } else {
+    rows.push(["Rows per Plot", trial.rowsPerPlot != null ? String(trial.rowsPerPlot) : ""]);
+    rows.push(["Plot Length (m)", trial.plotLength != null ? String(trial.plotLength) : ""]);
+    rows.push(["Plant Spacing Width (cm)", trial.plantSpacingWidth != null ? String(trial.plantSpacingWidth) : ""]);
+    rows.push(["Plant Spacing Height (cm)", trial.plantSpacingHeight != null ? String(trial.plantSpacingHeight) : ""]);
+    rows.push(["Plot Area (m²)", trial.plotArea != null ? trial.plotArea.toFixed(2) : ""]);
+    rows.push(["Exp. Plants per Plot", trial.expectedPlantsPerPlot != null ? String(Math.round(trial.expectedPlantsPerPlot)) : ""]);
+    rows.push(["Population per Hectare", trial.populationPerHa != null ? String(Math.round(trial.populationPerHa)) : ""]);
+  }
+
   rows.push(["Created At", formatReportTimestamp(trial.createdAt)]);
   rows.push(["Updated At", formatReportTimestamp(trial.updatedAt)]);
 
@@ -7265,6 +7801,8 @@ function showTrialDetail(trialId) {
 
   // Areas summary
   const areaCount = trial.areas ? trial.areas.length : 0;
+  const factorCount = normalizeTrialFactorsCount(trial.trialFactors);
+  const factorDefinitions = normalizeTrialFactorDefinitions(trial);
   const totalLines = trial.areas?.reduce((sum, area) => {
     if (area.layout?.result) {
       let count = 0;
@@ -7321,11 +7859,11 @@ function showTrialDetail(trialId) {
     <p>General</p>
   </div>
 
-  <div class='td-container grid-3'>
+  <div class='td-container grid-4'>
 
     <div class='td-section td-crop'>
       <div class='td-icon'>
-        <span class="material-symbols-rounded td-info-icon">eco</span>
+        <span class="material-symbols-rounded td-info-icon">psychiatry</span>
       </div>
       <div class='td-content'>
         <div class='td-label'>Crop</div>
@@ -7333,6 +7871,16 @@ function showTrialDetail(trialId) {
       </div>
     </div>
   
+    <div class='td-section td-pollination'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">spa</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Type of Pollination</div>
+        <div class='td-value'>${escapeHtml(trial.pollination || "-")}</div>
+      </div>
+    </div>
+
     <div class='td-section td-type'>
       <div class='td-icon'>
         <span class="material-symbols-rounded td-info-icon">science</span>
@@ -7350,6 +7898,16 @@ function showTrialDetail(trialId) {
       <div class='td-content'>
         <div class='td-label'>Planting Window</div>
         <div class='td-value'>${trial.plantingStart ? formatMonthYear(trial.plantingStart) : "-"} — ${trial.plantingEnd ? formatMonthYear(trial.plantingEnd) : "-"}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">wb_sunny</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Planting Season</div>
+        <div class='td-value'>${escapeHtml(trial.plantingSeason || "-")}</div>
       </div>
     </div>
 
@@ -7373,10 +7931,31 @@ function showTrialDetail(trialId) {
       </div>
       <div class='td-content'>
         <div class='td-label'>No. of Factors</div>
-        <div class='td-value'>${escapeHtml(trial.trialFactors || "-")}</div>
+        <div class='td-value'>${factorCount}</div>
       </div>
     </div>
 
+  </div>
+
+  <div class='td-container'>
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-section-icon">manufacturing</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Factors & Treatments</div>
+        ${factorDefinitions.length > 0 ? `
+          <div class='td-grid'>
+            ${factorDefinitions.map((factor, index) => `
+              <div class='td-item' style='display:block;'>
+                <div style='font-weight:600; margin-bottom:0.25rem;'>Factor ${index + 1}: ${escapeHtml(factor.name || "-")}</div>
+                <div class='td-param-name'>${factor.treatments.length > 0 ? escapeHtml(factor.treatments.join(", ")) : "-"}</div>
+              </div>
+            `).join("")}
+          </div>
+        ` : `<div class='td-value'>-</div>`}
+      </div>
+    </div>
   </div>
 
   <div class='td-container'>
@@ -7407,7 +7986,7 @@ function showTrialDetail(trialId) {
       return `
     <div class='td-section td-agronomy'>
       <div class='td-icon'>
-        <span class="material-symbols-rounded td-section-icon">agriculture</span>
+        <span class="material-symbols-rounded td-section-icon">local_florist</span>
       </div>
       <div class='td-content'>
         <div class='td-label'>Agronomy Monitoring</div>
@@ -7437,6 +8016,141 @@ function showTrialDetail(trialId) {
     <p>Plot Specifications</p>
   </div>
 
+  ${trial.trialType === 'Micropilot' ? `
+  <div class='td-container grid-3'>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">dashboard</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Panel</div>
+        <div class='td-value'>${trial.mpPanel ?? '-'}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">female</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Ratio Female : Male</div>
+        <div class='td-value'>${trial.ratioFemale ?? '-'} : ${trial.ratioMale ?? '-'}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">badge</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Name Female Lines</div>
+        <div class='td-value'>${escapeHtml(trial.mpFemaleLineNames || '-')}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">view_agenda</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Total Female Rows</div>
+        <div class='td-value'>${trial.mpTotalFemaleRows ?? '-'}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">badge</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Name Male Lines</div>
+        <div class='td-value'>${escapeHtml(trial.mpMaleLineNames || '-')}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">view_agenda</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Total Male Rows</div>
+        <div class='td-value'>${trial.mpTotalMaleRows ?? '-'}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">straighten</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Plot Length</div>
+        <div class='td-value'>${trial.mpPlotLength != null ? trial.mpPlotLength + ' m' : '-'}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">space_dashboard</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Plant Spacing</div>
+        <div class='td-value'>${trial.mpSpacingWidth ?? '-'} × ${trial.mpSpacingHeight ?? '-'} cm</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">science</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Plot Area</div>
+        <div class='td-value'>${trial.mpPlotArea != null ? trial.mpPlotArea.toFixed(2) + ' ha' : '-'}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">science</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Female Population/plot</div>
+        <div class='td-value'>${trial.mpExpectedFemale != null ? Math.round(trial.mpExpectedFemale).toLocaleString() + ' plants' : '-'}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">science</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Male Population/plot</div>
+        <div class='td-value'>${trial.mpExpectedMale != null ? Math.round(trial.mpExpectedMale).toLocaleString() + ' plants' : '-'}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">science</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Population/ha (Female)</div>
+        <div class='td-value'>${trial.mpPopFemale != null ? Math.round(trial.mpPopFemale).toLocaleString() + ' plants' : '-'}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">science</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Population/ha (Male)</div>
+        <div class='td-value'>${trial.mpPopMale != null ? Math.round(trial.mpPopMale).toLocaleString() + ' plants' : '-'}</div>
+      </div>
+    </div>
+
+  </div>
+  ` : `
   <div class='td-container grid-3'>
 
     <div class='td-section td-no-rows'>
@@ -7500,6 +8214,7 @@ function showTrialDetail(trialId) {
     </div>
 
   </div>
+  `}
 
   <div class='td-title'>
     <p>Trial Areas</p>

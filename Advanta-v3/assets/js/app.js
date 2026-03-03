@@ -257,6 +257,14 @@ async function processSyncQueue() {
       syncState.lastError = next.error;
       syncState.status = "error";
 
+      if (typeof handleAuthExpiredError === "function") {
+        const handled = handleAuthExpiredError(error, "Sync session expired");
+        if (handled) {
+          updateSyncUI();
+          break;
+        }
+      }
+
       // Check if it's an authentication error
       if (error?.message?.includes("401") || error?.message?.includes("unauthorized") || error?.message?.includes("Invalid Credentials")) {
         next.error = next.error + " - [Requires re-login]";
@@ -723,6 +731,15 @@ async function initializeApp() {
     console.log("App initialized successfully");
   } catch (error) {
     console.error("Error initializing app:", error);
+
+    if (typeof handleAuthExpiredError === "function") {
+      const handled = handleAuthExpiredError(error, "Session expired");
+      if (handled) {
+        showLoading(false);
+        return;
+      }
+    }
+
     showLoading(false);
     alert("Error initializing app: " + error.message);
   }
