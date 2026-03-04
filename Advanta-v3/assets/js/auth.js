@@ -175,7 +175,7 @@ function stopTokenCountdown() {
 function formatRemainingTime(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const minutes = Math.floor((totalSeconds % 3600) / 60) - 10;
   const seconds = totalSeconds % 60;
   return `Auto relogin in: ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
 }

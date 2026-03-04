@@ -1,11 +1,14 @@
 // Google Drive API Integration
 const ADVANTA_FOLDER_NAME = "Advanta";
 const INVENTORY_FOLDER_NAME = "Inventory";
+const USER_SETTINGS_FOLDER_NAME = "UserSettings";
+const USER_SETTINGS_FILE_NAME = "settings.json";
 const CATEGORIES = ["Crops", "Lines", "Locations", "Parameters", "Agronomy"];
 
 let driveState = {
   advantaFolderId: null,
   inventoryFolderId: null,
+  userSettingsFolderId: null,
   categoryFolderIds: {},
 };
 
@@ -31,6 +34,12 @@ async function initializeDriveStructure() {
       driveState.advantaFolderId,
     );
 
+    // Check/Create user settings folder
+    driveState.userSettingsFolderId = await getOrCreateFolder(
+      USER_SETTINGS_FOLDER_NAME,
+      driveState.advantaFolderId,
+    );
+
     // Check/Create category folders
     for (const category of CATEGORIES) {
       driveState.categoryFolderIds[category.toLowerCase()] =
@@ -41,6 +50,131 @@ async function initializeDriveStructure() {
   } catch (error) {
     handleDriveAuthError(error, "Google Drive session expired");
     console.error("Error initializing Drive structure:", error);
+    throw error;
+  }
+}
+
+async function upsertJsonFileInFolder(fileName, parentFolderId, data) {
+  const fileContent = JSON.stringify(data ?? {}, null, 2);
+  const existingFile = await findFile(fileName, parentFolderId);
+
+  const boundary = "===============7330845974216740156==";
+  const mimeType = "application/json";
+
+  if (existingFile) {
+    const body =
+      `--${boundary}\r\n` +
+      `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+      JSON.stringify({ name: fileName }) +
+      "\r\n" +
+      `--${boundary}\r\n` +
+      `Content-Type: ${mimeType}\r\n\r\n` +
+      fileContent +
+      "\r\n" +
+      `--${boundary}--`;
+
+    const xhr = new XMLHttpRequest();
+    xhr.open(
+      "PATCH",
+      `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=multipart`,
+      true,
+    );
+    xhr.setRequestHeader("Authorization", `Bearer ${getAccessToken()}`);
+    xhr.setRequestHeader(
+      "Content-Type",
+      `multipart/related; boundary="${boundary}"`,
+    );
+
+    await new Promise((resolve, reject) => {
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+      };
+      xhr.onerror = () => reject(new Error("Network error"));
+      xhr.send(body);
+    });
+
+    return true;
+  }
+
+  const body =
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+    JSON.stringify({ name: fileName, parents: [parentFolderId] }) +
+    "\r\n" +
+    `--${boundary}\r\n` +
+    `Content-Type: ${mimeType}\r\n\r\n` +
+    fileContent +
+    "\r\n" +
+    `--${boundary}--`;
+
+  const xhr = new XMLHttpRequest();
+  xhr.open(
+    "POST",
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+    true,
+  );
+  xhr.setRequestHeader("Authorization", `Bearer ${getAccessToken()}`);
+  xhr.setRequestHeader(
+    "Content-Type",
+    `multipart/related; boundary="${boundary}"`,
+  );
+
+  await new Promise((resolve, reject) => {
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+    };
+    xhr.onerror = () => reject(new Error("Network error"));
+    xhr.send(body);
+  });
+
+  return true;
+}
+
+async function saveUserSettingsToGoogleDrive(settings) {
+  try {
+    if (!driveState.advantaFolderId) {
+      await initializeDriveStructure();
+    }
+
+    const folderId =
+      driveState.userSettingsFolderId ||
+      (await getOrCreateFolder(USER_SETTINGS_FOLDER_NAME, driveState.advantaFolderId));
+
+    driveState.userSettingsFolderId = folderId;
+    await upsertJsonFileInFolder(USER_SETTINGS_FILE_NAME, folderId, settings || {});
+    return true;
+  } catch (error) {
+    handleDriveAuthError(
+      error,
+      "Google Drive session expired while saving user settings",
+    );
+    console.error("Error saving user settings to Google Drive:", error);
+    throw error;
+  }
+}
+
+async function loadUserSettingsFromGoogleDrive() {
+  try {
+    if (!driveState.advantaFolderId) {
+      await initializeDriveStructure();
+    }
+
+    const folderId =
+      driveState.userSettingsFolderId ||
+      (await getOrCreateFolder(USER_SETTINGS_FOLDER_NAME, driveState.advantaFolderId));
+
+    driveState.userSettingsFolderId = folderId;
+    const file = await findFile(USER_SETTINGS_FILE_NAME, folderId);
+    if (!file) return null;
+    return await getFileContent(file.id);
+  } catch (error) {
+    handleDriveAuthError(
+      error,
+      "Google Drive session expired while loading user settings",
+    );
+    console.error("Error loading user settings from Google Drive:", error);
     throw error;
   }
 }

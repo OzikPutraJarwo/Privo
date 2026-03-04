@@ -697,6 +697,13 @@ body.trial-fullscreen-active .content {
   overflow: hidden;
 }
 
+body.database-fullscreen-active .content {
+  padding: 0;
+  height: calc(100dvh - var(--topbar-height));
+  max-height: calc(100dvh - var(--topbar-height));
+  overflow: hidden;
+}
+
 .page-content {
   display: none;
 }
@@ -6795,6 +6802,143 @@ img.leaflet-tile {
   display: none;
 }
 
+/* User Settings Modal */
+.user-settings-modal {
+  width: min(980px, 94vw);
+  max-height: 88vh;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.user-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.user-settings-header h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.user-settings-body {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 420px;
+  max-height: calc(88vh - 120px);
+}
+
+.user-settings-nav {
+  border-right: 1px solid var(--border);
+  background: var(--bg-secondary);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.user-settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.7rem;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.user-settings-nav-item.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.user-settings-content {
+  padding: 0.95rem 1rem;
+  overflow: auto;
+}
+
+.user-settings-tab {
+  display: none;
+}
+
+.user-settings-tab.active {
+  display: block;
+}
+
+.user-settings-tab h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.2rem;
+}
+
+.user-settings-hint {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.user-settings-actions {
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.user-settings-columns-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 420px;
+  overflow: auto;
+  background: var(--bg-primary);
+}
+
+.user-settings-column-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.user-settings-column-item:last-child {
+  border-bottom: none;
+}
+
+.user-settings-footer {
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.8rem 1rem;
+}
+
+@media (max-width: 768px) {
+  .user-settings-body {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .user-settings-nav {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    flex-direction: row;
+  }
+}
+
 /* Photo Preview Modal */
 .photo-preview-modal {
   display: flex;
@@ -6966,7 +7110,12 @@ img.leaflet-tile {
    TRIAL REPORT
    =========================== */
 .trial-report-content {
-  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: calc(100dvh - var(--topbar-height));
+  max-height: calc(100dvh - var(--topbar-height));
 }
 
 .trial-report-body {
@@ -7058,6 +7207,18 @@ img.leaflet-tile {
   cursor: pointer;
 }
 
+.database-topbar-control {
+  max-width: 230px;
+}
+
+@media (max-width: 768px) {
+  .database-topbar-control {
+    min-width: 0;
+    flex: 1 1 150px;
+    max-width: none;
+  }
+}
+
 .trial-report-col-first {
   width: 1%;
 }
@@ -7084,6 +7245,14 @@ img.leaflet-tile {
 
 .trial-report-th-btn:hover {
   background: #ececec;
+}
+
+.database-param-th {
+  background: #dfe3ec !important;
+}
+
+.database-param-td {
+  background: #f4f6fb !important;
 }
 
 .trial-report-th-text {
@@ -7191,6 +7360,7 @@ img.leaflet-tile {
 
 .trial-report-table td {
   color: #1f1f1f;
+  background-color: var(--bg-primary);
 }
 
 .trial-report-col-index {

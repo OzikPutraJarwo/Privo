@@ -90,6 +90,10 @@
             <span class="material-symbols-rounded">science</span>
             <span>Trial</span>
           </a>
+          <a href="#" class="nav-item" data-view="database">
+            <span class="material-symbols-rounded">database</span>
+            <span>Database</span>
+          </a>
           <a href="#" class="nav-item" data-view="library">
             <span class="material-symbols-rounded">folder_open</span>
             <span>Library</span>
@@ -146,6 +150,18 @@
             <button id="trialReportTopbarDownloadBtn" class="btn btn-secondary hidden" onclick="downloadTrialReportExcel()" style="display: none;" title="Download report">
               <span class="material-symbols-rounded">download</span>
             </button>
+            <select id="databaseSeasonFilter" class="trial-report-topbar-select database-topbar-control hidden" style="display: none;">
+              <option value="all">All Season</option>
+            </select>
+            <select id="databaseYearFilter" class="trial-report-topbar-select database-topbar-control hidden" style="display: none;">
+              <option value="all">All Year</option>
+            </select>
+            <select id="databaseLocationFilter" class="trial-report-topbar-select database-topbar-control hidden" style="display: none;">
+              <option value="all">All Location</option>
+            </select>
+            <button id="databaseExportBtn" class="btn btn-secondary database-topbar-control hidden" onclick="downloadDatabaseExcel()" style="display: none;" title="Download database">
+              <span class="material-symbols-rounded">download</span>
+            </button>
             <div class="user-menu" id="userMenu">
               <button class="user-menu-trigger" id="userMenuTrigger" aria-haspopup="true" aria-expanded="false">
                 <div id="userAvatar" class="user-avatar"></div>
@@ -165,6 +181,10 @@
                   <button class="user-dropdown-item" id="importDataBtn">
                     <span class="material-symbols-rounded">upload</span>
                     <span>Import Data</span>
+                  </button>
+                  <button class="user-dropdown-item" id="userSettingsBtn">
+                    <span class="material-symbols-rounded">settings</span>
+                    <span>User Settings</span>
                   </button>
                   <div class="user-dropdown-divider"></div>
                   <button class="user-dropdown-item danger" id="userLogoutBtn">
@@ -939,6 +959,18 @@
         
 
           </div>
+
+          <div id="databaseContent" class="page-content">
+            <div class="inventory-container trial-report-content">
+              <div class="trial-report-body">
+                <div class="trial-report-preview">
+                  <div class="trial-report-table-wrap">
+                    <table class="trial-report-table" id="databaseTable"></table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         
           <div id="libraryContent" class="page-content">
             <div class="inventory-container">
@@ -1343,6 +1375,41 @@
           <button class="btn btn-secondary" id="dupKeepAllBtn">Keep All</button>
           <button class="btn btn-secondary" id="dupRemoveAllNewBtn">Skip All New</button>
           <button class="btn btn-primary" id="dupApplyBtn">Apply &amp; Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- User Settings Modal -->
+    <div id="userSettingsModal" class="modal-overlay hidden">
+      <div class="user-settings-modal" role="dialog" aria-modal="true" aria-labelledby="userSettingsTitle">
+        <div class="user-settings-header">
+          <h3 id="userSettingsTitle">User Settings</h3>
+          <button type="button" class="btn btn-secondary btn-icon-only" id="userSettingsCloseBtn" aria-label="Close settings">
+            <span class="material-symbols-rounded">close</span>
+          </button>
+        </div>
+        <div class="user-settings-body">
+          <aside class="user-settings-nav">
+            <button type="button" class="user-settings-nav-item active" data-settings-tab="database">
+              <span class="material-symbols-rounded">database</span>
+              <span>Database</span>
+            </button>
+          </aside>
+          <section class="user-settings-content">
+            <div class="user-settings-tab active" id="userSettingsTabDatabase">
+              <h4>Database Columns</h4>
+              <p class="user-settings-hint">Choose which columns are shown when opening Database.</p>
+              <div class="user-settings-actions">
+                <button type="button" class="btn btn-secondary" id="dbSettingsSelectAllBtn">Select All</button>
+                <button type="button" class="btn btn-secondary" id="dbSettingsClearAllBtn">Clear All</button>
+              </div>
+              <div id="dbSettingsColumnsList" class="user-settings-columns-list"></div>
+            </div>
+          </section>
+        </div>
+        <div class="user-settings-footer">
+          <button type="button" class="btn btn-secondary" id="userSettingsCancelBtn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="userSettingsSaveBtn">Save</button>
         </div>
       </div>
     </div>

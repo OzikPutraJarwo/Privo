@@ -165,6 +165,14 @@ function renderTrials() {
 
   // Keep dashboard in sync
   renderDashboardTrialProgress();
+
+  const databaseContent = document.getElementById("databaseContent");
+  if (
+    databaseContent?.classList.contains("active") &&
+    typeof renderDatabaseTable === "function"
+  ) {
+    renderDatabaseTable();
+  }
 }
 
 // Format month-year for display
@@ -414,6 +422,10 @@ function enterTrialFullscreenMode({ title, onClose }) {
     "runTrialSaveBtn",
     "trialReportSheetSelect",
     "trialReportTopbarDownloadBtn",
+    "databaseSeasonFilter",
+    "databaseYearFilter",
+    "databaseLocationFilter",
+    "databaseExportBtn",
     "userMenu",
   ];
 
@@ -7764,6 +7776,822 @@ function evaluateFormulaForReport(formula, contextValues) {
   }
 }
 
+function getTrialPlantingYear(trial) {
+  const source = String(
+    trial?.plantingStart || trial?.plantingEnd || trial?.plantingDate || "",
+  ).trim();
+  const match = source.match(/^(\d{4})/);
+  return match ? match[1] : "";
+}
+
+const databaseViewState = {
+  initialized: false,
+  menusBound: false,
+  filtersLoaded: false,
+  filters: {},
+  sort: null,
+  freezeUntilColKey: null,
+  visibleColumnKeys: null,
+  columns: {
+    fixed: [],
+    extra: [],
+    params: [],
+    all: [],
+  },
+  rows: [],
+};
+
+function getDatabaseFilterStorageKey() {
+  const email = getCurrentUser?.()?.email || "anonymous";
+  return `advanta_database_filters_${email}`;
+}
+
+function loadDatabaseFiltersFromStorage() {
+  if (databaseViewState.filtersLoaded) return;
+  databaseViewState.filtersLoaded = true;
+
+  try {
+    const raw = localStorage.getItem(getDatabaseFilterStorageKey());
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return;
+    if (parsed.filters && typeof parsed.filters === "object") {
+      databaseViewState.filters = parsed.filters;
+    }
+    if (parsed.sort && typeof parsed.sort === "object") {
+      databaseViewState.sort = parsed.sort;
+    }
+    databaseViewState.freezeUntilColKey = parsed.freezeUntilColKey
+      ? String(parsed.freezeUntilColKey)
+      : null;
+  } catch (error) {
+    console.warn("Failed to load database filters:", error);
+  }
+}
+
+function saveDatabaseFiltersToStorage() {
+  try {
+    localStorage.setItem(
+      getDatabaseFilterStorageKey(),
+      JSON.stringify({
+        filters: databaseViewState.filters,
+        sort: databaseViewState.sort,
+        freezeUntilColKey: databaseViewState.freezeUntilColKey,
+      }),
+    );
+  } catch (error) {
+    console.warn("Failed to save database filters:", error);
+  }
+}
+
+function ensureDatabaseControls() {
+  loadDatabaseFiltersFromStorage();
+  if (databaseViewState.initialized) return;
+
+  databaseViewState.initialized = true;
+}
+
+function normalizeDatabaseFilterValue(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "__BLANK__";
+  return text;
+}
+
+function getDatabaseFilterLabel(filterValue) {
+  return filterValue === "__BLANK__" ? "(blank)" : filterValue;
+}
+
+function getDatabaseAllColumns() {
+  if (Array.isArray(databaseViewState.columns.all) && databaseViewState.columns.all.length > 0) {
+    return databaseViewState.columns.all;
+  }
+
+  return [
+    ...(databaseViewState.columns.fixed || []).map((column) => ({
+      key: column.key,
+      label: column.label,
+    })),
+    ...(databaseViewState.columns.params || []).map((param) => ({
+      key: `param_${param.id}`,
+      label: param.name || "Parameter",
+    })),
+  ];
+}
+
+function getDatabaseDefaultVisibleColumnKeys(allColumns = null) {
+  const columns = Array.isArray(allColumns) && allColumns.length > 0
+    ? allColumns
+    : getDatabaseAllColumns();
+  return columns
+    .filter((column) => column.defaultVisible)
+    .map((column) => column.key);
+}
+
+function getDatabaseVisibleColumns(allColumns = null) {
+  const columns = Array.isArray(allColumns) && allColumns.length > 0
+    ? allColumns
+    : getDatabaseAllColumns();
+
+  if (!Array.isArray(databaseViewState.visibleColumnKeys) || databaseViewState.visibleColumnKeys.length === 0) {
+    const defaults = new Set(getDatabaseDefaultVisibleColumnKeys(columns));
+    const preferred = columns.filter((column) => defaults.has(column.key));
+    return preferred.length > 0 ? preferred : columns;
+  }
+
+  const allowed = new Set(databaseViewState.visibleColumnKeys);
+  const visible = columns.filter((column) => allowed.has(column.key));
+  return visible.length > 0 ? visible : columns;
+}
+
+function setDatabaseVisibleColumns(columnKeys, options = {}) {
+  const allColumns = getDatabaseAllColumns();
+  const hasColumns = Array.isArray(allColumns) && allColumns.length > 0;
+  const allKeys = new Set(allColumns.map((column) => column.key));
+  const normalized = Array.isArray(columnKeys)
+    ? Array.from(
+      new Set(
+        columnKeys
+          .map((key) => String(key))
+          .filter((key) => (hasColumns ? allKeys.has(key) : !!key)),
+      ),
+    )
+    : [];
+
+  databaseViewState.visibleColumnKeys = normalized.length > 0
+    ? normalized
+    : null;
+
+  if (!options.skipRender) {
+    const databaseContent = document.getElementById("databaseContent");
+    if (databaseContent?.classList.contains("active")) {
+      renderDatabaseTable();
+    }
+  }
+}
+
+function getDatabaseColumnOptionsForSettings() {
+  const dataset = buildDatabaseDataset();
+  const allColumns = [
+    ...dataset.fixedColumns.map((column) => ({ key: column.key, label: column.label })),
+    ...dataset.parameterColumns.map((param) => ({ key: `param_${param.id}`, label: param.name || "Parameter" })),
+  ];
+
+  databaseViewState.columns.fixed = dataset.fixedColumns;
+  databaseViewState.columns.params = dataset.parameterColumns;
+  databaseViewState.columns.all = allColumns;
+
+  const visible = new Set(getDatabaseVisibleColumns(allColumns).map((column) => column.key));
+  return allColumns.map((column) => ({
+    key: column.key,
+    label: column.label,
+    visible: visible.has(column.key),
+  }));
+}
+
+function getDatabaseColumnFilterSetting(colKey) {
+  if (!databaseViewState.filters[colKey]) {
+    databaseViewState.filters[colKey] = {
+      mode: "default",
+      selectedValues: [],
+    };
+  }
+  return databaseViewState.filters[colKey];
+}
+
+function getDatabaseUniqueColumnValues(rows, colKey) {
+  const unique = new Set();
+  (rows || []).forEach((row) => {
+    unique.add(normalizeDatabaseFilterValue(row?.[colKey]));
+  });
+  return Array.from(unique).sort((a, b) =>
+    getDatabaseFilterLabel(a).localeCompare(getDatabaseFilterLabel(b), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }),
+  );
+}
+
+function applyDatabaseFilters(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const hasCustomFilter = Object.values(databaseViewState.filters || {}).some(
+    (setting) => setting?.mode === "custom",
+  );
+  if (!hasCustomFilter) return rows;
+
+  return rows.filter((row) =>
+    Object.entries(databaseViewState.filters || {}).every(([colKey, setting]) => {
+      if (!setting || setting.mode !== "custom") return true;
+      const selected = Array.isArray(setting.selectedValues)
+        ? setting.selectedValues
+        : [];
+      if (selected.length === 0) return false;
+      const value = normalizeDatabaseFilterValue(row?.[colKey]);
+      return selected.includes(value);
+    }),
+  );
+}
+
+function applyDatabaseSort(rows) {
+  const sortSetting = databaseViewState.sort;
+  if (!sortSetting || sortSetting.mode === "default") return rows;
+
+  const colKey = String(sortSetting.colKey || "");
+  const direction = sortSetting.mode === "desc" ? -1 : 1;
+  const sorted = [...rows];
+
+  sorted.sort((left, right) => {
+    const a = String(left?.[colKey] ?? "");
+    const b = String(right?.[colKey] ?? "");
+    const cmp = a.localeCompare(b, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+    return cmp * direction;
+  });
+
+  return sorted;
+}
+
+function closeDatabaseColumnMenus() {
+  document
+    .querySelectorAll(".trial-report-column-menu-container.database-column-menu")
+    .forEach((el) => el.remove());
+}
+
+function bindDatabaseMenuGlobalClose() {
+  if (databaseViewState.menusBound) return;
+  document.addEventListener("click", (event) => {
+    const insideMenu = event.target.closest(".trial-report-column-menu-container.database-column-menu");
+    const insideHeaderButton = event.target.closest(".trial-report-th-btn.database-th-btn");
+    if (!insideMenu && !insideHeaderButton) {
+      closeDatabaseColumnMenus();
+    }
+  });
+  databaseViewState.menusBound = true;
+}
+
+function getDatabaseColumnMode(colKey) {
+  if (
+    databaseViewState.sort &&
+    String(databaseViewState.sort.colKey || "") === String(colKey)
+  ) {
+    return databaseViewState.sort.mode;
+  }
+  return databaseViewState.filters?.[colKey]?.mode || "default";
+}
+
+function openDatabaseColumnMenuByKeyEncoded(encodedColKey, forceCustom) {
+  const colKey = decodeURIComponent(String(encodedColKey || ""));
+  const headerButton = Array.from(
+    document.querySelectorAll(".trial-report-th-btn.database-th-btn"),
+  ).find((button) => button.dataset.colKey === colKey);
+  if (!headerButton) return;
+  const fakeEvent = { currentTarget: headerButton, stopPropagation: () => {} };
+  openDatabaseColumnMenu(fakeEvent, colKey, !!forceCustom);
+}
+
+function setDatabaseColumnSortEncoded(encodedColKey, mode) {
+  const colKey = decodeURIComponent(String(encodedColKey || ""));
+  if (mode === "default") {
+    databaseViewState.sort = null;
+  } else {
+    databaseViewState.sort = { colKey, mode };
+  }
+  saveDatabaseFiltersToStorage();
+  closeDatabaseColumnMenus();
+  renderDatabaseTable();
+}
+
+function setDatabaseFreezeUntilEncoded(encodedColKey) {
+  const colKey = decodeURIComponent(String(encodedColKey || ""));
+  databaseViewState.freezeUntilColKey = colKey;
+  saveDatabaseFiltersToStorage();
+  closeDatabaseColumnMenus();
+  renderDatabaseTable();
+}
+
+function clearDatabaseFreeze() {
+  databaseViewState.freezeUntilColKey = null;
+  saveDatabaseFiltersToStorage();
+  closeDatabaseColumnMenus();
+  renderDatabaseTable();
+}
+
+function resetDatabaseColumnSettingEncoded(encodedColKey) {
+  const colKey = decodeURIComponent(String(encodedColKey || ""));
+  const setting = getDatabaseColumnFilterSetting(colKey);
+  setting.mode = "default";
+  setting.selectedValues = [];
+
+  if (
+    databaseViewState.sort &&
+    String(databaseViewState.sort.colKey || "") === String(colKey)
+  ) {
+    databaseViewState.sort = null;
+  }
+  if (String(databaseViewState.freezeUntilColKey || "") === String(colKey)) {
+    databaseViewState.freezeUntilColKey = null;
+  }
+
+  saveDatabaseFiltersToStorage();
+  closeDatabaseColumnMenus();
+  renderDatabaseTable();
+}
+
+function setDatabaseColumnCustomModeEncoded(encodedColKey) {
+  const colKey = decodeURIComponent(String(encodedColKey || ""));
+  const setting = getDatabaseColumnFilterSetting(colKey);
+  const allValues = getDatabaseUniqueColumnValues(databaseViewState.rows || [], colKey);
+  setting.mode = "custom";
+  if (!Array.isArray(setting.selectedValues) || setting.selectedValues.length === 0) {
+    setting.selectedValues = [...allValues];
+  }
+  saveDatabaseFiltersToStorage();
+  renderDatabaseTable();
+  openDatabaseColumnMenuByKeyEncoded(encodedColKey, true);
+}
+
+function clearAllDatabaseCustomValuesEncoded(encodedColKey) {
+  const colKey = decodeURIComponent(String(encodedColKey || ""));
+  const setting = getDatabaseColumnFilterSetting(colKey);
+  setting.mode = "custom";
+  setting.selectedValues = [];
+  saveDatabaseFiltersToStorage();
+  renderDatabaseTable();
+  openDatabaseColumnMenuByKeyEncoded(encodedColKey, true);
+}
+
+function toggleDatabaseCustomValueEncoded(encodedColKey, encodedValue, checked) {
+  const colKey = decodeURIComponent(String(encodedColKey || ""));
+  const value = decodeURIComponent(String(encodedValue || ""));
+
+  const setting = getDatabaseColumnFilterSetting(colKey);
+  setting.mode = "custom";
+  const selectedSet = new Set(
+    Array.isArray(setting.selectedValues) ? setting.selectedValues : [],
+  );
+  if (checked) selectedSet.add(value);
+  else selectedSet.delete(value);
+  setting.selectedValues = Array.from(selectedSet);
+
+  saveDatabaseFiltersToStorage();
+  renderDatabaseTable();
+  openDatabaseColumnMenuByKeyEncoded(encodedColKey, true);
+}
+
+function openDatabaseColumnMenuEncoded(event, encodedColKey, openCustomSubmenu = false) {
+  const colKey = decodeURIComponent(String(encodedColKey || ""));
+  openDatabaseColumnMenu(event, colKey, openCustomSubmenu);
+}
+
+function openDatabaseColumnMenu(event, colKey, openCustomSubmenu = false) {
+  event.stopPropagation();
+  bindDatabaseMenuGlobalClose();
+
+  const target = event.currentTarget;
+  if (!target) return;
+
+  closeDatabaseColumnMenus();
+
+  const setting = getDatabaseColumnFilterSetting(colKey);
+  const currentSort =
+    databaseViewState.sort && String(databaseViewState.sort.colKey || "") === String(colKey)
+      ? databaseViewState.sort.mode
+      : "default";
+  const isFrozenToThis =
+    String(databaseViewState.freezeUntilColKey || "") === String(colKey);
+  const encodedColKey = encodeURIComponent(String(colKey));
+
+  const menu = document.createElement("div");
+  menu.className = "trial-report-column-menu-container database-column-menu";
+  menu.innerHTML = `
+    <div class="trial-report-column-menu" onclick="event.stopPropagation()">
+      <button type="button" class="trial-report-menu-item ${currentSort === "asc" ? "active" : ""}" onclick="setDatabaseColumnSortEncoded('${encodedColKey}', 'asc')">Ascending</button>
+      <button type="button" class="trial-report-menu-item ${currentSort === "desc" ? "active" : ""}" onclick="setDatabaseColumnSortEncoded('${encodedColKey}', 'desc')">Descending</button>
+      <button type="button" class="trial-report-menu-item ${isFrozenToThis ? "active" : ""}" onclick="setDatabaseFreezeUntilEncoded('${encodedColKey}')">Freeze up to this</button>
+      <button type="button" class="trial-report-menu-item" onclick="clearDatabaseFreeze()">Unfreeze</button>
+      <button type="button" class="trial-report-menu-item ${setting.mode === "custom" ? "active" : ""}" onclick="setDatabaseColumnCustomModeEncoded('${encodedColKey}')">Custom</button>
+      <button type="button" class="trial-report-menu-item" onclick="resetDatabaseColumnSettingEncoded('${encodedColKey}')">Default</button>
+      <div class="trial-report-custom-submenu ${openCustomSubmenu || setting.mode === "custom" ? "active" : ""}">
+        <div class="trial-report-custom-actions">
+          <button type="button" class="trial-report-menu-item subtle" onclick="clearAllDatabaseCustomValuesEncoded('${encodedColKey}')">Clear all</button>
+        </div>
+        <div class="trial-report-custom-list">
+          ${getDatabaseUniqueColumnValues(databaseViewState.rows || [], colKey)
+            .map((value) => {
+              const selected =
+                Array.isArray(setting.selectedValues) && setting.selectedValues.includes(value);
+              const encodedValue = encodeURIComponent(value);
+              return `
+                <label class="trial-report-custom-item">
+                  <input type="checkbox" ${selected ? "checked" : ""} onchange="toggleDatabaseCustomValueEncoded('${encodedColKey}', '${encodedValue}', this.checked)">
+                  <span>${escapeHtml(getDatabaseFilterLabel(value))}</span>
+                </label>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(menu);
+
+  const rect = target.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.left = `${rect.left}px`;
+}
+
+function applyDatabaseFreezeColumns(tableEl, visibleColumns) {
+  if (!tableEl) return;
+
+  tableEl.querySelectorAll("th, td").forEach((cell) => {
+    cell.style.position = "";
+    cell.style.left = "";
+    cell.style.zIndex = "";
+  });
+
+  const freezeKey = databaseViewState.freezeUntilColKey;
+  if (!freezeKey) return;
+
+  const freezeIndex = visibleColumns.findIndex(
+    (column) => String(column.key) === String(freezeKey),
+  );
+  if (freezeIndex < 0) return;
+
+  const headCells = Array.from(tableEl.querySelectorAll("thead th"));
+  let left = 0;
+
+  for (let colIndex = 0; colIndex <= freezeIndex; colIndex++) {
+    const headCell = headCells[colIndex];
+    if (!headCell) continue;
+
+    const width =
+      headCell.offsetWidth || headCell.getBoundingClientRect().width || 0;
+
+    headCell.style.position = "sticky";
+    headCell.style.left = `${left}px`;
+    headCell.style.zIndex = "7";
+
+    tableEl.querySelectorAll("tbody tr").forEach((row) => {
+      const bodyCell = row.children[colIndex];
+      if (!bodyCell) return;
+      bodyCell.style.position = "sticky";
+      bodyCell.style.left = `${left}px`;
+      bodyCell.style.zIndex = "4";
+    });
+
+    left += width;
+  }
+}
+
+function buildDatabaseDataset() {
+  const trials = (trialState.trials || []).filter(
+    (trial) =>
+      trial &&
+      trial.areas &&
+      trial.areas.length > 0 &&
+      trial.areas.some((area) => area.layout?.result),
+  );
+
+  const allParameters = inventoryState.items.parameters || [];
+  const lines = inventoryState.items.lines || [];
+  const locations = inventoryState.items.locations || [];
+
+  const linesById = new Map(lines.map((line) => [String(line.id), line]));
+  const locationsById = new Map(
+    locations.map((location) => [String(location.id), location]),
+  );
+
+  const parameterIdsUsed = new Set();
+  trials.forEach((trial) => {
+    (trial.parameters || []).forEach((paramId) =>
+      parameterIdsUsed.add(String(paramId)),
+    );
+  });
+
+  const parameterColumns = allParameters.filter((param) =>
+    parameterIdsUsed.has(String(param.id)),
+  );
+
+  const headerColumns = [
+    { key: "no", label: "No", source: "fixed", defaultVisible: true },
+    { key: "season", label: "Season", source: "fixed", defaultVisible: true },
+    { key: "location", label: "Location", source: "fixed", defaultVisible: true },
+    { key: "year", label: "Year", source: "fixed", defaultVisible: true },
+    { key: "parentCode", label: "Parent Code", source: "fixed", defaultVisible: true },
+    { key: "sprCode", label: "SPR Code", source: "fixed", defaultVisible: true },
+    { key: "hybridCode", label: "Hybrid Code", source: "fixed", defaultVisible: true },
+    { key: "replication", label: "Replication", source: "fixed", defaultVisible: true },
+  ];
+
+  const extraColumns = [
+    { key: "trialName", label: "Trial", source: "extra", defaultVisible: false },
+    { key: "crop", label: "Crop", source: "extra", defaultVisible: false },
+    { key: "pollination", label: "Pollination", source: "extra", defaultVisible: false },
+    { key: "trialType", label: "Trial Type", source: "extra", defaultVisible: false },
+    { key: "expDesign", label: "Exp Design", source: "extra", defaultVisible: false },
+    { key: "plantingDate", label: "Planting Date", source: "extra", defaultVisible: false },
+    { key: "line", label: "Line", source: "extra", defaultVisible: false },
+    { key: "lineRole", label: "Line Role", source: "extra", defaultVisible: false },
+    { key: "lineStage", label: "Line Stage", source: "extra", defaultVisible: false },
+    { key: "lineQty", label: "Line Qty", source: "extra", defaultVisible: false },
+    { key: "area", label: "Area", source: "extra", defaultVisible: false },
+    { key: "range", label: "Range", source: "extra", defaultVisible: false },
+    { key: "row", label: "Row", source: "extra", defaultVisible: false },
+    { key: "sample", label: "Sample", source: "extra", defaultVisible: false },
+  ];
+
+  const rows = [];
+  let rowNo = 1;
+
+  trials.forEach((trial) => {
+    const cropName =
+      inventoryState.items.crops?.find((crop) => String(crop.id) === String(trial.cropId || ""))
+        ?.name ||
+      trial.cropName ||
+      "";
+    const season = trial.plantingSeason || "";
+    const locationName =
+      locationsById.get(String(trial.locationId || ""))?.name || "";
+    const year = getTrialPlantingYear(trial);
+
+    const trialParams = (trial.parameters || [])
+      .map((paramId) =>
+        allParameters.find((param) => String(param.id) === String(paramId)),
+      )
+      .filter(Boolean);
+
+    const nonFormulaParams = trialParams.filter(
+      (param) => (param.type || "").toLowerCase() !== "formula",
+    );
+    const formulaParams = trialParams.filter(
+      (param) => (param.type || "").toLowerCase() === "formula",
+    );
+
+    (trial.areas || []).forEach((area, areaIndex) => {
+      const result = area?.layout?.result;
+      if (!result) return;
+
+      result.forEach((rep, repIndex) => {
+        rep.forEach((layoutRow) => {
+          layoutRow.forEach((cell) => {
+            if (!cell) return;
+
+            const lineRef =
+              linesById.get(String(cell.id || "")) ||
+              lines.find(
+                (line) => String(line.name || "") === String(cell.name || ""),
+              );
+
+            const maxSampleCount = Math.max(
+              1,
+              ...nonFormulaParams.map((param) =>
+                Math.max(1, Number(param.numberOfSamples || 1)),
+              ),
+            );
+
+            for (
+              let sampleIndex = 0;
+              sampleIndex < maxSampleCount;
+              sampleIndex++
+            ) {
+              const row = {
+                no: rowNo++,
+                season,
+                location: locationName,
+                year,
+                trialName: trial.name || "",
+                crop: cropName,
+                pollination: trial.pollination || "",
+                trialType: trial.trialType || "",
+                expDesign: trial.expDesign || "",
+                plantingDate: trial.plantingDate || "",
+                line: lineRef?.name || cell.name || "",
+                lineRole: lineRef?.role || "",
+                lineStage: lineRef?.stage || "",
+                lineQty: lineRef?.quantity ?? "",
+                area: area?.name || `Area ${areaIndex + 1}`,
+                range: layoutRow?.rangeIndex != null ? layoutRow.rangeIndex + 1 : "",
+                row: layoutRow?.rowIndex != null ? layoutRow.rowIndex + 1 : "",
+                sample: sampleIndex + 1,
+                parentCode: lineRef?.parentCode || "",
+                sprCode: lineRef?.sprCode || "",
+                hybridCode: lineRef?.hybridCode || "",
+                replication: repIndex + 1,
+              };
+
+              parameterColumns.forEach((param) => {
+                row[`param_${param.id}`] = "";
+              });
+
+              nonFormulaParams.forEach((param) => {
+                const sampleCount = Math.max(1, Number(param.numberOfSamples || 1));
+                if (sampleIndex >= sampleCount) return;
+                const entry = getObservationReportEntry(
+                  trial,
+                  areaIndex,
+                  param,
+                  cell.id,
+                  repIndex,
+                  sampleIndex,
+                );
+                row[`param_${param.id}`] = entry.value;
+              });
+
+              if (sampleIndex === 0 && formulaParams.length > 0) {
+                const formulaContext = buildFormulaObservationContext(
+                  trial,
+                  areaIndex,
+                  cell.id,
+                  repIndex,
+                  nonFormulaParams,
+                );
+
+                formulaParams.forEach((formulaParam) => {
+                  const resultValue = evaluateFormulaForReport(
+                    formulaParam.formula,
+                    formulaContext.values,
+                  );
+                  row[`param_${formulaParam.id}`] = resultValue.ok
+                    ? resultValue.value
+                    : "";
+                });
+              }
+
+              rows.push(row);
+            }
+          });
+        });
+      });
+    });
+  });
+
+  return {
+    fixedColumns: headerColumns,
+    extraColumns,
+    parameterColumns,
+    rows,
+  };
+}
+
+function renderDatabaseTable() {
+  ensureDatabaseControls();
+
+  const tableEl = document.getElementById("databaseTable");
+  if (!tableEl) return;
+
+  const rowCountEl = document.getElementById("databaseRowCount");
+
+  closeDatabaseColumnMenus();
+
+  const dataset = buildDatabaseDataset();
+
+  databaseViewState.columns.fixed = dataset.fixedColumns;
+  databaseViewState.columns.extra = dataset.extraColumns || [];
+  databaseViewState.columns.params = dataset.parameterColumns;
+  databaseViewState.columns.all = [
+    ...dataset.fixedColumns.map((column) => ({
+      key: column.key,
+      label: column.label,
+      source: column.source || "fixed",
+      defaultVisible: !!column.defaultVisible,
+    })),
+    ...(dataset.extraColumns || []).map((column) => ({
+      key: column.key,
+      label: column.label,
+      source: column.source || "extra",
+      defaultVisible: !!column.defaultVisible,
+    })),
+    ...dataset.parameterColumns.map((param) => ({
+      key: `param_${param.id}`,
+      label: param.name || "Parameter",
+      source: "param",
+      defaultVisible: true,
+    })),
+  ];
+  databaseViewState.rows = dataset.rows;
+
+  const allColumns = getDatabaseAllColumns();
+  const visibleColumns = getDatabaseVisibleColumns(allColumns);
+  const rows = applyDatabaseSort(applyDatabaseFilters(dataset.rows));
+
+  if (rows.length === 0) {
+    tableEl.innerHTML = `
+      <thead>
+        <tr>
+          ${visibleColumns
+            .map(
+              (column, colIndex) => `
+                <th>
+                  <button type="button" class="trial-report-th-btn database-th-btn ${column.source === "param" ? "database-param-th" : ""}" data-col-key="${escapeHtml(column.key)}" data-col-index="${colIndex}" onclick="openDatabaseColumnMenuEncoded(event, '${encodeURIComponent(column.key)}')">
+                    <span class="trial-report-th-text">${escapeHtml(column.label)}</span>
+                    <span class="material-symbols-rounded trial-report-th-marker ${getDatabaseColumnMode(column.key) !== "default" ? "active" : ""}">filter_alt</span>
+                  </button>
+                </th>
+              `,
+            )
+            .join("")}
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="${visibleColumns.length}" class="trial-report-empty">No rows</td></tr>
+      </tbody>
+    `;
+    if (rowCountEl) rowCountEl.textContent = "0 rows";
+    return;
+  }
+
+  const headerHtml = `
+    <thead>
+      <tr>
+        ${visibleColumns
+          .map(
+            (column, colIndex) => `
+              <th>
+                <button type="button" class="trial-report-th-btn database-th-btn ${column.source === "param" ? "database-param-th" : ""}" data-col-key="${escapeHtml(column.key)}" data-col-index="${colIndex}" onclick="openDatabaseColumnMenuEncoded(event, '${encodeURIComponent(column.key)}')">
+                  <span class="trial-report-th-text">${escapeHtml(column.label)}</span>
+                  <span class="material-symbols-rounded trial-report-th-marker ${getDatabaseColumnMode(column.key) !== "default" ? "active" : ""}">filter_alt</span>
+                </button>
+              </th>
+            `,
+          )
+          .join("")}
+      </tr>
+    </thead>
+  `;
+
+  const bodyHtml = `
+    <tbody>
+      ${rows
+        .map((row) => {
+          const cells = visibleColumns
+            .map((column) => `<td class="${column.source === "param" ? "database-param-td" : ""}">${escapeHtml(String(row[column.key] ?? ""))}</td>`)
+            .join("");
+          return `<tr>${cells}</tr>`;
+        })
+        .join("")}
+    </tbody>
+  `;
+
+  tableEl.innerHTML = `${headerHtml}${bodyHtml}`;
+  applyDatabaseFreezeColumns(tableEl, visibleColumns);
+  if (rowCountEl) rowCountEl.textContent = `${rows.length.toLocaleString()} rows`;
+}
+
+function downloadDatabaseExcel() {
+  if (typeof XLSX === "undefined") {
+    showToast("Excel library not loaded. Please try again.", "error");
+    return;
+  }
+
+  const allColumns = getDatabaseVisibleColumns(getDatabaseAllColumns());
+  const filteredRows = applyDatabaseSort(
+    applyDatabaseFilters(databaseViewState.rows || []),
+  );
+
+  if (filteredRows.length === 0) {
+    showToast("No database rows to export", "error");
+    return;
+  }
+
+  const header = [
+    ...allColumns.map((column) => column.label),
+  ];
+
+  const aoa = [
+    header,
+    ...filteredRows.map((row) => [
+      ...allColumns.map((column) => row[column.key] ?? ""),
+    ]),
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+
+  const maxScanRows = Math.min(aoa.length, 300);
+  const widths = header.map((_, colIndex) => {
+    let maxLen = 8;
+    for (let rowIndex = 0; rowIndex < maxScanRows; rowIndex++) {
+      const value = String(aoa[rowIndex]?.[colIndex] ?? "");
+      if (value.length > maxLen) maxLen = value.length;
+    }
+    return { wch: Math.min(maxLen + 2, 45) };
+  });
+  worksheet["!cols"] = widths;
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Database");
+  XLSX.writeFile(workbook, "Database_Report.xlsx");
+  showToast(`Exported ${filteredRows.length.toLocaleString()} rows`, "success");
+}
+
+window.getDatabaseColumnOptionsForSettings = getDatabaseColumnOptionsForSettings;
+window.getDatabaseVisibleColumnKeys = function getDatabaseVisibleColumnKeys() {
+  return (getDatabaseVisibleColumns(getDatabaseAllColumns()) || []).map((column) => column.key);
+};
+window.setDatabaseVisibleColumns = setDatabaseVisibleColumns;
+
 // Show trial detail modal
 function showTrialDetail(trialId) {
   const trial = trialState.trials.find(t => t.id === trialId);
@@ -8032,7 +8860,7 @@ function showTrialDetail(trialId) {
   </div>
 
   ${trial.trialType === 'Micropilot' ? `
-  <div class='td-container grid-3'>
+  <div class='td-container grid-4'>
 
     <div class='td-section'>
       <div class='td-icon'>

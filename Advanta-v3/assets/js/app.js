@@ -107,6 +107,208 @@ function clearLocalCache() {
   }
 }
 
+const userSettingsState = {
+  loaded: false,
+  data: {
+    database: {
+      visibleColumns: [],
+    },
+  },
+};
+
+function normalizeUserSettings(data) {
+  const safe = data && typeof data === "object" ? data : {};
+  const database = safe.database && typeof safe.database === "object"
+    ? safe.database
+    : {};
+
+  return {
+    database: {
+      visibleColumns: Array.isArray(database.visibleColumns)
+        ? database.visibleColumns.map((key) => String(key))
+        : [],
+    },
+  };
+}
+
+function applyUserSettingsToModules() {
+  const visibleColumns = userSettingsState.data?.database?.visibleColumns || [];
+  if (typeof setDatabaseVisibleColumns === "function") {
+    setDatabaseVisibleColumns(visibleColumns, { skipRender: true });
+  }
+
+  const databaseContent = document.getElementById("databaseContent");
+  if (
+    databaseContent?.classList.contains("active") &&
+    typeof renderDatabaseTable === "function"
+  ) {
+    renderDatabaseTable();
+  }
+}
+
+function saveUserSettingsLocalCache() {
+  if (typeof saveLocalCache === "function") {
+    saveLocalCache("userSettings", userSettingsState.data);
+  }
+}
+
+function enqueueUserSettingsSync() {
+  const user = getCurrentUser?.();
+  if (!user || user.isGuest) return;
+  if (typeof enqueueSync !== "function") return;
+  if (typeof saveUserSettingsToGoogleDrive !== "function") return;
+
+  const payload = normalizeUserSettings(userSettingsState.data);
+  enqueueSync({
+    label: "Sync user settings",
+    fileKey: "user_settings",
+    run: async () => {
+      await saveUserSettingsToGoogleDrive(payload);
+    },
+  });
+}
+
+async function loadUserSettingsForCurrentUser(options = {}) {
+  const { preferRemote = true, silent = true } = options;
+
+  let hasApplied = false;
+
+  try {
+    const cached = typeof loadLocalCache === "function"
+      ? loadLocalCache("userSettings")
+      : null;
+    if (cached && typeof cached === "object") {
+      userSettingsState.data = normalizeUserSettings(cached);
+      applyUserSettingsToModules();
+      hasApplied = true;
+    }
+  } catch (error) {
+    console.warn("Failed loading cached user settings:", error);
+  }
+
+  const user = getCurrentUser?.();
+  const canLoadRemote =
+    !!preferRemote &&
+    !!user &&
+    !user.isGuest &&
+    typeof loadUserSettingsFromGoogleDrive === "function" &&
+    typeof getAccessToken === "function" &&
+    !!getAccessToken();
+
+  if (canLoadRemote) {
+    try {
+      const remote = await loadUserSettingsFromGoogleDrive();
+      if (remote && typeof remote === "object") {
+        userSettingsState.data = normalizeUserSettings(remote);
+        applyUserSettingsToModules();
+        saveUserSettingsLocalCache();
+        hasApplied = true;
+      }
+    } catch (error) {
+      console.warn("Failed loading user settings from Drive:", error);
+      if (!silent) {
+        showToast("Failed to load user settings from Drive", "warning");
+      }
+    }
+  }
+
+  if (!hasApplied) {
+    userSettingsState.data = normalizeUserSettings({});
+    applyUserSettingsToModules();
+  }
+
+  userSettingsState.loaded = true;
+}
+
+function renderUserSettingsDatabaseTab() {
+  const listEl = document.getElementById("dbSettingsColumnsList");
+  if (!listEl) return;
+
+  const options = typeof getDatabaseColumnOptionsForSettings === "function"
+    ? getDatabaseColumnOptionsForSettings()
+    : [];
+
+  if (!Array.isArray(options) || options.length === 0) {
+    listEl.innerHTML = '<div class="user-settings-column-item">No columns available</div>';
+    return;
+  }
+
+  const savedVisible = Array.isArray(userSettingsState.data?.database?.visibleColumns)
+    ? userSettingsState.data.database.visibleColumns
+    : [];
+  const useSaved = savedVisible.length > 0;
+  const currentVisible = new Set(
+    useSaved
+      ? savedVisible
+      : options.filter((item) => item.visible).map((item) => item.key),
+  );
+
+  listEl.innerHTML = options
+    .map(
+      (item) => `
+        <label class="user-settings-column-item">
+          <input type="checkbox" class="db-settings-col-checkbox" data-col-key="${escapeHtml(item.key)}" ${currentVisible.has(item.key) ? "checked" : ""}>
+          <span>${escapeHtml(item.label)}</span>
+        </label>
+      `,
+    )
+    .join("");
+}
+
+function openUserSettingsModal() {
+  const modal = document.getElementById("userSettingsModal");
+  const dropdown = document.getElementById("userDropdown");
+  const trigger = document.getElementById("userMenuTrigger");
+  if (!modal) return;
+
+  if (dropdown) dropdown.classList.remove("active");
+  if (trigger) trigger.classList.remove("active");
+
+  renderUserSettingsDatabaseTab();
+  modal.classList.remove("hidden");
+  modal.classList.add("active");
+}
+
+function closeUserSettingsModal() {
+  const modal = document.getElementById("userSettingsModal");
+  if (!modal) return;
+  modal.classList.remove("active");
+  modal.classList.add("hidden");
+}
+
+async function saveUserSettingsFromModal() {
+  const checkboxes = Array.from(
+    document.querySelectorAll("#dbSettingsColumnsList .db-settings-col-checkbox"),
+  );
+
+  const selectedKeys = checkboxes
+    .filter((checkbox) => checkbox.checked)
+    .map((checkbox) => String(checkbox.dataset.colKey || ""))
+    .filter(Boolean);
+
+  if (selectedKeys.length === 0) {
+    showToast("At least one Database column must be visible", "warning");
+    return;
+  }
+
+  userSettingsState.data = normalizeUserSettings({
+    ...userSettingsState.data,
+    database: {
+      ...(userSettingsState.data?.database || {}),
+      visibleColumns: selectedKeys,
+    },
+  });
+
+  if (typeof setDatabaseVisibleColumns === "function") {
+    setDatabaseVisibleColumns(selectedKeys, { skipRender: false });
+  }
+
+  saveUserSettingsLocalCache();
+  enqueueUserSettingsSync();
+  closeUserSettingsModal();
+  showToast("User settings saved", "success");
+}
+
 // Show/hide loading spinner
 function showLoading(show) {
   const spinner = document.getElementById("loadingSpinner");
@@ -421,6 +623,8 @@ function showView(viewName) {
         ? "inventory"
         : activePage?.id === "trialContent"
           ? "trial"
+          : activePage?.id === "databaseContent"
+            ? "database"
           : activePage?.id === "libraryContent"
             ? "library"
             : "dashboard";
@@ -429,7 +633,93 @@ function showView(viewName) {
 }
 
 // Switch page content
+const databaseFullscreenState = {
+  active: false,
+  previousPageTitle: "Dashboard",
+  previousMenuHtml: '<span class="material-symbols-rounded">menu</span>',
+  previousMenuOnclick: null,
+  previousDisplays: {},
+};
+
+function setDatabaseTopbarControls(show) {
+  const exportBtn = document.getElementById("databaseExportBtn");
+
+  const controls = [exportBtn];
+  controls.forEach((control) => {
+    if (!control) return;
+    control.classList.toggle("hidden", !show);
+    control.style.display = show ? "" : "none";
+  });
+}
+
+function enterDatabaseFullscreenMode() {
+  if (databaseFullscreenState.active) return;
+
+  const topbar = document.querySelector(".topbar");
+  const pageTitle = document.getElementById("pageTitle");
+  const menuToggle = document.getElementById("menuToggle");
+
+  const managedIds = ["syncDownBtn", "syncStatusBtn", "userMenu"];
+  databaseFullscreenState.previousDisplays = {};
+  managedIds.forEach((id) => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    databaseFullscreenState.previousDisplays[id] = element.style.display;
+    element.style.display = "none";
+  });
+
+  databaseFullscreenState.previousPageTitle = pageTitle?.textContent || "Database";
+  if (menuToggle) {
+    databaseFullscreenState.previousMenuHtml = menuToggle.innerHTML;
+    databaseFullscreenState.previousMenuOnclick = menuToggle.onclick;
+    menuToggle.innerHTML = '<span class="material-symbols-rounded">close</span>';
+    menuToggle.onclick = () => switchPage("dashboard");
+  }
+
+  if (topbar) topbar.classList.add("run-trial-mode");
+  if (pageTitle) pageTitle.textContent = "Database";
+
+  document.body.classList.add("database-fullscreen-active", "sidebar-collapsed");
+  databaseFullscreenState.active = true;
+}
+
+function exitDatabaseFullscreenMode() {
+  if (!databaseFullscreenState.active) return;
+
+  const topbar = document.querySelector(".topbar");
+  const pageTitle = document.getElementById("pageTitle");
+  const menuToggle = document.getElementById("menuToggle");
+  const sidebar = document.querySelector(".sidebar");
+  const sidebarOverlay = document.getElementById("sidebarOverlay");
+
+  if (topbar) topbar.classList.remove("run-trial-mode");
+  if (pageTitle) pageTitle.textContent = databaseFullscreenState.previousPageTitle || "Dashboard";
+
+  if (menuToggle) {
+    menuToggle.innerHTML = databaseFullscreenState.previousMenuHtml || '<span class="material-symbols-rounded">menu</span>';
+    menuToggle.onclick = databaseFullscreenState.previousMenuOnclick || null;
+  }
+
+  Object.entries(databaseFullscreenState.previousDisplays || {}).forEach(([id, display]) => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.style.display = display || "";
+  });
+
+  // Return to normal (not fullscreen, not collapsed)
+  document.body.classList.remove("database-fullscreen-active", "sidebar-collapsed");
+  if (sidebar) sidebar.classList.remove("open");
+  if (sidebarOverlay) sidebarOverlay.classList.remove("active");
+
+  databaseFullscreenState.active = false;
+}
+
 function switchPage(pageName) {
+  if (pageName !== "database") {
+    exitDatabaseFullscreenMode();
+    setDatabaseTopbarControls(false);
+  }
+
   // Hide all page contents
   document.querySelectorAll(".page-content").forEach((content) => {
     content.classList.remove("active");
@@ -440,6 +730,7 @@ function switchPage(pageName) {
     dashboard: "dashboardContent",
     inventory: "inventoryContent",
     trial: "trialContent",
+    database: "databaseContent",
     library: "libraryContent",
     reminder: "reminderContent",
   };
@@ -453,6 +744,7 @@ function switchPage(pageName) {
     dashboard: "Dashboard",
     inventory: "Inventory",
     trial: "Trial",
+    database: "Database",
     library: "Library",
     reminder: "Reminder",
   };
@@ -462,6 +754,14 @@ function switchPage(pageName) {
   }
 
   syncNavActiveState(pageName);
+
+  if (pageName === "database") {
+    enterDatabaseFullscreenMode();
+    setDatabaseTopbarControls(true);
+    if (typeof renderDatabaseTable === "function") {
+      renderDatabaseTable();
+    }
+  }
 }
 
 // Helper function to navigate to a view
@@ -713,6 +1013,10 @@ async function initializeApp() {
       });
     }
 
+    // Load user settings last
+    setLoadingProgress(92, "Loading user settings...");
+    await loadUserSettingsForCurrentUser({ preferRemote: !isGuest, silent: true });
+
     // Setup event listeners
     setupEventListeners();
     setupDataTransferEvents();
@@ -755,6 +1059,7 @@ function setupEventListeners() {
   if (menuToggle && sidebar) {
     menuToggle.addEventListener("click", () => {
       if (document.body.classList.contains("run-trial-active")) return;
+      if (document.body.classList.contains("database-fullscreen-active")) return;
       const isMobile = window.matchMedia("(max-width: 768px)").matches;
       if (isMobile) {
         sidebar.classList.toggle("open");
@@ -802,6 +1107,59 @@ function setupEventListeners() {
       if (confirm("Are you sure you want to logout?")) {
         logout();
       }
+    });
+  }
+
+  const userSettingsBtn = document.getElementById("userSettingsBtn");
+  if (userSettingsBtn) {
+    userSettingsBtn.addEventListener("click", () => {
+      openUserSettingsModal();
+    });
+  }
+
+  const userSettingsCloseBtn = document.getElementById("userSettingsCloseBtn");
+  const userSettingsCancelBtn = document.getElementById("userSettingsCancelBtn");
+  const userSettingsSaveBtn = document.getElementById("userSettingsSaveBtn");
+  const userSettingsModal = document.getElementById("userSettingsModal");
+  const dbSettingsSelectAllBtn = document.getElementById("dbSettingsSelectAllBtn");
+  const dbSettingsClearAllBtn = document.getElementById("dbSettingsClearAllBtn");
+
+  if (userSettingsCloseBtn) {
+    userSettingsCloseBtn.addEventListener("click", closeUserSettingsModal);
+  }
+  if (userSettingsCancelBtn) {
+    userSettingsCancelBtn.addEventListener("click", closeUserSettingsModal);
+  }
+  if (userSettingsSaveBtn) {
+    userSettingsSaveBtn.addEventListener("click", () => {
+      saveUserSettingsFromModal();
+    });
+  }
+  if (userSettingsModal) {
+    userSettingsModal.addEventListener("click", (event) => {
+      if (event.target === userSettingsModal) {
+        closeUserSettingsModal();
+      }
+    });
+  }
+
+  if (dbSettingsSelectAllBtn) {
+    dbSettingsSelectAllBtn.addEventListener("click", () => {
+      document
+        .querySelectorAll("#dbSettingsColumnsList .db-settings-col-checkbox")
+        .forEach((checkbox) => {
+          checkbox.checked = true;
+        });
+    });
+  }
+
+  if (dbSettingsClearAllBtn) {
+    dbSettingsClearAllBtn.addEventListener("click", () => {
+      document
+        .querySelectorAll("#dbSettingsColumnsList .db-settings-col-checkbox")
+        .forEach((checkbox, index) => {
+          checkbox.checked = index === 0;
+        });
     });
   }
 
@@ -1709,9 +2067,14 @@ async function syncDownFromDrive() {
       renderTrials();
       renderDashboardTrialProgress();
 
+      // Load user settings last in sync flow
+      await loadUserSettingsForCurrentUser({ preferRemote: true, silent: true });
+
       const totalNew = categories.reduce((sum, cat) => sum + newItems[cat].length, 0) + newTrials.length;
       showAlert(`Loaded ${totalNew} new item(s) and resolved ${conflicts.length} conflict(s).`, "success", "Sync Complete");
     } else {
+      // Load user settings last in sync flow
+      await loadUserSettingsForCurrentUser({ preferRemote: true, silent: true });
       showAlert("No new data found on Drive.", "info", "Already Up to Date");
     }
 

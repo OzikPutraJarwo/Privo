@@ -76,5 +76,6 @@
 - [x] `Trial` Planting Seasons
 - [x] `Trial` No. of Factors, Treatments
 - [x] `Trial` Type of Pollination
+- [x] `Database` All data
 #### Bug Fixes and Redesigns
 - [x] Automatic logout when error initializing happened
