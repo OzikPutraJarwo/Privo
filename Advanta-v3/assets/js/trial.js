@@ -1558,14 +1558,14 @@ function updateMicropilotCalculations() {
 
   const totalRatio = (Number.isFinite(ratioFemale) ? ratioFemale : 0) + (Number.isFinite(ratioMale) ? ratioMale : 0);
 
-  // Based on requested Micropilot pattern:
-  // Total Female Rows = ratioMale * panel
-  // Total Male Rows = (ratioMale + 1) * panel
-  const femaleRows = Number.isFinite(ratioMale) && Number.isFinite(panel) && ratioMale >= 0 && panel >= 0
-    ? ratioMale * panel
+  // Micropilot pattern:
+  // Female rows = ratioFemale * panel
+  // Male rows   = (ratioMale * panel) + ratioMale
+  const femaleRows = Number.isFinite(ratioFemale) && Number.isFinite(panel) && ratioFemale >= 0 && panel >= 0
+    ? ratioFemale * panel
     : NaN;
   const maleRows = Number.isFinite(ratioMale) && Number.isFinite(panel) && ratioMale >= 0 && panel >= 0
-    ? (ratioMale + 1) * panel
+    ? (ratioMale * panel) + ratioMale
     : NaN;
   const totalRows = Number.isFinite(femaleRows) && Number.isFinite(maleRows)
     ? femaleRows + maleRows
@@ -1581,19 +1581,17 @@ function updateMicropilotCalculations() {
   if (expFemaleEl) expFemaleEl.value = Number.isFinite(femalePopPlot) ? Math.round(femalePopPlot).toLocaleString() : "";
   if (expMaleEl) expMaleEl.value = Number.isFinite(malePopPlot) ? Math.round(malePopPlot).toLocaleString() : "";
 
-  // Plot Area (ha): totalRows * spacingWidth(cm) * plotLength(m) / 10000
-  const plotAreaHa = Number.isFinite(totalRows) && Number.isFinite(spacingWCm) && Number.isFinite(plotLength)
-    && totalRows > 0 && spacingWCm > 0 && plotLength > 0
-      ? (totalRows * spacingWCm * plotLength) / 10000
-      : NaN;
-  if (plotAreaEl) plotAreaEl.value = Number.isFinite(plotAreaHa) ? plotAreaHa.toFixed(2) : "";
-
-  // Population/ha = ratio part * (10000 / plotArea[m²])
+  // Plot area in m²: totalRows * spacingWidth(m) * plotLength(m)
   const plotAreaM2 = Number.isFinite(totalRows) && Number.isFinite(widthM) && Number.isFinite(plotLength)
     && totalRows > 0 && widthM > 0 && plotLength > 0
       ? totalRows * widthM * plotLength
       : NaN;
-  const totalPopHa = Number.isFinite(plotAreaM2) && plotAreaM2 > 0 ? 10000 / plotAreaM2 : NaN;
+  if (plotAreaEl) plotAreaEl.value = Number.isFinite(plotAreaM2) ? plotAreaM2.toFixed(2) : "";
+
+  // Population/ha = ratio part * (10000 / (spacingW(m) * spacingH(m)))
+  const totalPopHa = Number.isFinite(widthM) && Number.isFinite(heightM) && widthM > 0 && heightM > 0
+    ? 10000 / (widthM * heightM)
+    : NaN;
   const femalePopHa = Number.isFinite(totalPopHa) && totalRatio > 0 && Number.isFinite(ratioFemale)
     ? totalPopHa * (ratioFemale / totalRatio)
     : NaN;
@@ -2594,23 +2592,22 @@ async function saveTrial() {
   const mpSpacingHeight = parseFloat(document.getElementById("trialMpSpacingHeight")?.value || "");
   const mpWidthM = Number.isFinite(mpSpacingWidth) ? mpSpacingWidth / 100 : NaN;
   const mpHeightM = Number.isFinite(mpSpacingHeight) ? mpSpacingHeight / 100 : NaN;
-  const mpTotalFemaleRows = Number.isFinite(ratioMale) && Number.isFinite(mpPanel) ? ratioMale * mpPanel : null;
-  const mpTotalMaleRows = Number.isFinite(ratioMale) && Number.isFinite(mpPanel) ? (ratioMale + 1) * mpPanel : null;
+  const mpTotalFemaleRows = Number.isFinite(ratioFemale) && Number.isFinite(mpPanel) ? ratioFemale * mpPanel : null;
+  const mpTotalMaleRows = Number.isFinite(ratioMale) && Number.isFinite(mpPanel) ? (ratioMale * mpPanel) + ratioMale : null;
   const mpTotalRows = Number.isFinite(mpTotalFemaleRows) && Number.isFinite(mpTotalMaleRows)
     ? mpTotalFemaleRows + mpTotalMaleRows
     : null;
-  const mpPlotArea = Number.isFinite(mpTotalRows) && Number.isFinite(mpSpacingWidth) && Number.isFinite(mpPlotLength) && mpTotalRows > 0 && mpSpacingWidth > 0 && mpPlotLength > 0
-    ? (mpTotalRows * mpSpacingWidth * mpPlotLength) / 10000
+  const mpPlotArea = Number.isFinite(mpTotalRows) && Number.isFinite(mpWidthM) && Number.isFinite(mpPlotLength) && mpTotalRows > 0 && mpWidthM > 0 && mpPlotLength > 0
+    ? mpTotalRows * mpWidthM * mpPlotLength
     : null;
   const mpExpectedFemale = Number.isFinite(mpPlotLength) && mpPlotLength > 0 && Number.isFinite(mpHeightM) && mpHeightM > 0 && Number.isFinite(mpTotalFemaleRows) && mpTotalFemaleRows > 0
     ? (mpPlotLength / mpHeightM) * mpTotalFemaleRows : null;
   const mpExpectedMale = Number.isFinite(mpPlotLength) && mpPlotLength > 0 && Number.isFinite(mpHeightM) && mpHeightM > 0 && Number.isFinite(mpTotalMaleRows) && mpTotalMaleRows > 0
     ? (mpPlotLength / mpHeightM) * mpTotalMaleRows : null;
   const mpTotalRatio = (Number.isFinite(ratioFemale) ? ratioFemale : 0) + (Number.isFinite(ratioMale) ? ratioMale : 0);
-  const mpAreaM2ForPop = Number.isFinite(mpTotalRows) && Number.isFinite(mpWidthM) && Number.isFinite(mpPlotLength) && mpTotalRows > 0 && mpWidthM > 0 && mpPlotLength > 0
-    ? mpTotalRows * mpWidthM * mpPlotLength
+  const mpTotalPop = Number.isFinite(mpWidthM) && Number.isFinite(mpHeightM) && mpWidthM > 0 && mpHeightM > 0
+    ? 10000 / (mpWidthM * mpHeightM)
     : null;
-  const mpTotalPop = Number.isFinite(mpAreaM2ForPop) && mpAreaM2ForPop > 0 ? 10000 / mpAreaM2ForPop : null;
   const mpPopFemale = mpTotalPop && mpTotalRatio > 0 && Number.isFinite(ratioFemale) ? mpTotalPop * (ratioFemale / mpTotalRatio) : null;
   const mpPopMale = mpTotalPop && mpTotalRatio > 0 && Number.isFinite(ratioMale) ? mpTotalPop * (ratioMale / mpTotalRatio) : null;
 
@@ -2644,6 +2641,24 @@ async function saveTrial() {
   if (!trialType) {
     showToast("Please select trial type", "error");
     return;
+  }
+  if (trialType === "Micropilot") {
+    if (!Number.isFinite(mpPanel) || mpPanel <= 0) {
+      showToast("Panel must be greater than 0", "error");
+      return;
+    }
+    if (!Number.isFinite(ratioFemale) || ratioFemale <= 0 || !Number.isFinite(ratioMale) || ratioMale <= 0) {
+      showToast("Female and Male ratio must be greater than 0", "error");
+      return;
+    }
+    if (!Number.isFinite(mpPlotLength) || mpPlotLength <= 0) {
+      showToast("Plot Length must be greater than 0", "error");
+      return;
+    }
+    if (!Number.isFinite(mpSpacingWidth) || mpSpacingWidth <= 0 || !Number.isFinite(mpSpacingHeight) || mpSpacingHeight <= 0) {
+      showToast("Plant Spacing Width and Height must be greater than 0", "error");
+      return;
+    }
   }
   if (!plantingSeason) {
     showToast("Please select planting season", "error");
@@ -7461,7 +7476,7 @@ function buildTrialGeneralSheetRows(trial) {
     rows.push(["Plot Length (m)", trial.mpPlotLength != null ? String(trial.mpPlotLength) : ""]);
     rows.push(["Plant Spacing Width (cm)", trial.mpSpacingWidth != null ? String(trial.mpSpacingWidth) : ""]);
     rows.push(["Plant Spacing Height (cm)", trial.mpSpacingHeight != null ? String(trial.mpSpacingHeight) : ""]);
-    rows.push(["Plot Area (ha)", trial.mpPlotArea != null ? trial.mpPlotArea.toFixed(2) : ""]);
+    rows.push(["Plot Area (m²)", trial.mpPlotArea != null ? trial.mpPlotArea.toFixed(2) : ""]);
     rows.push(["Female Population/plot", trial.mpExpectedFemale != null ? String(Math.round(trial.mpExpectedFemale)) : ""]);
     rows.push(["Male Population/plot", trial.mpExpectedMale != null ? String(Math.round(trial.mpExpectedMale)) : ""]);
     rows.push(["Population/ha (Female)", trial.mpPopFemale != null ? String(Math.round(trial.mpPopFemale)) : ""]);
@@ -8105,7 +8120,7 @@ function showTrialDetail(trialId) {
       </div>
       <div class='td-content'>
         <div class='td-label'>Plot Area</div>
-        <div class='td-value'>${trial.mpPlotArea != null ? trial.mpPlotArea.toFixed(2) + ' ha' : '-'}</div>
+        <div class='td-value'>${trial.mpPlotArea != null ? trial.mpPlotArea.toFixed(2) + ' m²' : '-'}</div>
       </div>
     </div>
 
