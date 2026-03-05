@@ -76,6 +76,11 @@
 - [x] `Trial` Planting Seasons
 - [x] `Trial` No. of Factors, Treatments
 - [x] `Trial` Type of Pollination
+- [x] `Trial` Add more details
+- [x] `Trial` Download detail as PDF
 - [x] `Database` All data
 #### Bug Fixes and Redesigns
 - [x] Automatic logout when error initializing happened
+- [x] Planting date per location, not per trial
+- [x] Dashboard reminders real-time update problem
+- [x] Map not showing in production

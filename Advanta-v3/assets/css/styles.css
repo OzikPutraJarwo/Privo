@@ -2367,6 +2367,13 @@ body.trial-fullscreen-active .main-content {
 
 .layouting-table-wrap {
   overflow-x: auto;
+}
+
+.layouting-table td:first-child {
+  width: 100px;
+}
+
+.layouting-areas .layouting-table-wrap:not(:last-child) {
   margin-bottom: 1.5rem;
 }
 

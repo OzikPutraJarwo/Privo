@@ -2087,8 +2087,10 @@ async function updateDashboardCounts() {
       renderDashboardTrialProgress();
     }
 
-    // Also update dashboard reminders
-    if (typeof renderDashboardReminders === 'function') {
+    // Also update reminder views
+    if (typeof refreshReminderViewsRealtime === 'function') {
+      refreshReminderViewsRealtime();
+    } else if (typeof renderDashboardReminders === 'function') {
       renderDashboardReminders();
     }
   } catch (error) {

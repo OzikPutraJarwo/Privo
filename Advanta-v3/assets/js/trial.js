@@ -165,6 +165,9 @@ function renderTrials() {
 
   // Keep dashboard in sync
   renderDashboardTrialProgress();
+  if (typeof refreshReminderViewsRealtime === "function") {
+    refreshReminderViewsRealtime();
+  }
 
   const databaseContent = document.getElementById("databaseContent");
   if (
@@ -194,6 +197,53 @@ function formatMonthYear(dateString) {
     "Dec",
   ];
   return `${months[parseInt(month) - 1]} ${year}`;
+}
+
+function getAreaPlantingDate(trial, areaIndex) {
+  const area = trial?.areas?.[areaIndex];
+  return (
+    area?.plantingDate ||
+    area?.layout?.plantingDate ||
+    trial?.plantingDate ||
+    ""
+  );
+}
+
+function getTrialPlantingDates(trial) {
+  const areas = trial?.areas || [];
+  const dates = areas
+    .map((_, areaIndex) => getAreaPlantingDate(trial, areaIndex))
+    .filter(Boolean);
+  if (dates.length > 0) {
+    return Array.from(new Set(dates)).sort();
+  }
+  return trial?.plantingDate ? [trial.plantingDate] : [];
+}
+
+function getTrialPrimaryPlantingDate(trial) {
+  const dates = getTrialPlantingDates(trial);
+  return dates.length > 0 ? dates[0] : "";
+}
+
+function getTrialPlantingDateSummary(trial) {
+  const dates = getTrialPlantingDates(trial);
+  if (dates.length === 0) return "–";
+  if (dates.length === 1) {
+    return new Date(`${dates[0]}T00:00:00`).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  const first = new Date(`${dates[0]}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  const last = new Date(`${dates[dates.length - 1]}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  return `${first} – ${last}`;
 }
 
 // Toggle archived trials visibility
@@ -290,7 +340,6 @@ function openEditTrialModal(trialId) {
   document.getElementById("trialPlantingStart").value =
     trial.plantingStart || "";
   document.getElementById("trialPlantingEnd").value = trial.plantingEnd || "";
-  document.getElementById("trialPlantingDate").value = trial.plantingDate || "";
   document.getElementById("trialPlantingSeason").value = trial.plantingSeason || "";
 
   // Set pollination first so trial type options get populated
@@ -358,6 +407,12 @@ function openEditTrialModal(trialId) {
 
   // Load areas
   trialState.currentAreas = trial.areas || [];
+  if (trial.plantingDate && trialState.currentAreas.length > 0) {
+    trialState.currentAreas = trialState.currentAreas.map((area) => ({
+      ...area,
+      plantingDate: area?.plantingDate || area?.layout?.plantingDate || trial.plantingDate,
+    }));
+  }
 
   // Show first section
   showTrialSection("basic");
@@ -2534,7 +2589,6 @@ async function saveTrial() {
   const description = document.getElementById("trialDescription").value.trim();
   const plantingStart = document.getElementById("trialPlantingStart").value;
   const plantingEnd = document.getElementById("trialPlantingEnd").value;
-  const plantingDate = document.getElementById("trialPlantingDate").value;
   const plantingSeason = document.getElementById("trialPlantingSeason").value;
   const cropSelect = document.getElementById("trialCrops");
   const cropId = cropSelect.value;
@@ -2698,6 +2752,17 @@ async function saveTrial() {
     return;
   }
 
+  const missingAreaPlantingDate = trialState.currentAreas.findIndex(
+    (area) => !(area?.plantingDate || "").trim(),
+  );
+  if (missingAreaPlantingDate >= 0) {
+    showToast(
+      `Please set planting date for ${trialState.currentAreas[missingAreaPlantingDate]?.name || `Area ${missingAreaPlantingDate + 1}`}`,
+      "error",
+    );
+    return;
+  }
+
   try {
     // Calculate line usage across all areas
     const lineUsage = {}; // {lineId: count}
@@ -2766,7 +2831,6 @@ async function saveTrial() {
         trial.description = description;
         trial.plantingStart = plantingStart;
         trial.plantingEnd = plantingEnd;
-        trial.plantingDate = plantingDate;
         trial.plantingSeason = plantingSeason;
         trial.cropId = cropId;
         trial.cropName = cropName;
@@ -2808,6 +2872,7 @@ async function saveTrial() {
         trial.agronomyMonitoring = agronomyMonitoring;
         trial.agronomyItems = selectedAgronomy;
         trial.areas = trialState.currentAreas;
+        delete trial.plantingDate;
         trial.consumedLines = lineUsage;
         trial.updatedAt = new Date().toISOString();
         
@@ -2823,7 +2888,6 @@ async function saveTrial() {
         description: description,
         plantingStart: plantingStart,
         plantingEnd: plantingEnd,
-        plantingDate: plantingDate,
         plantingSeason: plantingSeason,
         cropId: cropId,
         cropName: cropName,
@@ -3531,6 +3595,15 @@ function createAreaLayoutingForm(area, areaIndex) {
 
             <div class="layouting-controls">
                 <div class="layouting-field">
+                  <label>Planting Date (Area)</label>
+                  <input 
+                    type="date" 
+                    class="area-planting-date" 
+                    value="${escapeHtml(area?.plantingDate || area?.layout?.plantingDate || "")}" 
+                    data-area-index="${areaIndex}"
+                  >
+                </div>
+                <div class="layouting-field">
                     <label>Number of Ranges</label>
                     <input 
                         type="number" 
@@ -3808,6 +3881,14 @@ function createAreaLayoutingForm(area, areaIndex) {
     .querySelector(".area-randomization")
     .addEventListener("change", autoGenerateLayout);
 
+  const areaPlantingDateInput = areaDiv.querySelector(".area-planting-date");
+  if (areaPlantingDateInput) {
+    areaPlantingDateInput.addEventListener("change", (event) => {
+      if (!trialState.currentAreas[areaIndex]) return;
+      trialState.currentAreas[areaIndex].plantingDate = event.target.value || "";
+    });
+  }
+
   renderAvailable();
   renderSelected();
 
@@ -3817,6 +3898,7 @@ function createAreaLayoutingForm(area, areaIndex) {
     const numRepsInput = areaDiv.querySelector(".area-num-reps");
     const directionSelect = areaDiv.querySelector(".area-direction");
     const randomizationSelect = areaDiv.querySelector(".area-randomization");
+    const plantingDateInput = areaDiv.querySelector(".area-planting-date");
 
     if (numRangesInput) numRangesInput.value = area.layout.numRanges || 1;
     if (numRepsInput) numRepsInput.value = area.layout.numReps || 1;
@@ -3824,6 +3906,9 @@ function createAreaLayoutingForm(area, areaIndex) {
       directionSelect.value = area.layout.direction || "serpentine";
     if (randomizationSelect)
       randomizationSelect.value = area.layout.randomization || "normal";
+    if (plantingDateInput) {
+      plantingDateInput.value = area?.plantingDate || area?.layout?.plantingDate || "";
+    }
 
     // Render existing layout result
     if (area.layout.result) {
@@ -4118,9 +4203,10 @@ function isAgronomyItemComplete(areaIndex, itemId) {
 }
 
 // Calculate expected date for a DAP value
-function getDapExpectedDate(trial, dapMin) {
-  if (!trial.plantingDate || dapMin == null) return null;
-  const planting = new Date(trial.plantingDate + "T00:00:00");
+function getDapExpectedDate(trial, areaIndex, dapMin) {
+  const plantingDate = getAreaPlantingDate(trial, areaIndex);
+  if (!plantingDate || dapMin == null) return null;
+  const planting = new Date(plantingDate + "T00:00:00");
   if (isNaN(planting.getTime())) return null;
   planting.setDate(planting.getDate() + Number(dapMin));
   return planting;
@@ -4288,7 +4374,7 @@ function renderAgronomyNavTree() {
       const dapLabel = item.dapMin != null ? `DAP ${item.dapMin}${item.dapMax != null && item.dapMax !== item.dapMin ? '-' + item.dapMax : ''}` : '';
 
       // Check if it's too early for this item
-      const expectedDate = getDapExpectedDate(trial, item.dapMin);
+      const expectedDate = getDapExpectedDate(trial, areaIndex, item.dapMin);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const isTooEarly = expectedDate && today < expectedDate && !isComplete;
@@ -4367,7 +4453,7 @@ function renderAgronomyQuestionCard() {
   const existingPhotos = resp.photos || [];
 
   // DAP info & warning
-  const expectedDate = getDapExpectedDate(trial, item.dapMin);
+  const expectedDate = getDapExpectedDate(trial, areaIndex, item.dapMin);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const isTooEarly = expectedDate && today < expectedDate;
@@ -4600,6 +4686,9 @@ async function autoSaveAgronomyProgress() {
 
     // Keep dashboard in sync even during agronomy monitoring
     renderDashboardTrialProgress();
+    if (typeof refreshReminderViewsRealtime === "function") {
+      refreshReminderViewsRealtime();
+    }
   } finally {
     setTimeout(() => {
       agronomyAutoSaveInProgress = false;
@@ -6627,6 +6716,9 @@ async function autoSaveProgress() {
 
     // Keep dashboard in sync even during run trial
     renderDashboardTrialProgress();
+    if (typeof refreshReminderViewsRealtime === "function") {
+      refreshReminderViewsRealtime();
+    }
   } finally {
     // Remove saving state after short delay
     setTimeout(() => {
@@ -6791,9 +6883,7 @@ function renderDashboardTrialSummary() {
     const badgeText = overallPct === 100 ? 'Complete' : overallPct > 0 ? 'In Progress' : 'Not Started';
 
     const cropName = trial.cropName || 'Unknown Crop';
-    const plantDate = trial.plantingDate
-      ? new Date(trial.plantingDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-      : '–';
+    const plantDate = getTrialPlantingDateSummary(trial);
 
     return `
       <div class="dash-trial-card" data-trial-id="${trial.id}">
@@ -7455,7 +7545,7 @@ function buildTrialGeneralSheetRows(trial) {
     rows.push([`Factor ${index + 1} Treatments`, (factor.treatments || []).join("; ")]);
   });
   rows.push(["Planting Window", `${trial.plantingStart || ""} - ${trial.plantingEnd || ""}`.trim()]);
-  rows.push(["Planting Date", trial.plantingDate || ""]);
+  rows.push(["Planting Dates (Per Area)", getTrialPlantingDates(trial).join("; ")]);
   rows.push(["Location", location?.name || ""]);
   rows.push(["Areas", String((trial.areas || []).length)]);
   rows.push(["Observation Progress", `${progress.obs.completed}/${progress.obs.total} (${progress.obs.percentage}%)`]);
@@ -7491,8 +7581,8 @@ function buildTrialGeneralSheetRows(trial) {
     rows.push(["Plot Area (m²)", trial.mpPlotArea != null ? trial.mpPlotArea.toFixed(2) : ""]);
     rows.push(["Female Population/plot", trial.mpExpectedFemale != null ? String(Math.round(trial.mpExpectedFemale)) : ""]);
     rows.push(["Male Population/plot", trial.mpExpectedMale != null ? String(Math.round(trial.mpExpectedMale)) : ""]);
-    rows.push(["Population/ha (Female)", trial.mpPopFemale != null ? String(Math.round(trial.mpPopFemale)) : ""]);
-    rows.push(["Population/ha (Male)", trial.mpPopMale != null ? String(Math.round(trial.mpPopMale)) : ""]);
+    rows.push(["Female Population/ha", trial.mpPopFemale != null ? String(Math.round(trial.mpPopFemale)) : ""]);
+    rows.push(["Male Population/ha", trial.mpPopMale != null ? String(Math.round(trial.mpPopMale)) : ""]);
   } else {
     rows.push(["Rows per Plot", trial.rowsPerPlot != null ? String(trial.rowsPerPlot) : ""]);
     rows.push(["Plot Length (m)", trial.plotLength != null ? String(trial.plotLength) : ""]);
@@ -7778,7 +7868,7 @@ function evaluateFormulaForReport(formula, contextValues) {
 
 function getTrialPlantingYear(trial) {
   const source = String(
-    trial?.plantingStart || trial?.plantingEnd || trial?.plantingDate || "",
+    getTrialPrimaryPlantingDate(trial) || trial?.plantingStart || trial?.plantingEnd || "",
   ).trim();
   const match = source.match(/^(\d{4})/);
   return match ? match[1] : "";
@@ -8367,7 +8457,7 @@ function buildDatabaseDataset() {
                 pollination: trial.pollination || "",
                 trialType: trial.trialType || "",
                 expDesign: trial.expDesign || "",
-                plantingDate: trial.plantingDate || "",
+                plantingDate: getAreaPlantingDate(trial, areaIndex) || "",
                 line: lineRef?.name || cell.name || "",
                 lineRole: lineRef?.role || "",
                 lineStage: lineRef?.stage || "",
@@ -8592,6 +8682,64 @@ window.getDatabaseVisibleColumnKeys = function getDatabaseVisibleColumnKeys() {
 };
 window.setDatabaseVisibleColumns = setDatabaseVisibleColumns;
 
+function buildTrialDetailLayoutResultHtml(area) {
+  const layouts = Array.isArray(area?.layout?.result) ? area.layout.result : [];
+
+  if (layouts.length === 0) {
+    return `
+      <div class='td-area-lines'>
+        <div class='td-icon'>
+          <span class="material-symbols-rounded">table_view</span>
+        </div>
+        <div class='td-content'>
+          <div class='td-label'>Layouting Result:</div>
+          <div class='td-value'>-</div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class='td-area-lines'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">table_view</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Layouting Result:</div>
+        ${layouts
+          .map((grid, repIndex) => {
+            const rows = Array.isArray(grid) ? grid : [];
+            return `
+              <div class="layouting-table-wrap">
+                <div class="layouting-table-title">Replication ${repIndex + 1}</div>
+                <table class="layouting-table">
+                  <tbody>
+                    ${rows
+                      .map((row, rowIdx) => {
+                        const cells = Array.isArray(row) ? row : [];
+                        return `
+                          <tr>
+                            <td class="layouting-row-header">Range ${rowIdx + 1}</td>
+                            ${cells
+                              .map((cell) => `
+                                <td class="layouting-td">${cell ? escapeHtml(cell.name) : "-"}</td>
+                              `)
+                              .join("")}
+                          </tr>
+                        `;
+                      })
+                      .join("")}
+                  </tbody>
+                </table>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
 // Show trial detail modal
 function showTrialDetail(trialId) {
   const trial = trialState.trials.find(t => t.id === trialId);
@@ -8692,7 +8840,6 @@ function showTrialDetail(trialId) {
         <div class='td-label'>Description</div>
         <div class='td-value'>${escapeHtml(trial.description)}</div>
         <div class='td-text'>${obsText}${agroText} completed</div>
-        ${trial.plantingDate ? `<div class='td-text' style='margin-top:0.25rem'><span class="material-symbols-rounded" style="font-size:.85rem;vertical-align:middle;margin-right:0.25rem">event</span>Planting Date: ${new Date(trial.plantingDate + 'T00:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}</div>` : ''}
       </div>
     </div>
 
@@ -8754,11 +8901,7 @@ function showTrialDetail(trialId) {
       </div>
     </div>
 
-  </div>
-
-  <div class='td-container grid-2'>
-
-    <div class='td-section'>
+    <div class='td-section' style='grid-column: 2 / span 2;'>
       <div class='td-icon'>
         <span class="material-symbols-rounded td-info-icon">dashboard_customize</span>
       </div>
@@ -8860,7 +9003,7 @@ function showTrialDetail(trialId) {
   </div>
 
   ${trial.trialType === 'Micropilot' ? `
-  <div class='td-container grid-4'>
+  <div class='td-container grid-2'>
 
     <div class='td-section'>
       <div class='td-icon'>
@@ -8882,45 +9025,9 @@ function showTrialDetail(trialId) {
       </div>
     </div>
 
-    <div class='td-section'>
-      <div class='td-icon'>
-        <span class="material-symbols-rounded">badge</span>
-      </div>
-      <div class='td-content'>
-        <div class='td-label'>Name Female Lines</div>
-        <div class='td-value'>${escapeHtml(trial.mpFemaleLineNames || '-')}</div>
-      </div>
-    </div>
+  </div>
 
-    <div class='td-section'>
-      <div class='td-icon'>
-        <span class="material-symbols-rounded">view_agenda</span>
-      </div>
-      <div class='td-content'>
-        <div class='td-label'>Total Female Rows</div>
-        <div class='td-value'>${trial.mpTotalFemaleRows ?? '-'}</div>
-      </div>
-    </div>
-
-    <div class='td-section'>
-      <div class='td-icon'>
-        <span class="material-symbols-rounded">badge</span>
-      </div>
-      <div class='td-content'>
-        <div class='td-label'>Name Male Lines</div>
-        <div class='td-value'>${escapeHtml(trial.mpMaleLineNames || '-')}</div>
-      </div>
-    </div>
-
-    <div class='td-section'>
-      <div class='td-icon'>
-        <span class="material-symbols-rounded">view_agenda</span>
-      </div>
-      <div class='td-content'>
-        <div class='td-label'>Total Male Rows</div>
-        <div class='td-value'>${trial.mpTotalMaleRows ?? '-'}</div>
-      </div>
-    </div>
+  <div class='td-container grid-3'>
 
     <div class='td-section'>
       <div class='td-icon'>
@@ -8952,6 +9059,30 @@ function showTrialDetail(trialId) {
       </div>
     </div>
 
+  </div>
+
+  <div class='td-container grid-4'>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">badge</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Name Female Lines</div>
+        <div class='td-value'>${escapeHtml(trial.mpFemaleLineNames || '-')}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">view_agenda</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Total Female Rows</div>
+        <div class='td-value'>${trial.mpTotalFemaleRows ?? '-'}</div>
+      </div>
+    </div>
+
     <div class='td-section'>
       <div class='td-icon'>
         <span class="material-symbols-rounded td-info-icon">science</span>
@@ -8959,6 +9090,40 @@ function showTrialDetail(trialId) {
       <div class='td-content'>
         <div class='td-label'>Female Population/plot</div>
         <div class='td-value'>${trial.mpExpectedFemale != null ? Math.round(trial.mpExpectedFemale).toLocaleString() + ' plants' : '-'}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded td-info-icon">science</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Female Population/ha</div>
+        <div class='td-value'>${trial.mpPopFemale != null ? Math.round(trial.mpPopFemale).toLocaleString() + ' plants' : '-'}</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class='td-container grid-4'>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">badge</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Name Male Lines</div>
+        <div class='td-value'>${escapeHtml(trial.mpMaleLineNames || '-')}</div>
+      </div>
+    </div>
+
+    <div class='td-section'>
+      <div class='td-icon'>
+        <span class="material-symbols-rounded">view_agenda</span>
+      </div>
+      <div class='td-content'>
+        <div class='td-label'>Total Male Rows</div>
+        <div class='td-value'>${trial.mpTotalMaleRows ?? '-'}</div>
       </div>
     </div>
 
@@ -8977,17 +9142,7 @@ function showTrialDetail(trialId) {
         <span class="material-symbols-rounded td-info-icon">science</span>
       </div>
       <div class='td-content'>
-        <div class='td-label'>Population/ha (Female)</div>
-        <div class='td-value'>${trial.mpPopFemale != null ? Math.round(trial.mpPopFemale).toLocaleString() + ' plants' : '-'}</div>
-      </div>
-    </div>
-
-    <div class='td-section'>
-      <div class='td-icon'>
-        <span class="material-symbols-rounded td-info-icon">science</span>
-      </div>
-      <div class='td-content'>
-        <div class='td-label'>Population/ha (Male)</div>
+        <div class='td-label'>Male Population/ha</div>
         <div class='td-value'>${trial.mpPopMale != null ? Math.round(trial.mpPopMale).toLocaleString() + ' plants' : '-'}</div>
       </div>
     </div>
@@ -9122,6 +9277,10 @@ function showTrialDetail(trialId) {
             <span class="material-symbols-rounded">shuffle</span>
             <p>Randomization: ${escapeHtml(area.layout.randomization === "random" ? "Random" : "Normal")}</p>
           </div>
+          <div class='td-area-planting-date'>
+            <span class="material-symbols-rounded">event</span>
+            <p>Planting Date: ${area?.plantingDate ? new Date(area.plantingDate + 'T00:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : '-'}</p>
+          </div>
         </div>
       </div>
       ${uniqueLines.length > 0 ? `
@@ -9137,6 +9296,7 @@ function showTrialDetail(trialId) {
         </div>
       </div>
       ` : ''}
+      ${buildTrialDetailLayoutResultHtml(area)}
     </div>
     `;}).join("") : ``}
 
@@ -9201,6 +9361,206 @@ function closeTrialDetailModal() {
       });
       window.trialDetailAreaMaps = null;
     }
+  }
+}
+
+async function downloadTrialDetailPdf() {
+  const detailBody = document.getElementById('trialDetailBody');
+  if (!detailBody) {
+    showToast('Trial detail not found', 'error');
+    return;
+  }
+
+  if (typeof html2canvas === 'undefined' || !window.jspdf || !window.jspdf.jsPDF) {
+    showToast('PDF library not loaded. Please try again.', 'error');
+    return;
+  }
+
+  const exportWidth = 1200;
+  const trialTitle = (document.getElementById('trialDetailTitle')?.textContent || 'Trial Detail').trim();
+  const safeName = trialTitle.replace(/[^a-z0-9_\- ]/gi, '').replace(/\s+/g, '_') || 'Trial_Detail';
+
+  const wrapper = document.createElement('div');
+  wrapper.style.position = 'fixed';
+  wrapper.style.left = '-20000px';
+  wrapper.style.top = '0';
+  wrapper.style.width = `${exportWidth}px`;
+  wrapper.style.background = '#ffffff';
+  wrapper.style.padding = '24px';
+  wrapper.style.boxSizing = 'border-box';
+  wrapper.style.zIndex = '-1';
+
+  const header = document.createElement('div');
+  header.className = 'library-detail-header';
+  header.style.marginBottom = '16px';
+  header.innerHTML = `
+    <div class="library-detail-info">
+      <h3 style="margin:0;">${escapeHtml(trialTitle)}</h3>
+    </div>
+  `;
+
+  const clone = detailBody.cloneNode(true);
+  clone.style.width = '100%';
+  clone.style.maxHeight = 'none';
+  clone.style.overflow = 'visible';
+
+  const defaultTrialAreasTitle = Array.from(clone.querySelectorAll('.td-title')).find((titleEl) => {
+    const text = titleEl.querySelector('p')?.textContent || '';
+    return String(text).trim().toLowerCase() === 'trial areas';
+  });
+  let exportTrialAreasTitle = null;
+  if (defaultTrialAreasTitle) {
+    exportTrialAreasTitle = document.createElement('div');
+    exportTrialAreasTitle.className = 'library-detail-header';
+    exportTrialAreasTitle.style.marginBottom = '16px';
+    exportTrialAreasTitle.innerHTML = `
+      <div class="library-detail-info">
+        <h3 style="margin:0;">Trial Areas</h3>
+      </div>
+    `;
+    defaultTrialAreasTitle.replaceWith(exportTrialAreasTitle);
+  }
+
+  clone.querySelectorAll('.td-progress svg').forEach((svgEl) => {
+    svgEl.style.transform = 'none';
+    svgEl.querySelectorAll('.progress-circle-fill').forEach((circle) => {
+      circle.setAttribute('transform', 'rotate(-90 32 32)');
+    });
+    svgEl.querySelectorAll('.progress-circle-text').forEach((textEl) => {
+      textEl.style.transform = 'none';
+      textEl.removeAttribute('transform');
+    });
+  });
+
+  wrapper.appendChild(header);
+  wrapper.appendChild(clone);
+  document.body.appendChild(wrapper);
+
+  const originalBtn = document.getElementById('trialDetailDownloadBtn');
+  if (originalBtn) {
+    originalBtn.disabled = true;
+    originalBtn.classList.add('loading');
+  }
+
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const canvas = await html2canvas(wrapper, {
+      backgroundColor: '#ffffff',
+      scale: Math.max(1.5, window.devicePixelRatio || 1),
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      windowWidth: exportWidth,
+      width: exportWidth,
+      height: Math.ceil(wrapper.scrollHeight),
+    });
+
+    const pdf = new window.jspdf.jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'a4',
+      compress: true,
+    });
+
+    const pageWidthPt = pdf.internal.pageSize.getWidth();
+    const pageHeightPt = pdf.internal.pageSize.getHeight();
+    const marginPt = 1;
+    const printableWidthPt = pageWidthPt - (marginPt * 2);
+    const printableHeightPt = pageHeightPt - (marginPt * 2);
+
+    const scalePtPerPx = printableWidthPt / canvas.width;
+    const pageSliceHeightPx = Math.max(1, Math.floor(printableHeightPt / scalePtPerPx));
+
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const trialAreasTitle = exportTrialAreasTitle
+      || Array.from(clone.querySelectorAll('.td-title p')).find(
+        (el) => String(el.textContent || '').trim().toLowerCase() === 'trial areas',
+      )?.closest('.td-title');
+    const forcedBreaksPx = [];
+    if (trialAreasTitle) {
+      const titleRect = trialAreasTitle.getBoundingClientRect();
+      const relativeTopCssPx = Math.max(0, titleRect.top - wrapperRect.top);
+      const captureScale = canvas.width / Math.max(1, wrapper.scrollWidth);
+      const breakAtPx = Math.round(relativeTopCssPx * captureScale);
+      if (breakAtPx > 0 && breakAtPx < canvas.height) {
+        forcedBreaksPx.push(breakAtPx);
+      }
+    }
+
+    let offsetYpx = 0;
+    let pageIndex = 0;
+    let breakIndex = 0;
+
+    while (offsetYpx < canvas.height) {
+      const remaining = canvas.height - offsetYpx;
+      let sliceHeightPx = Math.min(pageSliceHeightPx, remaining);
+
+      const nextBreakPx = forcedBreaksPx[breakIndex];
+      if (
+        Number.isFinite(nextBreakPx) &&
+        nextBreakPx > offsetYpx + 8 &&
+        nextBreakPx < offsetYpx + sliceHeightPx - 8
+      ) {
+        sliceHeightPx = nextBreakPx - offsetYpx;
+        breakIndex += 1;
+      } else if (Number.isFinite(nextBreakPx) && nextBreakPx <= offsetYpx + 8) {
+        breakIndex += 1;
+      }
+
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = sliceHeightPx;
+      const pageCtx = pageCanvas.getContext('2d');
+      if (!pageCtx) break;
+
+      pageCtx.fillStyle = '#ffffff';
+      pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      pageCtx.drawImage(
+        canvas,
+        0,
+        offsetYpx,
+        canvas.width,
+        sliceHeightPx,
+        0,
+        0,
+        canvas.width,
+        sliceHeightPx,
+      );
+
+      const pageImgData = pageCanvas.toDataURL('image/png');
+      const renderHeightPt = sliceHeightPx * scalePtPerPx;
+
+      if (pageIndex > 0) {
+        pdf.addPage('a4', 'portrait');
+      }
+
+      pdf.addImage(
+        pageImgData,
+        'PNG',
+        marginPt,
+        marginPt,
+        printableWidthPt,
+        renderHeightPt,
+        undefined,
+        'FAST',
+      );
+
+      offsetYpx += sliceHeightPx;
+      pageIndex += 1;
+    }
+
+    pdf.save(`${safeName}.pdf`);
+    showToast('Trial detail downloaded', 'success');
+  } catch (error) {
+    console.error('Failed to export trial detail PDF:', error);
+    showToast('Failed to download PDF', 'error');
+  } finally {
+    if (originalBtn) {
+      originalBtn.disabled = false;
+      originalBtn.classList.remove('loading');
+    }
+    wrapper.remove();
   }
 }
 

@@ -12,13 +12,12 @@
  * [{ trial, areas: [{ area, areaIndex, items: [{ param, dateMin, dateMax, doo, done }] }] }]
  */
 function buildObservationReminders() {
-  const trials = (trialState.trials || []).filter(t => !t.archived && t.plantingDate && t.parameters && t.parameters.length > 0);
+  const trials = (trialState.trials || []).filter(t => !t.archived && t.parameters && t.parameters.length > 0);
   const allParams = inventoryState.items.parameters || [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   return trials.map(trial => {
-    const pDate = new Date(trial.plantingDate + "T00:00:00");
     const cropId = trial.cropId;
 
     // Resolve parameter objects that belong to this trial
@@ -32,6 +31,10 @@ function buildObservationReminders() {
       : [{ name: "General" }];
 
     const areaGroups = areas.map((area, areaIndex) => {
+      const areaPlantingDate = typeof getAreaPlantingDate === "function"
+        ? getAreaPlantingDate(trial, areaIndex)
+        : (area?.plantingDate || trial?.plantingDate || "");
+      const pDate = areaPlantingDate ? new Date(areaPlantingDate + "T00:00:00") : null;
       const items = params.map(param => {
         const dooEntry = param.daysOfObservation && param.daysOfObservation[cropId];
         let dooMin = null, dooMax = null;
@@ -46,11 +49,11 @@ function buildObservationReminders() {
         }
 
         let dateMin = null, dateMax = null;
-        if (dooMin != null) {
+        if (dooMin != null && pDate && !isNaN(pDate.getTime())) {
           dateMin = new Date(pDate);
           dateMin.setDate(dateMin.getDate() + dooMin);
         }
-        if (dooMax != null) {
+        if (dooMax != null && pDate && !isNaN(pDate.getTime())) {
           dateMax = new Date(pDate);
           dateMax.setDate(dateMax.getDate() + dooMax);
         }
@@ -86,7 +89,7 @@ function buildObservationReminders() {
         };
       }).filter(item => item.dooMin != null); // Only show params with DoO set for this crop
 
-      return { area, areaIndex, items };
+      return { area, areaIndex, areaPlantingDate, items };
     }).filter(ag => ag.items.length > 0);
 
     return { trial, areaGroups };
@@ -97,14 +100,12 @@ function buildObservationReminders() {
  * Build agronomy reminder items for all active trials.
  */
 function buildAgronomyReminders() {
-  const trials = (trialState.trials || []).filter(t => !t.archived && t.plantingDate && t.agronomyMonitoring && t.agronomyItems && t.agronomyItems.length > 0);
+  const trials = (trialState.trials || []).filter(t => !t.archived && t.agronomyMonitoring && t.agronomyItems && t.agronomyItems.length > 0);
   const allAgronomy = inventoryState.items.agronomy || [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   return trials.map(trial => {
-    const pDate = new Date(trial.plantingDate + "T00:00:00");
-
     const agItems = trial.agronomyItems
       .map(aid => allAgronomy.find(a => a.id === aid))
       .filter(Boolean);
@@ -114,16 +115,20 @@ function buildAgronomyReminders() {
       : [{ name: "General" }];
 
     const areaGroups = areas.map((area, areaIndex) => {
+      const areaPlantingDate = typeof getAreaPlantingDate === "function"
+        ? getAreaPlantingDate(trial, areaIndex)
+        : (area?.plantingDate || trial?.plantingDate || "");
+      const pDate = areaPlantingDate ? new Date(areaPlantingDate + "T00:00:00") : null;
       const items = agItems.map(agItem => {
         const dapMin = agItem.dapMin != null ? Number(agItem.dapMin) : null;
         const dapMax = agItem.dapMax != null ? Number(agItem.dapMax) : dapMin;
 
         let dateMin = null, dateMax = null;
-        if (dapMin != null) {
+        if (dapMin != null && pDate && !isNaN(pDate.getTime())) {
           dateMin = new Date(pDate);
           dateMin.setDate(dateMin.getDate() + dapMin);
         }
-        if (dapMax != null) {
+        if (dapMax != null && pDate && !isNaN(pDate.getTime())) {
           dateMax = new Date(pDate);
           dateMax.setDate(dateMax.getDate() + dapMax);
         }
@@ -158,7 +163,7 @@ function buildAgronomyReminders() {
         };
       }).filter(item => item.dapMin != null);
 
-      return { area, areaIndex, items };
+      return { area, areaIndex, areaPlantingDate, items };
     }).filter(ag => ag.items.length > 0);
 
     return { trial, areaGroups };
@@ -241,7 +246,9 @@ function renderObservationReminders() {
 
   container.innerHTML = groups.map(({ trial, areaGroups }) => {
     const cropName = trial.cropName || "Unknown Crop";
-    const pDateStr = trial.plantingDate ? formatReminderDate(new Date(trial.plantingDate + "T00:00:00")) : "–";
+    const pDateStr = typeof getTrialPlantingDateSummary === "function"
+      ? getTrialPlantingDateSummary(trial)
+      : "–";
 
     return `
       <div class="reminder-trial-group">
@@ -253,11 +260,11 @@ function renderObservationReminders() {
           <span class="material-symbols-rounded reminder-trial-caret">expand_more</span>
         </div>
         <div class="reminder-trial-body">
-          ${areaGroups.map(({ area, items }) => `
+          ${areaGroups.map(({ area, items, areaPlantingDate }) => `
             <div class="reminder-area-group">
               <div class="reminder-area-header">
                 <span class="material-symbols-rounded" style="font-size:1rem">location_on</span>
-                ${escapeHtml(area.name || "General")}
+                ${escapeHtml(area.name || "General")}${areaPlantingDate ? ` · ${formatReminderDate(new Date(areaPlantingDate + "T00:00:00"))}` : ""}
               </div>
               <div class="reminder-items">
                 ${sortReminderItems(items).map(item => `
@@ -315,7 +322,9 @@ function renderAgronomyReminders() {
 
   container.innerHTML = groups.map(({ trial, areaGroups }) => {
     const cropName = trial.cropName || "Unknown Crop";
-    const pDateStr = trial.plantingDate ? formatReminderDate(new Date(trial.plantingDate + "T00:00:00")) : "–";
+    const pDateStr = typeof getTrialPlantingDateSummary === "function"
+      ? getTrialPlantingDateSummary(trial)
+      : "–";
 
     return `
       <div class="reminder-trial-group">
@@ -327,11 +336,11 @@ function renderAgronomyReminders() {
           <span class="material-symbols-rounded reminder-trial-caret">expand_more</span>
         </div>
         <div class="reminder-trial-body">
-          ${areaGroups.map(({ area, items }) => `
+          ${areaGroups.map(({ area, items, areaPlantingDate }) => `
             <div class="reminder-area-group">
               <div class="reminder-area-header">
                 <span class="material-symbols-rounded" style="font-size:1rem">location_on</span>
-                ${escapeHtml(area.name || "General")}
+                ${escapeHtml(area.name || "General")}${areaPlantingDate ? ` · ${formatReminderDate(new Date(areaPlantingDate + "T00:00:00"))}` : ""}
               </div>
               <div class="reminder-items">
                 ${sortReminderItems(items).map(item => `
@@ -414,6 +423,26 @@ function renderReminders(tabName) {
   } else if (tabName === "agronomy") {
     renderAgronomyReminders();
   }
+}
+
+function refreshReminderViewsRealtime(options = {}) {
+  const includeDashboard = options.includeDashboard !== false;
+  const includeReminderPage = options.includeReminderPage !== false;
+
+  if (includeDashboard && typeof renderDashboardReminders === "function") {
+    renderDashboardReminders();
+  }
+
+  if (!includeReminderPage || typeof renderReminders !== "function") return;
+
+  const reminderPage = document.getElementById("reminderContent");
+  if (!reminderPage || !reminderPage.classList.contains("active")) return;
+
+  const activeNavTab = document.querySelector('.nav-subitem[data-parent="reminder"].active')?.dataset?.reminderTab;
+  const activeContent = document.querySelector(".reminder-tab-content.active")?.id;
+  const activeTab = activeNavTab || (activeContent === "reminderAgronomyContent" ? "agronomy" : "observation");
+
+  renderReminders(activeTab);
 }
 
 // ===========================
