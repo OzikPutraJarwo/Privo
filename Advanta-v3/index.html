@@ -600,7 +600,7 @@
                     <div class="trial-section" id="trialSectionPlotSpec">
                       <h4 class="trial-form-section-title">Plot Specification</h4>
                       <div id="plotSpecLockNotice" class="form-hint-block">
-                        Pilih <strong>Type of Pollination</strong> dan <strong>Trial Type</strong> di section Experiment terlebih dahulu.
+                        Please select <strong>Type of Pollination</strong> and <strong>Trial Type</strong> in the Experiment section first.
                       </div>
                       <div id="plotSpecContent" class="hidden">
                       <!-- Parent Test / Process Research fields -->
@@ -737,8 +737,17 @@
                             <div id="parameterAvailableList" class="picklist-list" data-list="available">
                               <!-- Available parameters populated here -->
                             </div>
+                            <small class="form-hint-block picklist-checked-indicator">
+                              <span id="parameterAvailableCheckedCount">0</span> checked
+                            </small>
                           </div>
                           <div class="picklist-controls">
+                            <button type="button" class="picklist-control-btn" id="parameterSelectAll" title="Select all">
+                              <span class="material-symbols-rounded">select_all</span>
+                            </button>
+                            <button type="button" class="picklist-control-btn" id="parameterDeselectAll" title="Deselect all">
+                              <span class="material-symbols-rounded">check_box_outline_blank</span>
+                            </button>
                             <button type="button" class="picklist-control-btn" id="parameterMoveRight" title="Add">
                               <span class="material-symbols-rounded">arrow_forward</span>
                             </button>
@@ -757,6 +766,9 @@
                             <div id="parameterSelectedList" class="picklist-list" data-list="selected">
                               <!-- Selected parameters populated here -->
                             </div>
+                            <small class="form-hint-block picklist-checked-indicator">
+                              <span id="parameterSelectedCheckedCount">0</span> checked
+                            </small>
                           </div>
                         </div>
                         <small class="form-hint-block">
@@ -778,8 +790,17 @@
                               </div>
                               <div id="agronomyAvailableList" class="picklist-list" data-list="available">
                               </div>
+                              <small class="form-hint-block picklist-checked-indicator">
+                                <span id="agronomyAvailableCheckedCount">0</span> checked
+                              </small>
                             </div>
                             <div class="picklist-controls">
+                              <button type="button" class="picklist-control-btn" id="agronomySelectAll" title="Select all">
+                                <span class="material-symbols-rounded">select_all</span>
+                              </button>
+                              <button type="button" class="picklist-control-btn" id="agronomyDeselectAll" title="Deselect all">
+                                <span class="material-symbols-rounded">check_box_outline_blank</span>
+                              </button>
                               <button type="button" class="picklist-control-btn" id="agronomyMoveRight" title="Add">
                                 <span class="material-symbols-rounded">arrow_forward</span>
                               </button>
@@ -797,6 +818,9 @@
                               <div class="picklist-header form-hint">Selected Agronomy</div>
                               <div id="agronomySelectedList" class="picklist-list" data-list="selected">
                               </div>
+                              <small class="form-hint-block picklist-checked-indicator">
+                                <span id="agronomySelectedCheckedCount">0</span> checked
+                              </small>
                             </div>
                           </div>
                           <small class="form-hint-block">

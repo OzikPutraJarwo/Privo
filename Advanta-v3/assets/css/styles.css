@@ -2201,7 +2201,7 @@ body.trial-fullscreen-active .main-content {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 250px;
+  max-height: 350px;
   overflow-y: auto;
   padding-right: 0.5rem;
 }
@@ -5318,16 +5318,43 @@ body.no-scroll {
   min-height: 320px;
 }
 
+.picklist-list.picklist-list-active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary-soft);
+}
+
 .picklist-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1.5rem 1fr;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.5rem;
   padding: 0.5rem 0.6rem;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
   transition: var(--transition);
+}
+
+.picklist-item-checkbox {
+  margin: 0;
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+}
+
+.picklist-item-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.picklist-item-content-inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .picklist-item:hover {
@@ -5369,6 +5396,11 @@ body.no-scroll {
   font-weight: 600;
   font-size: 0.85rem;
   color: inherit;
+}
+
+.picklist-checked-indicator {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
 }
 
 .picklist-item-meta {

@@ -86,7 +86,7 @@
 - [x] Dashboard reminders real-time update problem
 - [x] Map not showing in production
 - [x] Some flex adjustments
-- [ ] Checkbox for draggable
+- [x] Checkbox for draggable
 - [x] Planting date optional
 - [x] No layout trial
 - [ ] Serpentine fixes

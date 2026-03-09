@@ -1025,10 +1025,14 @@ function populateTrialParameters(selectedIds = []) {
   const availableList = document.getElementById("parameterAvailableList");
   const selectedList = document.getElementById("parameterSelectedList");
   const searchInput = document.getElementById("parameterSearch");
+  const selectAllBtn = document.getElementById("parameterSelectAll");
+  const deselectAllBtn = document.getElementById("parameterDeselectAll");
   const moveRightBtn = document.getElementById("parameterMoveRight");
   const moveUpBtn = document.getElementById("parameterMoveUp");
   const moveDownBtn = document.getElementById("parameterMoveDown");
   const removeBtn = document.getElementById("parameterRemove");
+  const availableCheckedCountEl = document.getElementById("parameterAvailableCheckedCount");
+  const selectedCheckedCountEl = document.getElementById("parameterSelectedCheckedCount");
   const allParameters = inventoryState.items.parameters || [];
   if (!availableList || !selectedList || !searchInput) return;
 
@@ -1048,11 +1052,58 @@ function populateTrialParameters(selectedIds = []) {
     ? [...selectedIds]
     : [];
 
+  const checkedState = {
+    available: new Set(),
+    selected: new Set(),
+  };
+  let activeListType = "";
+
+  const updateActiveListUI = () => {
+    availableList.classList.toggle("picklist-list-active", activeListType === "available");
+    selectedList.classList.toggle("picklist-list-active", activeListType === "selected");
+  };
+
+  const setActiveListType = (type) => {
+    activeListType = type;
+    updateActiveListUI();
+  };
+
   const setSelection = (listEl, id) => {
     listEl.querySelectorAll(".picklist-item").forEach((item) => {
       item.classList.toggle("selected", item.dataset.id === id);
     });
     listEl.dataset.selectedId = id || "";
+  };
+
+  const getActionIds = (checkedSet, fallbackId) => {
+    const checkedIds = Array.from(checkedSet).filter(Boolean);
+    if (checkedIds.length > 0) return checkedIds;
+    return fallbackId ? [fallbackId] : [];
+  };
+
+  const clearCheckedState = () => {
+    checkedState.available.clear();
+    checkedState.selected.clear();
+  };
+
+  const getListByType = (type) =>
+    type === "available" ? availableList : type === "selected" ? selectedList : null;
+
+  const withActiveListType = (handler) => {
+    if (!activeListType) {
+      showToast("Please choose a list side first: Available or Selected", "warning");
+      return;
+    }
+    handler(activeListType);
+  };
+
+  const updateCheckedIndicators = () => {
+    if (availableCheckedCountEl) {
+      availableCheckedCountEl.textContent = String(checkedState.available.size);
+    }
+    if (selectedCheckedCountEl) {
+      selectedCheckedCountEl.textContent = String(checkedState.selected.size);
+    }
   };
 
   const renderAvailable = (searchTerm = "") => {
@@ -1063,9 +1114,15 @@ function populateTrialParameters(selectedIds = []) {
       return match && !trialState.selectedParametersOrder.includes(param.id);
     });
 
+    const filteredIds = new Set(filtered.map((param) => param.id));
+    checkedState.available.forEach((id) => {
+      if (!filteredIds.has(id)) checkedState.available.delete(id);
+    });
+
     if (filtered.length === 0) {
       availableList.innerHTML =
         '<p class="param-no-results">No parameters found</p>';
+      updateCheckedIndicators();
       return;
     }
 
@@ -1073,9 +1130,12 @@ function populateTrialParameters(selectedIds = []) {
       .map(
         (param) => `
           <div class="picklist-item" draggable="true" data-id="${param.id}">
-            <div class="picklist-item-title">${escapeHtml(param.name)}</div>
-            <div class="picklist-item-meta">
-              ${escapeHtml(param.initial || "")} · ${escapeHtml(param.type || "")} · ${escapeHtml(param.unit || "")}
+            <input type="checkbox" class="picklist-item-checkbox" data-id="${param.id}" ${checkedState.available.has(param.id) ? "checked" : ""}>
+            <div class="picklist-item-content">
+              <div class="picklist-item-title">${escapeHtml(param.name)}</div>
+              <div class="picklist-item-meta">
+                ${escapeHtml(param.initial || "")} · ${escapeHtml(param.type || "")} · ${escapeHtml(param.unit || "")}
+              </div>
             </div>
           </div>
         `,
@@ -1083,27 +1143,61 @@ function populateTrialParameters(selectedIds = []) {
       .join("");
 
     availableList.querySelectorAll(".picklist-item").forEach((item) => {
+      const itemId = item.dataset.id;
+      const checkbox = item.querySelector(".picklist-item-checkbox");
+
+      checkbox?.addEventListener("click", (e) => e.stopPropagation());
+      checkbox?.addEventListener("change", (e) => {
+        setActiveListType("available");
+        if (e.target.checked) {
+          checkedState.available.add(itemId);
+        } else {
+          checkedState.available.delete(itemId);
+        }
+        updateCheckedIndicators();
+      });
+
       item.addEventListener("click", () => {
-        setSelection(availableList, item.dataset.id);
+        setActiveListType("available");
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+          if (checkbox.checked) {
+            checkedState.available.add(itemId);
+          } else {
+            checkedState.available.delete(itemId);
+          }
+          updateCheckedIndicators();
+        }
+        setSelection(availableList, itemId);
         setSelection(selectedList, "");
       });
+
       item.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("text/plain", item.dataset.id);
+        e.dataTransfer.setData("text/plain", itemId);
         e.dataTransfer.setData("source", "available");
         item.classList.add("dragging");
         e.dataTransfer.effectAllowed = "move";
       });
+
       item.addEventListener("dragend", (e) => {
         item.classList.remove("dragging");
         document.querySelectorAll(".picklist-item.drag-over").forEach(el => el.classList.remove("drag-over"));
       });
     });
+
+    updateCheckedIndicators();
   };
 
   const renderSelected = () => {
+    const selectedIds = new Set(trialState.selectedParametersOrder);
+    checkedState.selected.forEach((id) => {
+      if (!selectedIds.has(id)) checkedState.selected.delete(id);
+    });
+
     if (trialState.selectedParametersOrder.length === 0) {
       selectedList.innerHTML =
         '<p class="param-no-results">No parameters selected</p>';
+      updateCheckedIndicators();
       return;
     }
 
@@ -1113,9 +1207,12 @@ function populateTrialParameters(selectedIds = []) {
         if (!param) return "";
         return `
           <div class="picklist-item" draggable="true" data-id="${param.id}">
-            <div class="picklist-item-title">${escapeHtml(param.name)}</div>
-            <div class="picklist-item-meta">
-              ${escapeHtml(param.initial || "")} · ${escapeHtml(param.type || "")} · ${escapeHtml(param.unit || "")}
+            <input type="checkbox" class="picklist-item-checkbox" data-id="${param.id}" ${checkedState.selected.has(param.id) ? "checked" : ""}>
+            <div class="picklist-item-content">
+              <div class="picklist-item-title">${escapeHtml(param.name)}</div>
+              <div class="picklist-item-meta">
+                ${escapeHtml(param.initial || "")} · ${escapeHtml(param.type || "")} · ${escapeHtml(param.unit || "")}
+              </div>
             </div>
           </div>
         `;
@@ -1123,42 +1220,72 @@ function populateTrialParameters(selectedIds = []) {
       .join("");
 
     selectedList.querySelectorAll(".picklist-item").forEach((item) => {
+      const itemId = item.dataset.id;
+      const checkbox = item.querySelector(".picklist-item-checkbox");
+
+      checkbox?.addEventListener("click", (e) => e.stopPropagation());
+      checkbox?.addEventListener("change", (e) => {
+        setActiveListType("selected");
+        if (e.target.checked) {
+          checkedState.selected.add(itemId);
+        } else {
+          checkedState.selected.delete(itemId);
+        }
+        updateCheckedIndicators();
+      });
+
       item.addEventListener("click", () => {
-        setSelection(selectedList, item.dataset.id);
+        setActiveListType("selected");
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+          if (checkbox.checked) {
+            checkedState.selected.add(itemId);
+          } else {
+            checkedState.selected.delete(itemId);
+          }
+          updateCheckedIndicators();
+        }
+        setSelection(selectedList, itemId);
         setSelection(availableList, "");
       });
+
       item.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("text/plain", item.dataset.id);
+        e.dataTransfer.setData("text/plain", itemId);
         e.dataTransfer.setData("source", "selected");
         item.classList.add("dragging");
       });
+
       item.addEventListener("dragend", (e) => {
         item.classList.remove("dragging");
         document.querySelectorAll(".picklist-item.drag-over").forEach(el => el.classList.remove("drag-over"));
       });
+
       item.addEventListener("dragover", (e) => {
         e.preventDefault();
         const draggedId = e.dataTransfer.getData("text/plain");
         const source = e.dataTransfer.getData("source");
-        if (source === "selected" && draggedId !== item.dataset.id) {
+        if (source === "selected" && draggedId !== itemId) {
           item.classList.add("drag-over");
           e.dataTransfer.dropEffect = "move";
         }
       });
+
       item.addEventListener("dragleave", (e) => {
         if (e.target === item) {
           item.classList.remove("drag-over");
         }
       });
+
       item.addEventListener("drop", (e) => {
         e.preventDefault();
         item.classList.remove("drag-over");
         const draggedId = e.dataTransfer.getData("text/plain");
         const source = e.dataTransfer.getData("source");
         if (!draggedId) return;
+
         if (source === "selected") {
           const fromIndex = trialState.selectedParametersOrder.indexOf(draggedId);
-          const toIndex = trialState.selectedParametersOrder.indexOf(item.dataset.id);
+          const toIndex = trialState.selectedParametersOrder.indexOf(itemId);
           if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
             const [moved] = trialState.selectedParametersOrder.splice(fromIndex, 1);
             trialState.selectedParametersOrder.splice(toIndex, 0, moved);
@@ -1166,8 +1293,9 @@ function populateTrialParameters(selectedIds = []) {
           }
         } else if (source === "available") {
           if (!trialState.selectedParametersOrder.includes(draggedId)) {
-            const toIndex = trialState.selectedParametersOrder.indexOf(item.dataset.id);
+            const toIndex = trialState.selectedParametersOrder.indexOf(itemId);
             trialState.selectedParametersOrder.splice(toIndex, 0, draggedId);
+            checkedState.available.delete(draggedId);
             renderSelected();
             renderAvailable(searchInput.value);
             updateSelectedParamCount();
@@ -1175,41 +1303,92 @@ function populateTrialParameters(selectedIds = []) {
         }
       });
     });
+
+    updateCheckedIndicators();
   };
 
   const addSelectedFromAvailable = () => {
-    const selectedId = availableList.dataset.selectedId;
-    if (!selectedId) return;
-    if (!trialState.selectedParametersOrder.includes(selectedId)) {
-      trialState.selectedParametersOrder.push(selectedId);
+    const actionIds = getActionIds(
+      checkedState.available,
+      availableList.dataset.selectedId,
+    );
+    if (actionIds.length === 0) return;
+
+    let hasChanges = false;
+    actionIds.forEach((id) => {
+      if (!trialState.selectedParametersOrder.includes(id)) {
+        trialState.selectedParametersOrder.push(id);
+        hasChanges = true;
+      }
+    });
+
+    if (hasChanges) {
+      clearCheckedState();
+      setSelection(availableList, "");
       renderSelected();
       renderAvailable(searchInput.value);
       updateSelectedParamCount();
+      updateCheckedIndicators();
     }
   };
 
   const removeSelectedFromSelected = () => {
-    const selectedId = selectedList.dataset.selectedId;
-    if (!selectedId) return;
-    trialState.selectedParametersOrder = trialState.selectedParametersOrder.filter(
-      (id) => id !== selectedId,
+    const actionIds = new Set(
+      getActionIds(checkedState.selected, selectedList.dataset.selectedId),
     );
+    if (actionIds.size === 0) return;
+
+    trialState.selectedParametersOrder = trialState.selectedParametersOrder.filter(
+      (id) => !actionIds.has(id),
+    );
+
+    clearCheckedState();
+    setSelection(selectedList, "");
     renderSelected();
     renderAvailable(searchInput.value);
     updateSelectedParamCount();
+    updateCheckedIndicators();
   };
 
   const moveSelected = (direction) => {
-    const selectedId = selectedList.dataset.selectedId;
-    if (!selectedId) return;
-    const currentIndex = trialState.selectedParametersOrder.indexOf(selectedId);
-    if (currentIndex === -1) return;
-    const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= trialState.selectedParametersOrder.length) return;
-    const [moved] = trialState.selectedParametersOrder.splice(currentIndex, 1);
-    trialState.selectedParametersOrder.splice(newIndex, 0, moved);
+    const hadCheckedSelection = checkedState.selected.size > 0;
+    const actionIds = getActionIds(checkedState.selected, selectedList.dataset.selectedId);
+    if (actionIds.length === 0) return;
+
+    const moveSet = new Set(
+      actionIds.filter((id) => trialState.selectedParametersOrder.includes(id)),
+    );
+    if (moveSet.size === 0) return;
+
+    if (direction === "up") {
+      for (let i = 1; i < trialState.selectedParametersOrder.length; i += 1) {
+        const currentId = trialState.selectedParametersOrder[i];
+        const prevId = trialState.selectedParametersOrder[i - 1];
+        if (moveSet.has(currentId) && !moveSet.has(prevId)) {
+          trialState.selectedParametersOrder[i] = prevId;
+          trialState.selectedParametersOrder[i - 1] = currentId;
+        }
+      }
+    } else {
+      for (let i = trialState.selectedParametersOrder.length - 2; i >= 0; i -= 1) {
+        const currentId = trialState.selectedParametersOrder[i];
+        const nextId = trialState.selectedParametersOrder[i + 1];
+        if (moveSet.has(currentId) && !moveSet.has(nextId)) {
+          trialState.selectedParametersOrder[i] = nextId;
+          trialState.selectedParametersOrder[i + 1] = currentId;
+        }
+      }
+    }
+
+    if (hadCheckedSelection) {
+      checkedState.selected = moveSet;
+    } else {
+      checkedState.selected.clear();
+    }
     renderSelected();
-    setSelection(selectedList, selectedId);
+    if (!hadCheckedSelection && actionIds.length === 1) {
+      setSelection(selectedList, actionIds[0]);
+    }
   };
 
   const handleListDrop = (targetList) => (e) => {
@@ -1224,6 +1403,7 @@ function populateTrialParameters(selectedIds = []) {
         renderSelected();
         renderAvailable(searchInput.value);
         updateSelectedParamCount();
+        updateCheckedIndicators();
       }
     }
 
@@ -1234,42 +1414,95 @@ function populateTrialParameters(selectedIds = []) {
       renderSelected();
       renderAvailable(searchInput.value);
       updateSelectedParamCount();
+      updateCheckedIndicators();
     }
   };
 
-  availableList.addEventListener("dragover", (e) => {
+  availableList.ondragover = (e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     availableList.classList.add("drag-over-list");
-  });
-  availableList.addEventListener("dragleave", (e) => {
+  };
+  availableList.ondragleave = (e) => {
     if (e.target === availableList) {
       availableList.classList.remove("drag-over-list");
     }
-  });
-  availableList.addEventListener("drop", handleListDrop("available"));
+  };
+  availableList.ondrop = handleListDrop("available");
   
-  selectedList.addEventListener("dragover", (e) => {
+  selectedList.ondragover = (e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     selectedList.classList.add("drag-over-list");
-  });
-  selectedList.addEventListener("dragleave", (e) => {
+  };
+  selectedList.ondragleave = (e) => {
     if (e.target === selectedList) {
       selectedList.classList.remove("drag-over-list");
     }
-  });
-  selectedList.addEventListener("drop", handleListDrop("selected"));
+  };
+  selectedList.ondrop = handleListDrop("selected");
 
-  moveRightBtn?.addEventListener("click", addSelectedFromAvailable);
-  moveUpBtn?.addEventListener("click", () => moveSelected("up"));
-  moveDownBtn?.addEventListener("click", () => moveSelected("down"));
-  removeBtn?.addEventListener("click", removeSelectedFromSelected);
+  if (selectAllBtn) {
+    selectAllBtn.onclick = () => {
+      withActiveListType((targetType) => {
+        const targetList = getListByType(targetType);
+        if (!targetList) return;
+
+        if (targetType === "available") {
+          checkedState.available.clear();
+          targetList
+            .querySelectorAll(".picklist-item-checkbox")
+            .forEach((checkbox) => {
+              checkbox.checked = true;
+              if (checkbox.dataset.id) checkedState.available.add(checkbox.dataset.id);
+            });
+        } else {
+          checkedState.selected.clear();
+          targetList
+            .querySelectorAll(".picklist-item-checkbox")
+            .forEach((checkbox) => {
+              checkbox.checked = true;
+              if (checkbox.dataset.id) checkedState.selected.add(checkbox.dataset.id);
+            });
+        }
+
+        updateCheckedIndicators();
+      });
+    };
+  }
+
+  if (deselectAllBtn) {
+    deselectAllBtn.onclick = () => {
+      withActiveListType((targetType) => {
+        const targetList = getListByType(targetType);
+        if (!targetList) return;
+
+        targetList.querySelectorAll(".picklist-item-checkbox").forEach((checkbox) => {
+          checkbox.checked = false;
+        });
+
+        if (targetType === "available") {
+          checkedState.available.clear();
+        } else {
+          checkedState.selected.clear();
+        }
+
+        updateCheckedIndicators();
+      });
+    };
+  }
+
+  if (moveRightBtn) moveRightBtn.onclick = addSelectedFromAvailable;
+  if (moveUpBtn) moveUpBtn.onclick = () => moveSelected("up");
+  if (moveDownBtn) moveDownBtn.onclick = () => moveSelected("down");
+  if (removeBtn) removeBtn.onclick = removeSelectedFromSelected;
 
   // Initial render
   renderAvailable();
   renderSelected();
   updateSelectedParamCount();
+  updateCheckedIndicators();
+  updateActiveListUI();
 
   // Search listener
   searchInput.removeEventListener("input", searchInput._searchHandler);
@@ -1305,10 +1538,14 @@ function populateTrialAgronomy(selectedIds = []) {
   const availableList = document.getElementById("agronomyAvailableList");
   const selectedList = document.getElementById("agronomySelectedList");
   const searchInput = document.getElementById("agronomySearch");
+  const selectAllBtn = document.getElementById("agronomySelectAll");
+  const deselectAllBtn = document.getElementById("agronomyDeselectAll");
   const moveRightBtn = document.getElementById("agronomyMoveRight");
   const moveUpBtn = document.getElementById("agronomyMoveUp");
   const moveDownBtn = document.getElementById("agronomyMoveDown");
   const removeBtn = document.getElementById("agronomyRemove");
+  const availableCheckedCountEl = document.getElementById("agronomyAvailableCheckedCount");
+  const selectedCheckedCountEl = document.getElementById("agronomySelectedCheckedCount");
   if (!availableList || !selectedList || !searchInput) return;
 
   trialState.selectedAgronomyOrder = Array.isArray(selectedIds) ? [...selectedIds] : [];
@@ -1322,11 +1559,58 @@ function populateTrialAgronomy(selectedIds = []) {
     ? allAgronomy.filter(a => a.cropIds && a.cropIds.includes(cropId))
     : allAgronomy;
 
+  const checkedState = {
+    available: new Set(),
+    selected: new Set(),
+  };
+  let activeListType = "";
+
+  const updateActiveListUI = () => {
+    availableList.classList.toggle("picklist-list-active", activeListType === "available");
+    selectedList.classList.toggle("picklist-list-active", activeListType === "selected");
+  };
+
+  const setActiveListType = (type) => {
+    activeListType = type;
+    updateActiveListUI();
+  };
+
   const setSelection = (listEl, id) => {
     listEl.querySelectorAll(".picklist-item").forEach((item) => {
       item.classList.toggle("selected", item.dataset.id === id);
     });
     listEl.dataset.selectedId = id || "";
+  };
+
+  const getActionIds = (checkedSet, fallbackId) => {
+    const checkedIds = Array.from(checkedSet).filter(Boolean);
+    if (checkedIds.length > 0) return checkedIds;
+    return fallbackId ? [fallbackId] : [];
+  };
+
+  const clearCheckedState = () => {
+    checkedState.available.clear();
+    checkedState.selected.clear();
+  };
+
+  const getListByType = (type) =>
+    type === "available" ? availableList : type === "selected" ? selectedList : null;
+
+  const withActiveListType = (handler) => {
+    if (!activeListType) {
+      showToast("Please choose a list side first: Available or Selected", "warning");
+      return;
+    }
+    handler(activeListType);
+  };
+
+  const updateCheckedIndicators = () => {
+    if (availableCheckedCountEl) {
+      availableCheckedCountEl.textContent = String(checkedState.available.size);
+    }
+    if (selectedCheckedCountEl) {
+      selectedCheckedCountEl.textContent = String(checkedState.selected.size);
+    }
   };
 
   const renderAvailable = (searchTerm = "") => {
@@ -1336,8 +1620,14 @@ function populateTrialAgronomy(selectedIds = []) {
       return match && !trialState.selectedAgronomyOrder.includes(item.id);
     });
 
+    const filteredIds = new Set(filtered.map((item) => item.id));
+    checkedState.available.forEach((id) => {
+      if (!filteredIds.has(id)) checkedState.available.delete(id);
+    });
+
     if (filtered.length === 0) {
       availableList.innerHTML = '<p class="param-no-results">No agronomy items found</p>';
+      updateCheckedIndicators();
       return;
     }
 
@@ -1349,18 +1639,45 @@ function populateTrialAgronomy(selectedIds = []) {
         : "";
       return `
         <div class="picklist-item" draggable="true" data-id="${item.id}">
-          <div class="picklist-item-title">${escapeHtml(item.activity || item.name || "")}</div>
+          <input type="checkbox" class="picklist-item-checkbox" data-id="${item.id}" ${checkedState.available.has(item.id) ? "checked" : ""}>
+          <div class="picklist-item-content">
+            <div class="picklist-item-title">${escapeHtml(item.activity || item.name || "")}</div>
+          </div>
         </div>
       `;
     }).join("");
 
     availableList.querySelectorAll(".picklist-item").forEach((el) => {
+      const itemId = el.dataset.id;
+      const checkbox = el.querySelector(".picklist-item-checkbox");
+
+      checkbox?.addEventListener("click", (e) => e.stopPropagation());
+      checkbox?.addEventListener("change", (e) => {
+        setActiveListType("available");
+        if (e.target.checked) {
+          checkedState.available.add(itemId);
+        } else {
+          checkedState.available.delete(itemId);
+        }
+        updateCheckedIndicators();
+      });
+
       el.addEventListener("click", () => {
-        setSelection(availableList, el.dataset.id);
+        setActiveListType("available");
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+          if (checkbox.checked) {
+            checkedState.available.add(itemId);
+          } else {
+            checkedState.available.delete(itemId);
+          }
+          updateCheckedIndicators();
+        }
+        setSelection(availableList, itemId);
         setSelection(selectedList, "");
       });
       el.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("text/plain", el.dataset.id);
+        e.dataTransfer.setData("text/plain", itemId);
         e.dataTransfer.setData("source", "available");
         el.classList.add("dragging");
         e.dataTransfer.effectAllowed = "move";
@@ -1370,11 +1687,19 @@ function populateTrialAgronomy(selectedIds = []) {
         document.querySelectorAll(".picklist-item.drag-over").forEach(x => x.classList.remove("drag-over"));
       });
     });
+
+    updateCheckedIndicators();
   };
 
   const renderSelected = () => {
+    const selectedIds = new Set(trialState.selectedAgronomyOrder);
+    checkedState.selected.forEach((id) => {
+      if (!selectedIds.has(id)) checkedState.selected.delete(id);
+    });
+
     if (trialState.selectedAgronomyOrder.length === 0) {
       selectedList.innerHTML = '<p class="param-no-results">No agronomy selected</p>';
+      updateCheckedIndicators();
       return;
     }
 
@@ -1388,18 +1713,45 @@ function populateTrialAgronomy(selectedIds = []) {
         : "";
       return `
         <div class="picklist-item" draggable="true" data-id="${item.id}">
-          <div class="picklist-item-title">${escapeHtml(item.activity || item.name || "")}</div>
+          <input type="checkbox" class="picklist-item-checkbox" data-id="${item.id}" ${checkedState.selected.has(item.id) ? "checked" : ""}>
+          <div class="picklist-item-content">
+            <div class="picklist-item-title">${escapeHtml(item.activity || item.name || "")}</div>
+          </div>
         </div>
       `;
     }).join("");
 
     selectedList.querySelectorAll(".picklist-item").forEach((el) => {
+      const itemId = el.dataset.id;
+      const checkbox = el.querySelector(".picklist-item-checkbox");
+
+      checkbox?.addEventListener("click", (e) => e.stopPropagation());
+      checkbox?.addEventListener("change", (e) => {
+        setActiveListType("selected");
+        if (e.target.checked) {
+          checkedState.selected.add(itemId);
+        } else {
+          checkedState.selected.delete(itemId);
+        }
+        updateCheckedIndicators();
+      });
+
       el.addEventListener("click", () => {
-        setSelection(selectedList, el.dataset.id);
+        setActiveListType("selected");
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+          if (checkbox.checked) {
+            checkedState.selected.add(itemId);
+          } else {
+            checkedState.selected.delete(itemId);
+          }
+          updateCheckedIndicators();
+        }
+        setSelection(selectedList, itemId);
         setSelection(availableList, "");
       });
       el.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("text/plain", el.dataset.id);
+        e.dataTransfer.setData("text/plain", itemId);
         e.dataTransfer.setData("source", "selected");
         el.classList.add("dragging");
       });
@@ -1420,7 +1772,7 @@ function populateTrialAgronomy(selectedIds = []) {
         el.classList.remove("drag-over");
         const draggedId = e.dataTransfer.getData("text/plain");
         const source = e.dataTransfer.getData("source");
-        const targetId = el.dataset.id;
+        const targetId = itemId;
         if (draggedId === targetId) return;
 
         if (source === "available") {
@@ -1435,8 +1787,11 @@ function populateTrialAgronomy(selectedIds = []) {
         renderAvailable(searchInput.value);
         renderSelected();
         updateSelectedAgronomyCount();
+        updateCheckedIndicators();
       });
     });
+
+    updateCheckedIndicators();
   };
 
   const updateSelectedAgronomyCount = () => {
@@ -1458,6 +1813,7 @@ function populateTrialAgronomy(selectedIds = []) {
       renderAvailable(searchInput.value);
       renderSelected();
       updateSelectedAgronomyCount();
+      updateCheckedIndicators();
     }
   };
 
@@ -1480,55 +1836,176 @@ function populateTrialAgronomy(selectedIds = []) {
   // Button controls
   if (moveRightBtn) {
     moveRightBtn.onclick = () => {
-      const id = availableList.dataset.selectedId;
-      if (id && !trialState.selectedAgronomyOrder.includes(id)) {
-        trialState.selectedAgronomyOrder.push(id);
+      const actionIds = getActionIds(
+        checkedState.available,
+        availableList.dataset.selectedId,
+      );
+      if (actionIds.length === 0) return;
+
+      let hasChanges = false;
+      actionIds.forEach((id) => {
+        if (!trialState.selectedAgronomyOrder.includes(id)) {
+          trialState.selectedAgronomyOrder.push(id);
+          hasChanges = true;
+        }
+      });
+
+      if (hasChanges) {
+        clearCheckedState();
+        setSelection(availableList, "");
         renderAvailable(searchInput.value);
         renderSelected();
         updateSelectedAgronomyCount();
+        updateCheckedIndicators();
       }
     };
   }
   if (moveUpBtn) {
     moveUpBtn.onclick = () => {
-      const id = selectedList.dataset.selectedId;
-      const idx = trialState.selectedAgronomyOrder.indexOf(id);
-      if (idx > 0) {
-        [trialState.selectedAgronomyOrder[idx - 1], trialState.selectedAgronomyOrder[idx]] =
-          [trialState.selectedAgronomyOrder[idx], trialState.selectedAgronomyOrder[idx - 1]];
-        renderSelected();
-        setSelection(selectedList, id);
+      const hadCheckedSelection = checkedState.selected.size > 0;
+      const actionIds = getActionIds(
+        checkedState.selected,
+        selectedList.dataset.selectedId,
+      );
+      if (actionIds.length === 0) return;
+
+      const moveSet = new Set(
+        actionIds.filter((id) => trialState.selectedAgronomyOrder.includes(id)),
+      );
+      if (moveSet.size === 0) return;
+
+      for (let i = 1; i < trialState.selectedAgronomyOrder.length; i += 1) {
+        const currentId = trialState.selectedAgronomyOrder[i];
+        const prevId = trialState.selectedAgronomyOrder[i - 1];
+        if (moveSet.has(currentId) && !moveSet.has(prevId)) {
+          trialState.selectedAgronomyOrder[i] = prevId;
+          trialState.selectedAgronomyOrder[i - 1] = currentId;
+        }
+      }
+
+      if (hadCheckedSelection) {
+        checkedState.selected = moveSet;
+      } else {
+        checkedState.selected.clear();
+      }
+      renderSelected();
+      if (!hadCheckedSelection && actionIds.length === 1) {
+        setSelection(selectedList, actionIds[0]);
       }
     };
   }
   if (moveDownBtn) {
     moveDownBtn.onclick = () => {
-      const id = selectedList.dataset.selectedId;
-      const idx = trialState.selectedAgronomyOrder.indexOf(id);
-      if (idx >= 0 && idx < trialState.selectedAgronomyOrder.length - 1) {
-        [trialState.selectedAgronomyOrder[idx], trialState.selectedAgronomyOrder[idx + 1]] =
-          [trialState.selectedAgronomyOrder[idx + 1], trialState.selectedAgronomyOrder[idx]];
-        renderSelected();
-        setSelection(selectedList, id);
+      const hadCheckedSelection = checkedState.selected.size > 0;
+      const actionIds = getActionIds(
+        checkedState.selected,
+        selectedList.dataset.selectedId,
+      );
+      if (actionIds.length === 0) return;
+
+      const moveSet = new Set(
+        actionIds.filter((id) => trialState.selectedAgronomyOrder.includes(id)),
+      );
+      if (moveSet.size === 0) return;
+
+      for (let i = trialState.selectedAgronomyOrder.length - 2; i >= 0; i -= 1) {
+        const currentId = trialState.selectedAgronomyOrder[i];
+        const nextId = trialState.selectedAgronomyOrder[i + 1];
+        if (moveSet.has(currentId) && !moveSet.has(nextId)) {
+          trialState.selectedAgronomyOrder[i] = nextId;
+          trialState.selectedAgronomyOrder[i + 1] = currentId;
+        }
+      }
+
+      if (hadCheckedSelection) {
+        checkedState.selected = moveSet;
+      } else {
+        checkedState.selected.clear();
+      }
+      renderSelected();
+      if (!hadCheckedSelection && actionIds.length === 1) {
+        setSelection(selectedList, actionIds[0]);
       }
     };
   }
   if (removeBtn) {
     removeBtn.onclick = () => {
-      const id = selectedList.dataset.selectedId;
-      const idx = trialState.selectedAgronomyOrder.indexOf(id);
-      if (idx >= 0) {
-        trialState.selectedAgronomyOrder.splice(idx, 1);
+      const actionIds = new Set(
+        getActionIds(checkedState.selected, selectedList.dataset.selectedId),
+      );
+      if (actionIds.size === 0) return;
+
+      const beforeLength = trialState.selectedAgronomyOrder.length;
+      trialState.selectedAgronomyOrder = trialState.selectedAgronomyOrder.filter(
+        (id) => !actionIds.has(id),
+      );
+
+      if (trialState.selectedAgronomyOrder.length !== beforeLength) {
+        clearCheckedState();
+        setSelection(selectedList, "");
         renderAvailable(searchInput.value);
         renderSelected();
         updateSelectedAgronomyCount();
+        updateCheckedIndicators();
       }
+    };
+  }
+
+  if (selectAllBtn) {
+    selectAllBtn.onclick = () => {
+      withActiveListType((targetType) => {
+        const targetList = getListByType(targetType);
+        if (!targetList) return;
+
+        if (targetType === "available") {
+          checkedState.available.clear();
+          targetList
+            .querySelectorAll(".picklist-item-checkbox")
+            .forEach((checkbox) => {
+              checkbox.checked = true;
+              if (checkbox.dataset.id) checkedState.available.add(checkbox.dataset.id);
+            });
+        } else {
+          checkedState.selected.clear();
+          targetList
+            .querySelectorAll(".picklist-item-checkbox")
+            .forEach((checkbox) => {
+              checkbox.checked = true;
+              if (checkbox.dataset.id) checkedState.selected.add(checkbox.dataset.id);
+            });
+        }
+
+        updateCheckedIndicators();
+      });
+    };
+  }
+
+  if (deselectAllBtn) {
+    deselectAllBtn.onclick = () => {
+      withActiveListType((targetType) => {
+        const targetList = getListByType(targetType);
+        if (!targetList) return;
+
+        targetList.querySelectorAll(".picklist-item-checkbox").forEach((checkbox) => {
+          checkbox.checked = false;
+        });
+
+        if (targetType === "available") {
+          checkedState.available.clear();
+        } else {
+          checkedState.selected.clear();
+        }
+
+        updateCheckedIndicators();
+      });
     };
   }
 
   renderAvailable();
   renderSelected();
   updateSelectedAgronomyCount();
+  updateCheckedIndicators();
+  updateActiveListUI();
 
   // Search listener
   searchInput.removeEventListener("input", searchInput._agronomySearchHandler);
@@ -3544,7 +4021,7 @@ function initializeLayoutingSection() {
     const warningDiv = document.createElement("div");
     warningDiv.className = "td-no-items";
     warningDiv.innerHTML = `
-            <p>Field belum diisi. Layouting tetap bisa dilakukan menggunakan peta dummy.</p>
+            <p>The Field section is not filled yet. Layouting can still be done using the dummy map.</p>
             <p style="font-size:0.8rem;color:var(--text-tertiary);margin-top:6px;">Layout dummy akan otomatis diterapkan ke Area 1 setelah Anda menambahkan area di Field.</p>
         `;
     container.appendChild(warningDiv);
@@ -3622,7 +4099,7 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
             <h5 class="layouting-area-title">${escapeHtml(area.name || "Area " + (areaIndex + 1))}${isDummy ? " (Dummy Map)" : ""}</h5>
                 <div class="layouting-area-meta">
               ${isDummy
-                ? "Dummy map mode — hasil layout ini hanya simulasi sampai Field diisi."
+                ? "Dummy map mode — this layout result is only a simulation until the Field section is filled."
                 : `Size: ${area.areaSize ? area.areaSize.hectares + " ha, " + area.areaSize.squareMeters.toLocaleString() + " m²" : "N/A"}`}
                 </div>
             </div>
@@ -3649,8 +4126,17 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
                 <div class="area-lines-list layouting-lines-list picklist-list" data-area-index="${areaIndex}" data-list="available">
                   ${linesHTML}
                 </div>
+                <small class="form-hint-block picklist-checked-indicator">
+                  <span class="layouting-available-checked-count" data-area-index="${areaIndex}">0</span> checked
+                </small>
               </div>
               <div class="picklist-controls">
+                <button type="button" class="picklist-control-btn" data-action="select-all" data-area-index="${areaIndex}" title="Select all">
+                  <span class="material-symbols-rounded">select_all</span>
+                </button>
+                <button type="button" class="picklist-control-btn" data-action="deselect-all" data-area-index="${areaIndex}" title="Deselect all">
+                  <span class="material-symbols-rounded">check_box_outline_blank</span>
+                </button>
                 <button type="button" class="picklist-control-btn" data-action="add" data-area-index="${areaIndex}" title="Add">
                   <span class="material-symbols-rounded">arrow_forward</span>
                 </button>
@@ -3669,6 +4155,9 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
                 <div class="area-selected-lines picklist-list" data-area-index="${areaIndex}" data-list="selected">
                   <!-- Selected lines populated here -->
                 </div>
+                <small class="form-hint-block picklist-checked-indicator">
+                  <span class="layouting-selected-checked-count" data-area-index="${areaIndex}">0</span> checked
+                </small>
               </div>
             </div>
           </div>
@@ -3735,6 +4224,12 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   const searchInput = areaDiv.querySelector(".area-line-search");
   const availableList = areaDiv.querySelector(".area-lines-list");
   const selectedList = areaDiv.querySelector(".area-selected-lines");
+  const availableCheckedCountEl = areaDiv.querySelector(
+    ".layouting-available-checked-count",
+  );
+  const selectedCheckedCountEl = areaDiv.querySelector(
+    ".layouting-selected-checked-count",
+  );
   const controlButtons = areaDiv.querySelectorAll(
     `.picklist-control-btn[data-area-index="${areaIndex}"]`,
   );
@@ -3742,12 +4237,58 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   let selectedLineIds = Array.isArray(area.layout?.lines)
     ? area.layout.lines.map((line) => line.id)
     : [];
+  const checkedState = {
+    available: new Set(),
+    selected: new Set(),
+  };
+  let activeListType = "";
+
+  const updateActiveListUI = () => {
+    availableList.classList.toggle("picklist-list-active", activeListType === "available");
+    selectedList.classList.toggle("picklist-list-active", activeListType === "selected");
+  };
+
+  const setActiveListType = (type) => {
+    activeListType = type;
+    updateActiveListUI();
+  };
 
   const setSelection = (listEl, id) => {
     listEl.querySelectorAll(".picklist-item").forEach((item) => {
       item.classList.toggle("selected", item.dataset.id === id);
     });
     listEl.dataset.selectedId = id || "";
+  };
+
+  const getActionIds = (checkedSet, fallbackId) => {
+    const checkedIds = Array.from(checkedSet).filter(Boolean);
+    if (checkedIds.length > 0) return checkedIds;
+    return fallbackId ? [fallbackId] : [];
+  };
+
+  const clearCheckedState = () => {
+    checkedState.available.clear();
+    checkedState.selected.clear();
+  };
+
+  const updateCheckedIndicators = () => {
+    if (availableCheckedCountEl) {
+      availableCheckedCountEl.textContent = String(checkedState.available.size);
+    }
+    if (selectedCheckedCountEl) {
+      selectedCheckedCountEl.textContent = String(checkedState.selected.size);
+    }
+  };
+
+  const getListByType = (type) =>
+    type === "available" ? availableList : type === "selected" ? selectedList : null;
+
+  const withActiveListType = (handler) => {
+    if (!activeListType) {
+      showToast("Please choose a list side first: Available or Selected", "warning");
+      return;
+    }
+    handler(activeListType);
   };
 
   const renderAvailable = (searchTerm = "") => {
@@ -3759,9 +4300,15 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
       return match && !selectedLineIds.includes(line.id);
     });
 
+    const filteredIds = new Set(filtered.map((line) => line.id));
+    checkedState.available.forEach((id) => {
+      if (!filteredIds.has(id)) checkedState.available.delete(id);
+    });
+
     if (filtered.length === 0) {
       availableList.innerHTML =
         '<p class="layouting-empty">No lines available for this crop.</p>';
+      updateCheckedIndicators();
       return;
     }
 
@@ -3775,8 +4322,11 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
         const disabled = line.quantity !== undefined && line.quantity <= 0;
         return `
           <div class="picklist-item ${qtyClass} ${disabled ? "disabled" : ""}" draggable="${!disabled}" data-id="${line.id}" data-name="${escapeHtml(line.name)}" data-disabled="${disabled}">
-            <span>${escapeHtml(line.name)}</span>
-            <span class="line-quantity-badge ${qtyClass}">${qty}</span>
+            <input type="checkbox" class="picklist-item-checkbox" data-id="${line.id}" ${checkedState.available.has(line.id) ? "checked" : ""} ${disabled ? "disabled" : ""}>
+            <div class="picklist-item-content picklist-item-content-inline">
+              <span>${escapeHtml(line.name)}</span>
+              <span class="line-quantity-badge ${qtyClass}">${qty}</span>
+            </div>
           </div>
         `;
       })
@@ -3784,22 +4334,54 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
 
     availableList.querySelectorAll(".picklist-item").forEach((item) => {
       if (item.dataset.disabled === "true") return;
+      const itemId = item.dataset.id;
+      const checkbox = item.querySelector(".picklist-item-checkbox");
+
+      checkbox?.addEventListener("click", (e) => e.stopPropagation());
+      checkbox?.addEventListener("change", (e) => {
+        setActiveListType("available");
+        if (e.target.checked) {
+          checkedState.available.add(itemId);
+        } else {
+          checkedState.available.delete(itemId);
+        }
+        updateCheckedIndicators();
+      });
+
       item.addEventListener("click", () => {
-        setSelection(availableList, item.dataset.id);
+        setActiveListType("available");
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+          if (checkbox.checked) {
+            checkedState.available.add(itemId);
+          } else {
+            checkedState.available.delete(itemId);
+          }
+        }
+        updateCheckedIndicators();
+        setSelection(availableList, itemId);
         setSelection(selectedList, "");
       });
       item.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("text/plain", item.dataset.id);
+        e.dataTransfer.setData("text/plain", itemId);
         e.dataTransfer.setData("source", "available");
       });
     });
+
+    updateCheckedIndicators();
   };
 
   const renderSelected = () => {
     if (!selectedList) return;
+    const selectedIds = new Set(selectedLineIds);
+    checkedState.selected.forEach((id) => {
+      if (!selectedIds.has(id)) checkedState.selected.delete(id);
+    });
+
     if (selectedLineIds.length === 0) {
       selectedList.innerHTML =
         '<p class="layouting-empty">No lines selected</p>';
+      updateCheckedIndicators();
       return;
     }
 
@@ -3814,20 +4396,47 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
             : "";
         return `
           <div class="picklist-item" draggable="true" data-id="${line.id}" data-name="${escapeHtml(line.name)}">
-            <span>${escapeHtml(line.name)}</span>
-            <span class="line-quantity-badge ${qtyClass}">${qty}</span>
+            <input type="checkbox" class="picklist-item-checkbox" data-id="${line.id}" ${checkedState.selected.has(line.id) ? "checked" : ""}>
+            <div class="picklist-item-content picklist-item-content-inline">
+              <span>${escapeHtml(line.name)}</span>
+              <span class="line-quantity-badge ${qtyClass}">${qty}</span>
+            </div>
           </div>
         `;
       })
       .join("");
 
     selectedList.querySelectorAll(".picklist-item").forEach((item) => {
+      const itemId = item.dataset.id;
+      const checkbox = item.querySelector(".picklist-item-checkbox");
+
+      checkbox?.addEventListener("click", (e) => e.stopPropagation());
+      checkbox?.addEventListener("change", (e) => {
+        setActiveListType("selected");
+        if (e.target.checked) {
+          checkedState.selected.add(itemId);
+        } else {
+          checkedState.selected.delete(itemId);
+        }
+        updateCheckedIndicators();
+      });
+
       item.addEventListener("click", () => {
-        setSelection(selectedList, item.dataset.id);
+        setActiveListType("selected");
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+          if (checkbox.checked) {
+            checkedState.selected.add(itemId);
+          } else {
+            checkedState.selected.delete(itemId);
+          }
+        }
+        updateCheckedIndicators();
+        setSelection(selectedList, itemId);
         setSelection(availableList, "");
       });
       item.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("text/plain", item.dataset.id);
+        e.dataTransfer.setData("text/plain", itemId);
         e.dataTransfer.setData("source", "selected");
       });
       item.addEventListener("dragover", (e) => e.preventDefault());
@@ -3838,7 +4447,7 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
         if (!draggedId) return;
         if (source === "selected") {
           const fromIndex = selectedLineIds.indexOf(draggedId);
-          const toIndex = selectedLineIds.indexOf(item.dataset.id);
+          const toIndex = selectedLineIds.indexOf(itemId);
           if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
             const [moved] = selectedLineIds.splice(fromIndex, 1);
             selectedLineIds.splice(toIndex, 0, moved);
@@ -3847,49 +4456,101 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
           }
         } else if (source === "available") {
           if (!selectedLineIds.includes(draggedId)) {
-            const toIndex = selectedLineIds.indexOf(item.dataset.id);
+            const toIndex = selectedLineIds.indexOf(itemId);
             selectedLineIds.splice(toIndex, 0, draggedId);
+            checkedState.available.delete(draggedId);
             renderSelected();
             renderAvailable(searchInput.value);
             autoGenerateLayout();
+            updateCheckedIndicators();
           }
         }
       });
     });
+
+    updateCheckedIndicators();
   };
 
   const addSelectedFromAvailable = () => {
-    const selectedId = availableList?.dataset.selectedId;
-    if (!selectedId) return;
-    if (!selectedLineIds.includes(selectedId)) {
-      selectedLineIds.push(selectedId);
+    const actionIds = getActionIds(
+      checkedState.available,
+      availableList?.dataset.selectedId,
+    );
+    if (actionIds.length === 0) return;
+
+    let hasChanges = false;
+    actionIds.forEach((id) => {
+      if (!selectedLineIds.includes(id)) {
+        selectedLineIds.push(id);
+        hasChanges = true;
+      }
+    });
+
+    if (hasChanges) {
+      clearCheckedState();
+      setSelection(availableList, "");
       renderSelected();
       renderAvailable(searchInput.value);
       autoGenerateLayout();
+      updateCheckedIndicators();
     }
   };
 
   const removeSelectedFromSelected = () => {
-    const selectedId = selectedList?.dataset.selectedId;
-    if (!selectedId) return;
-    selectedLineIds = selectedLineIds.filter((id) => id !== selectedId);
+    const actionIds = new Set(
+      getActionIds(checkedState.selected, selectedList?.dataset.selectedId),
+    );
+    if (actionIds.size === 0) return;
+
+    selectedLineIds = selectedLineIds.filter((id) => !actionIds.has(id));
+    clearCheckedState();
+    setSelection(selectedList, "");
     renderSelected();
     renderAvailable(searchInput.value);
     autoGenerateLayout();
+    updateCheckedIndicators();
   };
 
   const moveSelected = (direction) => {
-    const selectedId = selectedList?.dataset.selectedId;
-    if (!selectedId) return;
-    const currentIndex = selectedLineIds.indexOf(selectedId);
-    if (currentIndex === -1) return;
-    const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= selectedLineIds.length) return;
-    const [moved] = selectedLineIds.splice(currentIndex, 1);
-    selectedLineIds.splice(newIndex, 0, moved);
+    const hadCheckedSelection = checkedState.selected.size > 0;
+    const actionIds = getActionIds(checkedState.selected, selectedList?.dataset.selectedId);
+    if (actionIds.length === 0) return;
+
+    const moveSet = new Set(actionIds.filter((id) => selectedLineIds.includes(id)));
+    if (moveSet.size === 0) return;
+
+    if (direction === "up") {
+      for (let i = 1; i < selectedLineIds.length; i += 1) {
+        const currentId = selectedLineIds[i];
+        const prevId = selectedLineIds[i - 1];
+        if (moveSet.has(currentId) && !moveSet.has(prevId)) {
+          selectedLineIds[i] = prevId;
+          selectedLineIds[i - 1] = currentId;
+        }
+      }
+    } else {
+      for (let i = selectedLineIds.length - 2; i >= 0; i -= 1) {
+        const currentId = selectedLineIds[i];
+        const nextId = selectedLineIds[i + 1];
+        if (moveSet.has(currentId) && !moveSet.has(nextId)) {
+          selectedLineIds[i] = nextId;
+          selectedLineIds[i + 1] = currentId;
+        }
+      }
+    }
+
+    if (hadCheckedSelection) {
+      checkedState.selected = moveSet;
+    } else {
+      checkedState.selected.clear();
+    }
+
     renderSelected();
-    setSelection(selectedList, selectedId);
+    if (!hadCheckedSelection && actionIds.length === 1) {
+      setSelection(selectedList, actionIds[0]);
+    }
     autoGenerateLayout();
+    updateCheckedIndicators();
   };
 
   const handleListDrop = (targetList) => (e) => {
@@ -3901,17 +4562,21 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     if (targetList === "selected") {
       if (!selectedLineIds.includes(draggedId)) {
         selectedLineIds.push(draggedId);
+        checkedState.available.delete(draggedId);
         renderSelected();
         renderAvailable(searchInput.value);
         autoGenerateLayout();
+        updateCheckedIndicators();
       }
     }
 
     if (targetList === "available" && source === "selected") {
       selectedLineIds = selectedLineIds.filter((id) => id !== draggedId);
+      checkedState.selected.delete(draggedId);
       renderSelected();
       renderAvailable(searchInput.value);
       autoGenerateLayout();
+      updateCheckedIndicators();
     }
   };
 
@@ -3926,6 +4591,58 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
 
   controlButtons.forEach((btn) => {
     const action = btn.dataset.action;
+    if (action === "select-all") {
+      btn.addEventListener("click", () => {
+        withActiveListType((targetType) => {
+          const targetList = getListByType(targetType);
+          if (!targetList) return;
+
+          if (targetType === "available") {
+            checkedState.available.clear();
+            targetList
+              .querySelectorAll(".picklist-item-checkbox:not(:disabled)")
+              .forEach((checkbox) => {
+                checkbox.checked = true;
+                if (checkbox.dataset.id) checkedState.available.add(checkbox.dataset.id);
+              });
+          } else {
+            checkedState.selected.clear();
+            targetList
+              .querySelectorAll(".picklist-item-checkbox")
+              .forEach((checkbox) => {
+                checkbox.checked = true;
+                if (checkbox.dataset.id) checkedState.selected.add(checkbox.dataset.id);
+              });
+          }
+
+          updateCheckedIndicators();
+        });
+      });
+    }
+
+    if (action === "deselect-all") {
+      btn.addEventListener("click", () => {
+        withActiveListType((targetType) => {
+          const targetList = getListByType(targetType);
+          if (!targetList) return;
+
+          targetList
+            .querySelectorAll(".picklist-item-checkbox")
+            .forEach((checkbox) => {
+              checkbox.checked = false;
+            });
+
+          if (targetType === "available") {
+            checkedState.available.clear();
+          } else {
+            checkedState.selected.clear();
+          }
+
+          updateCheckedIndicators();
+        });
+      });
+    }
+
     if (action === "add") btn.addEventListener("click", addSelectedFromAvailable);
     if (action === "remove") btn.addEventListener("click", removeSelectedFromSelected);
     if (action === "up") btn.addEventListener("click", () => moveSelected("up"));
@@ -3937,6 +4654,9 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
       renderAvailable(e.target.value);
     });
   }
+
+  updateCheckedIndicators();
+  updateActiveListUI();
 
   // Auto-generate layout on input change with debounce
   let layoutDebounceTimer;
@@ -4326,7 +5046,7 @@ function startAgronomyMonitoring(trialId) {
   if (!trial) return;
 
   if (!canRunTrialActivities(trial)) {
-    showToast("Trial belum lengkap (Field + Layouting + Planting Date). Tidak bisa menjalankan Agronomy.", "warning");
+    showToast("Trial setup is incomplete (Field + Layouting + Planting Date). Agronomy cannot be started.", "warning");
     return;
   }
 
@@ -5057,7 +5777,7 @@ function renderRunTrialList() {
     container.innerHTML = `
       <div class="empty-state run-empty-grid">
         <span class="material-symbols-rounded">science</span>
-        <p>No trials available to run. Lengkapi Field, Layouting, dan Planting Date dulu.</p>
+        <p>No trials available to run. Complete Field, Layouting, and Planting Date first.</p>
       </div>
     `;
     return;
@@ -5172,7 +5892,7 @@ function startRunTrial(trialId) {
   if (!trial) return;
 
   if (!canRunTrialActivities(trial)) {
-    showToast("Trial belum lengkap (Field + Layouting + Planting Date). Tidak bisa menjalankan Observation.", "warning");
+    showToast("Trial setup is incomplete (Field + Layouting + Planting Date). Observation cannot be started.", "warning");
     return;
   }
 
@@ -7091,7 +7811,7 @@ function showTrialActionPopup(event, trialId) {
           <span class="material-symbols-rounded">visibility</span>
           <div class="trial-action-option-text">
             <span class="trial-action-option-title">Run Observation</span>
-            <span class="trial-action-option-desc">${!canRun ? 'Field/Layouting/Planting Date belum lengkap' : trial.archived ? 'Trial is archived' : 'Start or continue observations'}</span>
+            <span class="trial-action-option-desc">${!canRun ? 'Field/Layouting/Planting Date is incomplete' : trial.archived ? 'Trial is archived' : 'Start or continue observations'}</span>
           </div>
         </button>
         <button class="trial-action-option ${!hasAgronomy ? 'disabled' : ''}" 
@@ -7100,7 +7820,7 @@ function showTrialActionPopup(event, trialId) {
           <span class="material-symbols-rounded">local_florist</span>
           <div class="trial-action-option-text">
             <span class="trial-action-option-title">Agronomy Monitoring</span>
-            <span class="trial-action-option-desc">${!hasAgronomy ? (trial.archived ? 'Trial is archived' : !canRun ? 'Field/Layouting/Planting Date belum lengkap' : 'No agronomy items assigned') : 'Start or continue agronomy monitoring'}</span>
+            <span class="trial-action-option-desc">${!hasAgronomy ? (trial.archived ? 'Trial is archived' : !canRun ? 'Field/Layouting/Planting Date is incomplete' : 'No agronomy items assigned') : 'Start or continue agronomy monitoring'}</span>
           </div>
         </button>
         <button class="trial-action-option" onclick="closeTrialActionPopup(); showTrialReport('${trialId}');">
