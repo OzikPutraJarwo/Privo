@@ -3,6 +3,7 @@ let trialState = {
   trials: [],
   editingTrialId: null,
   currentAreas: [],
+  dummyLayoutArea: null,
   isDrawing: false,
   currentPolygon: null,
   currentSection: "basic", // Track current section
@@ -86,7 +87,7 @@ function renderTrials() {
   const renderTrialCard = (trial) => {
     const progress = calculateCombinedTrialProgress(trial);
     const progressPercent = progress.percentage;
-    const hasLayout = trial.areas && trial.areas.length > 0 && trial.areas.some(a => a.layout?.result);
+    const canRun = canRunTrialActivities(trial);
 
     return `
       <div class="run-trial-card" data-trial-id="${trial.id}" onclick="showTrialActionPopup(event, '${trial.id}')">
@@ -101,7 +102,7 @@ function renderTrials() {
           </div>
           <div class="run-trial-card-body">
             <div class="run-trial-card-title">${escapeHtml(trial.name)}</div>
-            <div class="run-trial-card-meta">${escapeHtml(trial.cropName || "")}${trial.trialType ? " · " + escapeHtml(trial.trialType) : ""}${!hasLayout ? ' · <span style="color:var(--text-tertiary);font-size:0.75rem;">No layout</span>' : ""}</div>
+            <div class="run-trial-card-meta">${escapeHtml(trial.cropName || "")}${trial.trialType ? " · " + escapeHtml(trial.trialType) : ""}${!canRun ? ' · <span style="color:var(--text-tertiary);font-size:0.75rem;">Incomplete setup</span>' : ""}</div>
           </div>
         </div>
       </div>
@@ -246,6 +247,81 @@ function getTrialPlantingDateSummary(trial) {
   return `${first} – ${last}`;
 }
 
+function hasTrialFieldSetup(trial) {
+  return Array.isArray(trial?.areas) && trial.areas.length > 0;
+}
+
+function hasTrialLayoutSetup(trial) {
+  return hasTrialFieldSetup(trial) && trial.areas.some((area) => area?.layout?.result);
+}
+
+function hasTrialPlantingDateForRun(trial) {
+  if (!hasTrialLayoutSetup(trial)) return false;
+
+  const areas = Array.isArray(trial?.areas) ? trial.areas : [];
+  const layoutAreaIndices = areas
+    .map((area, areaIndex) => (area?.layout?.result ? areaIndex : -1))
+    .filter((areaIndex) => areaIndex >= 0);
+
+  if (layoutAreaIndices.length === 0) return false;
+  return layoutAreaIndices.every((areaIndex) => Boolean(getAreaPlantingDate(trial, areaIndex)));
+}
+
+function canRunTrialActivities(trial) {
+  return hasTrialFieldSetup(trial) && hasTrialLayoutSetup(trial) && hasTrialPlantingDateForRun(trial);
+}
+
+function getDummyLayoutArea() {
+  const existing = trialState.dummyLayoutArea || {};
+  return {
+    name: existing.name || "Dummy Area",
+    areaSize: existing.areaSize || null,
+    plantingDate: existing.plantingDate || "",
+    layout: existing.layout || null,
+  };
+}
+
+function applyDummyLayoutToFirstArea() {
+  const dummyLayout = trialState.dummyLayoutArea?.layout;
+  if (!dummyLayout || !Array.isArray(trialState.currentAreas) || trialState.currentAreas.length === 0) {
+    return;
+  }
+
+  const firstArea = trialState.currentAreas[0];
+  if (!firstArea) return;
+
+  const firstAreaHasLayout = Boolean(firstArea?.layout?.result && firstArea.layout.result.length > 0);
+  if (firstAreaHasLayout) {
+    showToast("Dummy layout tersedia, tetapi Area 1 sudah memiliki layout sendiri.", "info");
+    return;
+  }
+
+  const copiedResult = Array.isArray(dummyLayout.result)
+    ? dummyLayout.result.map((grid) =>
+        Array.isArray(grid)
+          ? grid.map((row) => (Array.isArray(row) ? [...row] : row))
+          : grid,
+      )
+    : [];
+
+  firstArea.layout = {
+    lines: Array.isArray(dummyLayout.lines) ? [...dummyLayout.lines] : [],
+    numRanges: dummyLayout.numRanges || 1,
+    numReps: dummyLayout.numReps || 1,
+    direction: dummyLayout.direction || "serpentine",
+    randomization: dummyLayout.randomization || "normal",
+    plantingDate: trialState.dummyLayoutArea?.plantingDate || "",
+    result: copiedResult,
+  };
+
+  if (!firstArea.plantingDate && trialState.dummyLayoutArea?.plantingDate) {
+    firstArea.plantingDate = trialState.dummyLayoutArea.plantingDate;
+  }
+
+  trialState.dummyLayoutArea = null;
+  showToast("Layout dummy otomatis diterapkan ke Area 1.", "success");
+}
+
 // Toggle archived trials visibility
 function toggleArchivedTrials() {
   const archivedPanel = document.getElementById("archivedTrialManagementPanel");
@@ -264,6 +340,7 @@ function toggleArchivedTrials() {
 function openAddTrialModal() {
   trialState.editingTrialId = null;
   trialState.currentAreas = [];
+  trialState.dummyLayoutArea = null;
   trialState.currentSection = "basic";
   document.getElementById("trialForm").reset();
 
@@ -331,6 +408,7 @@ function setupSectionNavHandlers() {
 // Open edit trial modal
 function openEditTrialModal(trialId) {
   trialState.editingTrialId = trialId;
+  trialState.dummyLayoutArea = null;
   trialState.currentSection = "basic";
   const trial = trialState.trials.find((t) => t.id === trialId);
 
@@ -429,6 +507,7 @@ function closeTrialModal() {
   toggleTrialEditor(false);
   trialState.editingTrialId = null;
   trialState.currentAreas = [];
+  trialState.dummyLayoutArea = null;
   trialState.isDrawing = false;
   trialState.currentPolygon = null;
   trialState.currentSection = "basic";
@@ -887,18 +966,7 @@ function getTrialTreatmentsFromForm() {
 
 // Validate location section
 function validateLocationSection() {
-  const locationEl = document.getElementById("trialLocation");
-  const locationId = locationEl ? locationEl.value : null;
-
-  if (locationEl && !locationId) {
-    showToast("Please select location", "error");
-    return false;
-  }
-  if (trialState.currentAreas.length === 0) {
-    showToast("Please draw at least one trial area", "error");
-    return false;
-  }
-
+  // Field section is optional.
   return true;
 }
 
@@ -2747,20 +2815,9 @@ async function saveTrial() {
     showToast("Please select at least one observation parameter", "error");
     return;
   }
-  if (trialState.currentAreas.length === 0) {
-    showToast("Please draw at least one trial area", "error");
-    return;
-  }
 
-  const missingAreaPlantingDate = trialState.currentAreas.findIndex(
-    (area) => !(area?.plantingDate || "").trim(),
-  );
-  if (missingAreaPlantingDate >= 0) {
-    showToast(
-      `Please set planting date for ${trialState.currentAreas[missingAreaPlantingDate]?.name || `Area ${missingAreaPlantingDate + 1}`}`,
-      "error",
-    );
-    return;
+  if (trialState.currentAreas.length > 0 && trialState.dummyLayoutArea?.layout?.result) {
+    applyDummyLayoutToFirstArea();
   }
 
   try {
@@ -3484,26 +3541,46 @@ function initializeLayoutingSection() {
 
   // Check if we have areas from location section
   if (!trialState.currentAreas || trialState.currentAreas.length === 0) {
-    container.innerHTML = `
-            <div class="td-no-items">
-                <p>No areas defined. Please go to the Location section and create trial areas first.</p>
-            </div>
+    const warningDiv = document.createElement("div");
+    warningDiv.className = "td-no-items";
+    warningDiv.innerHTML = `
+            <p>Field belum diisi. Layouting tetap bisa dilakukan menggunakan peta dummy.</p>
+            <p style="font-size:0.8rem;color:var(--text-tertiary);margin-top:6px;">Layout dummy akan otomatis diterapkan ke Area 1 setelah Anda menambahkan area di Field.</p>
         `;
+    container.appendChild(warningDiv);
+
+    const dummyAreaDiv = createAreaLayoutingForm(getDummyLayoutArea(), 0, {
+      isDummy: true,
+    });
+    container.appendChild(dummyAreaDiv);
+
+    if (trialState.dummyLayoutArea?.layout?.result) {
+      renderLayoutResult(0, trialState.dummyLayoutArea.layout.result, {
+        isDummy: true,
+      });
+    }
     return;
   }
 
+  applyDummyLayoutToFirstArea();
+
   // Create layouting form for each area
   trialState.currentAreas.forEach((area, areaIndex) => {
-    const areaDiv = createAreaLayoutingForm(area, areaIndex);
+    const areaDiv = createAreaLayoutingForm(area, areaIndex, {
+      isDummy: false,
+    });
     container.appendChild(areaDiv);
     if (area.layout && area.layout.result) {
-      renderLayoutResult(areaIndex, area.layout.result);
+      renderLayoutResult(areaIndex, area.layout.result, {
+        isDummy: false,
+      });
     }
   });
 }
 
 // Create layouting form for a single area
-function createAreaLayoutingForm(area, areaIndex) {
+function createAreaLayoutingForm(area, areaIndex, options = {}) {
+  const isDummy = options.isDummy === true;
   const cropSelect = document.getElementById("trialCrops");
   const selectedCropId = cropSelect.value;
   const selectedCropName =
@@ -3517,6 +3594,7 @@ function createAreaLayoutingForm(area, areaIndex) {
   const areaDiv = document.createElement("div");
   areaDiv.className = "layouting-area-card";
   areaDiv.dataset.areaIndex = areaIndex;
+  areaDiv.dataset.isDummy = isDummy ? "true" : "false";
 
   let linesHTML = matchingLines
     .map((line) => {
@@ -3541,9 +3619,11 @@ function createAreaLayoutingForm(area, areaIndex) {
   areaDiv.innerHTML = `
         <div class="layouting-area-header">
             <div>
-                <h5 class="layouting-area-title">${escapeHtml(area.name || "Area " + (areaIndex + 1))}</h5>
+            <h5 class="layouting-area-title">${escapeHtml(area.name || "Area " + (areaIndex + 1))}${isDummy ? " (Dummy Map)" : ""}</h5>
                 <div class="layouting-area-meta">
-                    Size: ${area.areaSize ? area.areaSize.hectares + " ha, " + area.areaSize.squareMeters.toLocaleString() + " m²" : "N/A"}
+              ${isDummy
+                ? "Dummy map mode — hasil layout ini hanya simulasi sampai Field diisi."
+                : `Size: ${area.areaSize ? area.areaSize.hectares + " ha, " + area.areaSize.squareMeters.toLocaleString() + " m²" : "N/A"}`}
                 </div>
             </div>
         </div>
@@ -3863,7 +3943,7 @@ function createAreaLayoutingForm(area, areaIndex) {
   const autoGenerateLayout = () => {
     clearTimeout(layoutDebounceTimer);
     layoutDebounceTimer = setTimeout(() => {
-      generateLayoutForArea(areaIndex);
+      generateLayoutForArea(areaIndex, { isDummy });
     }, 500);
   };
 
@@ -3884,6 +3964,13 @@ function createAreaLayoutingForm(area, areaIndex) {
   const areaPlantingDateInput = areaDiv.querySelector(".area-planting-date");
   if (areaPlantingDateInput) {
     areaPlantingDateInput.addEventListener("change", (event) => {
+      if (isDummy) {
+        trialState.dummyLayoutArea = {
+          ...getDummyLayoutArea(),
+          plantingDate: event.target.value || "",
+        };
+        return;
+      }
       if (!trialState.currentAreas[areaIndex]) return;
       trialState.currentAreas[areaIndex].plantingDate = event.target.value || "";
     });
@@ -3912,7 +3999,7 @@ function createAreaLayoutingForm(area, areaIndex) {
 
     // Render existing layout result
     if (area.layout.result) {
-      renderLayoutResult(areaIndex, area.layout.result);
+      renderLayoutResult(areaIndex, area.layout.result, { isDummy });
     }
   }
 
@@ -3920,8 +4007,11 @@ function createAreaLayoutingForm(area, areaIndex) {
 }
 
 // Generate layout for a specific area
-function generateLayoutForArea(areaIndex) {
-  const areaDiv = document.querySelector(`[data-area-index="${areaIndex}"]`);
+function generateLayoutForArea(areaIndex, options = {}) {
+  const isDummy = options.isDummy === true;
+  const areaDiv = document.querySelector(
+    `.layouting-area-card[data-area-index="${areaIndex}"][data-is-dummy="${isDummy ? "true" : "false"}"]`,
+  );
   if (!areaDiv) return;
 
   // Get selected lines from picklist (ordered)
@@ -3933,7 +4023,7 @@ function generateLayoutForArea(areaIndex) {
     name: item.dataset.name || item.textContent.trim(),
   }));
 
-  const resultContainer = document.querySelector(
+  const resultContainer = areaDiv.querySelector(
     `.area-layout-result[data-area-index="${areaIndex}"]`,
   );
 
@@ -3966,21 +4056,42 @@ function generateLayoutForArea(areaIndex) {
     randomization,
   );
 
+  const plantingDateValue = areaDiv.querySelector(".area-planting-date")?.value || "";
+
   // Store layout in trial state
-  if (!trialState.currentAreas[areaIndex].layout) {
-    trialState.currentAreas[areaIndex].layout = {};
+  if (isDummy) {
+    trialState.dummyLayoutArea = {
+      ...getDummyLayoutArea(),
+      plantingDate: plantingDateValue,
+      layout: {
+        lines: selectedLines,
+        numRanges: numRanges,
+        numReps: numReps,
+        direction: direction,
+        randomization: randomization,
+        plantingDate: plantingDateValue,
+        result: layouts,
+      },
+    };
+  } else {
+    if (!trialState.currentAreas[areaIndex]) return;
+    if (!trialState.currentAreas[areaIndex].layout) {
+      trialState.currentAreas[areaIndex].layout = {};
+    }
+    trialState.currentAreas[areaIndex].layout = {
+      lines: selectedLines,
+      numRanges: numRanges,
+      numReps: numReps,
+      direction: direction,
+      randomization: randomization,
+      plantingDate: plantingDateValue,
+      result: layouts,
+    };
+    trialState.currentAreas[areaIndex].plantingDate = plantingDateValue;
   }
-  trialState.currentAreas[areaIndex].layout = {
-    lines: selectedLines,
-    numRanges: numRanges,
-    numReps: numReps,
-    direction: direction,
-    randomization: randomization,
-    result: layouts,
-  };
 
   // Render layout
-  renderLayoutResult(areaIndex, layouts);
+  renderLayoutResult(areaIndex, layouts, { isDummy });
 }
 
 // Calculate layout based on parameters
@@ -4052,8 +4163,14 @@ function calculateLayout(
 }
 
 // Render layout result as tables
-function renderLayoutResult(areaIndex, layouts) {
-  const resultContainer = document.querySelector(
+function renderLayoutResult(areaIndex, layouts, options = {}) {
+  const isDummy = options.isDummy === true;
+  const areaDiv = document.querySelector(
+    `.layouting-area-card[data-area-index="${areaIndex}"][data-is-dummy="${isDummy ? "true" : "false"}"]`,
+  );
+  if (!areaDiv) return;
+
+  const resultContainer = areaDiv.querySelector(
     `.area-layout-result[data-area-index="${areaIndex}"]`,
   );
   if (!resultContainer) return;
@@ -4095,16 +4212,7 @@ function renderLayoutResult(areaIndex, layouts) {
 
 // Validate layouting section
 function validateLayoutingSection() {
-  // At least one area should have a layout defined
-  const hasAnyLayout = trialState.currentAreas.some(
-    (area) => area.layout && area.layout.result,
-  );
-
-  if (!hasAnyLayout) {
-    showToast("Please generate layout for at least one area", "error");
-    return false;
-  }
-
+  // Layouting is optional.
   return true;
 }
 
@@ -4216,6 +4324,11 @@ function getDapExpectedDate(trial, areaIndex, dapMin) {
 function startAgronomyMonitoring(trialId) {
   const trial = trialState.trials.find(t => t.id === trialId);
   if (!trial) return;
+
+  if (!canRunTrialActivities(trial)) {
+    showToast("Trial belum lengkap (Field + Layouting + Planting Date). Tidak bisa menjalankan Agronomy.", "warning");
+    return;
+  }
 
   agronomyMonitoringState.currentTrialId = trialId;
   agronomyMonitoringState.currentTrial = trial;
@@ -4936,7 +5049,7 @@ function renderRunTrialList() {
 
   // Filter out archived trials from the run trial list
   const runnableTrials = trialState.trials.filter(
-    (t) => !t.archived && t.areas && t.areas.length > 0 && t.areas.some((a) => a.layout?.result)
+    (t) => !t.archived && canRunTrialActivities(t)
   );
 
   if (runnableTrials.length === 0) {
@@ -4944,7 +5057,7 @@ function renderRunTrialList() {
     container.innerHTML = `
       <div class="empty-state run-empty-grid">
         <span class="material-symbols-rounded">science</span>
-        <p>No trials available to run. Create a trial with areas and layout first.</p>
+        <p>No trials available to run. Lengkapi Field, Layouting, dan Planting Date dulu.</p>
       </div>
     `;
     return;
@@ -5057,6 +5170,11 @@ function handleRunTrialKeyboard(e) {
 function startRunTrial(trialId) {
   const trial = trialState.trials.find((t) => t.id === trialId);
   if (!trial) return;
+
+  if (!canRunTrialActivities(trial)) {
+    showToast("Trial belum lengkap (Field + Layouting + Planting Date). Tidak bisa menjalankan Observation.", "warning");
+    return;
+  }
 
   if (getRunnableTrialParameters(trial).length === 0) {
     showToast("This trial has no runnable observation parameters (formula parameters are excluded)", "warning");
@@ -6841,7 +6959,7 @@ function renderDashboardTrialSummary() {
   if (!container) return;
 
   const activeTrials = trialState.trials.filter(
-    (t) => !t.archived && t.areas && t.areas.length > 0 && t.areas.some((a) => a.layout?.result)
+    (t) => !t.archived && canRunTrialActivities(t)
   );
 
   if (activeTrials.length === 0) {
@@ -6945,9 +7063,9 @@ function showTrialActionPopup(event, trialId) {
   const trial = trialState.trials.find(t => t.id === trialId);
   if (!trial) return;
   
-  const hasLayout = trial.areas && trial.areas.length > 0 && trial.areas.some(a => a.layout?.result);
+  const canRun = canRunTrialActivities(trial);
   
-  const hasAgronomy = trial.agronomyMonitoring && trial.agronomyItems && trial.agronomyItems.length > 0 && !trial.archived;
+  const hasAgronomy = trial.agronomyMonitoring && trial.agronomyItems && trial.agronomyItems.length > 0 && !trial.archived && canRun;
   
   const overlay = document.createElement('div');
   overlay.className = 'trial-action-popup-overlay';
@@ -6967,13 +7085,13 @@ function showTrialActionPopup(event, trialId) {
             <span class="trial-action-option-desc">View trial information and settings</span>
           </div>
         </button>
-        <button class="trial-action-option ${!hasLayout || trial.archived ? 'disabled' : ''}" 
-                onclick="${hasLayout && !trial.archived ? `closeTrialActionPopup(); startRunTrial('${trialId}');` : ''}" 
-                ${!hasLayout || trial.archived ? 'disabled' : ''}>
+        <button class="trial-action-option ${!canRun || trial.archived ? 'disabled' : ''}" 
+          onclick="${canRun && !trial.archived ? `closeTrialActionPopup(); startRunTrial('${trialId}');` : ''}" 
+          ${!canRun || trial.archived ? 'disabled' : ''}>
           <span class="material-symbols-rounded">visibility</span>
           <div class="trial-action-option-text">
             <span class="trial-action-option-title">Run Observation</span>
-            <span class="trial-action-option-desc">${!hasLayout ? 'No layout available' : trial.archived ? 'Trial is archived' : 'Start or continue observations'}</span>
+            <span class="trial-action-option-desc">${!canRun ? 'Field/Layouting/Planting Date belum lengkap' : trial.archived ? 'Trial is archived' : 'Start or continue observations'}</span>
           </div>
         </button>
         <button class="trial-action-option ${!hasAgronomy ? 'disabled' : ''}" 
@@ -6982,7 +7100,7 @@ function showTrialActionPopup(event, trialId) {
           <span class="material-symbols-rounded">local_florist</span>
           <div class="trial-action-option-text">
             <span class="trial-action-option-title">Agronomy Monitoring</span>
-            <span class="trial-action-option-desc">${!hasAgronomy ? (trial.archived ? 'Trial is archived' : 'No agronomy items assigned') : 'Start or continue agronomy monitoring'}</span>
+            <span class="trial-action-option-desc">${!hasAgronomy ? (trial.archived ? 'Trial is archived' : !canRun ? 'Field/Layouting/Planting Date belum lengkap' : 'No agronomy items assigned') : 'Start or continue agronomy monitoring'}</span>
           </div>
         </button>
         <button class="trial-action-option" onclick="closeTrialActionPopup(); showTrialReport('${trialId}');">

@@ -73,6 +73,7 @@
 ### Mar 1, 2026
 
 #### Update
+- [ ] `Inventory > Crops` Update with Hybrid
 - [x] `Trial` Planting Seasons
 - [x] `Trial` No. of Factors, Treatments
 - [x] `Trial` Type of Pollination
@@ -84,3 +85,8 @@
 - [x] Planting date per location, not per trial
 - [x] Dashboard reminders real-time update problem
 - [x] Map not showing in production
+- [x] Some flex adjustments
+- [ ] Checkbox for draggable
+- [x] Planting date optional
+- [x] No layout trial
+- [ ] Serpentine fixes
