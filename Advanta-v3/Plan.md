@@ -73,12 +73,13 @@
 ### Mar 1, 2026
 
 #### Update
-- [ ] `Inventory > Crops` Update with Hybrid
+- [x] `Inventory > Crops` Update with Hybrid
 - [x] `Trial` Planting Seasons
 - [x] `Trial` No. of Factors, Treatments
 - [x] `Trial` Type of Pollination
 - [x] `Trial` Add more details
 - [x] `Trial` Download detail as PDF
+- [x] `Trial` Remove Lines Name
 - [x] `Database` All data
 #### Bug Fixes and Redesigns
 - [x] Automatic logout when error initializing happened
@@ -86,7 +87,8 @@
 - [x] Dashboard reminders real-time update problem
 - [x] Map not showing in production
 - [x] Some flex adjustments
-- [x] Checkbox for draggable
+- [x] Checkbox for dragable
 - [x] Planting date optional
 - [x] No layout trial
-- [ ] Serpentine fixes
+- [x] Serpentine fixes
+- [x] `.layouting-table-wrap` width scroll fix

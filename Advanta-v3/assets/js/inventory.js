@@ -1,9 +1,11 @@
 // Inventory Management
+let _currentEntryType = "parental";
+
 let inventoryState = {
   currentCategory: "crops",
   items: {
     crops: [],
-    lines: [],
+    entries: [],
     locations: [],
     parameters: [],
     agronomy: [],
@@ -18,31 +20,54 @@ function toggleCropFields(show) {
   const input = document.getElementById("cropType");
   if (!group || !input) return;
 
+  const entryTypeGroup = document.getElementById("cropEntryTypeGroup");
+  const entryTypeInput = document.getElementById("cropEntryType");
+
   if (show) {
     group.classList.remove("hidden");
     input.setAttribute("required", "required");
+    if (entryTypeGroup) entryTypeGroup.classList.remove("hidden");
+    if (entryTypeInput) entryTypeInput.setAttribute("required", "required");
   } else {
     group.classList.add("hidden");
     input.removeAttribute("required");
     input.value = "";
+    if (entryTypeGroup) entryTypeGroup.classList.add("hidden");
+    if (entryTypeInput) {
+      entryTypeInput.removeAttribute("required");
+      entryTypeInput.value = "";
+    }
   }
 }
 
 function toggleLineFields(show) {
-  const groups = [
+  // Groups always visible for entries
+  const sharedGroups = [
     "lineCropGroup",
     "lineQuantityGroup",
     "lineStageGroup",
     "lineSeedOriginGroup",
-    "lineArrivalDateGroup",
     "lineRegisteredDateGroup",
+  ];
+  // Parental-only groups
+  const parentalGroups = [
+    "lineArrivalDateGroup",
     "lineParentCodeGroup",
     "lineHybridCodeGroup",
     "lineSprCodeGroup",
     "lineRoleGroup",
   ];
+  // Hybrid-only groups
+  const hybridGroups = [
+    "lineHybridNameGroup",
+    "lineFieldCodeGroup",
+    "lineFemaleParentGroup",
+    "lineMaleParentGroup",
+    "lineSplitPlantingGroup",
+  ];
 
-  groups.forEach((id) => {
+  const allGroups = [...sharedGroups, ...parentalGroups, ...hybridGroups];
+  allGroups.forEach((id) => {
     const group = document.getElementById(id);
     if (!group) return;
     if (show) {
@@ -50,6 +75,39 @@ function toggleLineFields(show) {
     } else {
       group.classList.add("hidden");
     }
+  });
+
+  if (show) {
+    handleLineTypeChange(_currentEntryType);
+  }
+}
+
+function handleLineTypeChange(entryType) {
+  _currentEntryType = entryType || "parental";
+  const isParental = _currentEntryType === "parental";
+
+  const parentalGroups = [
+    "lineArrivalDateGroup",
+    "lineParentCodeGroup",
+    "lineHybridCodeGroup",
+    "lineSprCodeGroup",
+    "lineRoleGroup",
+  ];
+  const hybridGroups = [
+    "lineHybridNameGroup",
+    "lineFieldCodeGroup",
+    "lineFemaleParentGroup",
+    "lineMaleParentGroup",
+    "lineSplitPlantingGroup",
+  ];
+
+  parentalGroups.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("hidden", !isParental);
+  });
+  hybridGroups.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("hidden", isParental);
   });
 }
 
@@ -761,6 +819,15 @@ async function initializeInventory(options = {}) {
 
     if (cached?.items) {
       inventoryState.items = cached.items;
+      // Backward compat: migrate old "lines" key to "entries"
+      if (inventoryState.items.lines && !inventoryState.items.entries) {
+        inventoryState.items.entries = inventoryState.items.lines;
+        delete inventoryState.items.lines;
+      }
+      // Ensure entries array exists
+      if (!inventoryState.items.entries) {
+        inventoryState.items.entries = [];
+      }
       // Ensure agronomy array exists (migration for older caches)
       if (!inventoryState.items.agronomy) {
         inventoryState.items.agronomy = [];
@@ -768,8 +835,8 @@ async function initializeInventory(options = {}) {
       hasCache = true;
 
       // Migrate lines - ensure cropId is set from crop field if missing
-      if (inventoryState.items.lines && inventoryState.items.crops) {
-        inventoryState.items.lines.forEach((line) => {
+      if (inventoryState.items.entries && inventoryState.items.crops) {
+        inventoryState.items.entries.forEach((line) => {
           if (!line.cropId && line.crop) {
             line.cropId = line.crop;
           }
@@ -827,11 +894,17 @@ async function initializeInventory(options = {}) {
       }
     }
 
-    // Migrate lines - ensure cropId is set from crop field if missing
-    if (inventoryState.items.lines && inventoryState.items.crops) {
-      inventoryState.items.lines.forEach((line) => {
+    // Migrate entries - ensure cropId is set from crop field if missing
+    // Also ensure lineType defaults to "parental" for legacy items
+    if (inventoryState.items.entries && inventoryState.items.crops) {
+      inventoryState.items.entries.forEach((line) => {
         if (!line.cropId && line.crop) {
           line.cropId = line.crop;
+        }
+        if (!line.lineType) {
+          // Derive from parent crop's entryType if available
+          const parentCrop = inventoryState.items.crops.find(c => c.id === line.cropId);
+          line.lineType = parentCrop?.entryType || "parental";
         }
       });
     }
@@ -859,8 +932,8 @@ async function initializeInventory(options = {}) {
 // Switch category
 function switchCategory(category) {
   const key = category.toLowerCase();
-  // Don't allow switching to 'lines' - it's merged with crops
-  if (key === "lines") {
+  // Don't allow switching to 'entries' - it's merged with crops
+  if (key === "entries") {
     return;
   }
   inventoryState.currentCategory = key;
@@ -949,11 +1022,11 @@ function renderInventoryItems() {
     container.classList.remove("empty-grid");
   }
 
-  // Special rendering for Crops with nested Lines
+  // Special rendering for Crops with nested Entries
   if (isCrops) {
     container.innerHTML = items
       .map((crop, idx) => {
-        const relatedLines = inventoryState.items.lines.filter((line) => {
+        const relatedLines = inventoryState.items.entries.filter((line) => {
           // Match by cropId (new way)
           if (line.cropId === crop.id) {
             return true;
@@ -966,16 +1039,21 @@ function renderInventoryItems() {
           return false;
         });
 
+        const entryCount = relatedLines.length;
+        const entryTypeLabel = crop.entryType === "hybrid" ? "Hybrid" : "Parental";
+        const typeBadgeClass = crop.entryType === "hybrid" ? "hybrid" : "parental";
+        const countText = entryCount > 0 ? `${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}` : "No entries";
+
         return `
                 <div class="inventory-item-group">
                     <div class="inventory-item" data-crop-id="${crop.id}">
                         <div class="item-meta">
                             <div class="item-name">${escapeHtml(crop.name)}</div>
-                            <div class="item-subtext">Type: ${crop.cropType ? `${escapeHtml(crop.cropType)}` : "-"}</div>
-                            <div class="item-subtext">Lines: ${relatedLines.length > 0 ? `${relatedLines.length}` : "-"}</div>
+                            <div class="item-subtext">Type: ${crop.cropType ? `${escapeHtml(crop.cropType)}` : "-"} · <span class="line-type-badge ${typeBadgeClass}">${entryTypeLabel}</span></div>
+                            <div class="item-subtext">${countText}</div>
                         </div>
                         <div class="item-actions">
-                            <button class="expand-crop-btn" data-crop-id="${crop.id}" title="View Lines">
+                            <button class="expand-crop-btn" data-crop-id="${crop.id}" title="View Entries">
                                 <span class="material-symbols-rounded">visibility</span>
                             </button>
                             <button class="edit-btn" data-id="${crop.id}" title="Edit">
@@ -1167,15 +1245,16 @@ function openAddModal() {
     updateCropTypeSuggestions();
     document.getElementById("cropType").value = "";
   }
-  toggleLineFields(inventoryState.currentCategory === "lines");
-  if (inventoryState.currentCategory === "lines") {
+  toggleLineFields(inventoryState.currentCategory === "entries");
+  if (inventoryState.currentCategory === "entries") {
     updateLineCropOptions();
-    // Make sure lineCropGroup is visible for normal "Add Line" modal
+    // Make sure lineCropGroup is visible for normal "Add Entry" modal
     const lineCropGroup = document.getElementById("lineCropGroup");
     if (lineCropGroup) {
       lineCropGroup.classList.remove("hidden");
     }
     document.getElementById("lineCrop").value = "";
+    _currentEntryType = "parental";
     document.getElementById("lineQuantity").value = "";
     document.getElementById("lineStage").value = "";
     document.getElementById("lineSeedOrigin").value = "";
@@ -1185,6 +1264,15 @@ function openAddModal() {
     document.getElementById("lineHybridCode").value = "";
     document.getElementById("lineSprCode").value = "";
     document.getElementById("lineRole").value = "";
+    // Reset hybrid-only fields
+    document.getElementById("lineHybridName").value = "";
+    document.getElementById("lineFieldCode").value = "";
+    document.getElementById("lineFemaleParent").value = "";
+    document.getElementById("lineMaleParent").value = "";
+    document.getElementById("lineFemaleSplit").value = "";
+    document.getElementById("lineFirstMaleSplit").value = "";
+    document.getElementById("lineSecondMaleSplit").value = "";
+    handleLineTypeChange(_currentEntryType);
   }
   toggleLocationFields(inventoryState.currentCategory === "locations");
   if (inventoryState.currentCategory === "locations") {
@@ -1258,9 +1346,12 @@ function showCropLinesPopup(cropId) {
   const crop = inventoryState.items.crops.find((c) => c.id === cropId);
   if (!crop) return;
 
-  const relatedLines = inventoryState.items.lines.filter((line) => {
+  const relatedLines = inventoryState.items.entries.filter((line) => {
     return line.cropId === crop.id || line.crop === crop.id;
   });
+
+  const entryTypeLabel = crop.entryType === "hybrid" ? "Hybrid" : "Parental";
+  const entryCount = relatedLines.length;
 
   // Remove existing popup if any
   const existing = document.getElementById("cropLinesPopup");
@@ -1273,21 +1364,21 @@ function showCropLinesPopup(cropId) {
     <div class="library-preview-modal-content crop-lines-popup-content">
       <div class="library-detail-header">
         <div class="library-detail-info">
-          <h3>${escapeHtml(crop.name)} — Lines</h3>
-          <p class="library-detail-meta">${crop.cropType ? escapeHtml(crop.cropType) + ' · ' : ''}${relatedLines.length} line(s)</p>
+          <h3>${escapeHtml(crop.name)} — ${entryTypeLabel} Entries</h3>
+          <p class="library-detail-meta">${crop.cropType ? escapeHtml(crop.cropType) + ' · ' : ''}${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}</p>
         </div>
         <div class="library-detail-actions">
-          <button class="btn btn-secondary btn-sm" id="cropLinesExportBtn" title="Export Lines to Excel">
+          <button class="btn btn-secondary btn-sm" id="cropLinesExportBtn" title="Export to Excel">
             <span class="material-symbols-rounded">download</span>
             <span>Export</span>
           </button>
-          <button class="btn btn-secondary btn-sm" id="cropLinesImportBtn" title="Import Lines from Excel/CSV">
+          <button class="btn btn-secondary btn-sm" id="cropLinesImportBtn" title="Import from Excel/CSV">
             <span class="material-symbols-rounded">upload</span>
             <span>Import</span>
           </button>
           <button class="btn btn-primary" id="cropLinesAddBtn">
             <span class="material-symbols-rounded">add</span>
-            <span>Add Line</span>
+            <span>Add</span>
           </button>
           <button class="btn btn-secondary" id="cropLinesCloseBtn">
             <span class="material-symbols-rounded">close</span>
@@ -1298,20 +1389,34 @@ function showCropLinesPopup(cropId) {
         ${relatedLines.length === 0
           ? `<div class="crop-lines-empty">
               <span class="material-symbols-rounded">psychiatry</span>
-              <p>No lines yet for this crop.</p>
+              <p>No ${entryTypeLabel.toLowerCase()} entries yet for this crop.</p>
             </div>`
           : `<div class="crop-lines-list">
               ${relatedLines.map((line) => {
+                const itemType = line.lineType || crop.entryType || "parental";
                 const metaParts = [];
                 if (line.stage) metaParts.push('Stage: ' + escapeHtml(line.stage));
                 if (line.quantity != null && line.quantity !== '') metaParts.push('Qty: ' + line.quantity);
                 if (line.seedOrigin) metaParts.push('Seed: ' + escapeHtml(line.seedOrigin));
-                if (line.role) metaParts.push('Role: ' + escapeHtml(line.role));
-                if (line.sprCode) metaParts.push('SPR: ' + escapeHtml(line.sprCode));
-                if (line.parentCode) metaParts.push('Parent: ' + escapeHtml(line.parentCode));
-                if (line.hybridCode) metaParts.push('Hybrid: ' + escapeHtml(line.hybridCode));
-                if (line.arrivalDate) metaParts.push('Arrival: ' + escapeHtml(line.arrivalDate));
-                if (line.registeredDate) metaParts.push('Reg: ' + escapeHtml(line.registeredDate));
+                if (itemType === "parental") {
+                  if (line.role) metaParts.push('Role: ' + escapeHtml(line.role));
+                  if (line.sprCode) metaParts.push('SPR: ' + escapeHtml(line.sprCode));
+                  if (line.parentCode) metaParts.push('Parent: ' + escapeHtml(line.parentCode));
+                  if (line.hybridCode) metaParts.push('Hybrid Code: ' + escapeHtml(line.hybridCode));
+                  if (line.arrivalDate) metaParts.push('Arrival: ' + escapeHtml(line.arrivalDate));
+                  if (line.registeredDate) metaParts.push('Reg: ' + escapeHtml(line.registeredDate));
+                } else {
+                  if (line.hybridName) metaParts.push('Hybrid Name: ' + escapeHtml(line.hybridName));
+                  if (line.fieldCode) metaParts.push('Field: ' + escapeHtml(line.fieldCode));
+                  if (line.femaleParent) metaParts.push('♀: ' + escapeHtml(line.femaleParent));
+                  if (line.maleParent) metaParts.push('♂: ' + escapeHtml(line.maleParent));
+                  if (line.registeredDate) metaParts.push('Reg: ' + escapeHtml(line.registeredDate));
+                  const splits = [];
+                  if (line.femaleSplit) splits.push('F:' + line.femaleSplit);
+                  if (line.firstMaleSplit) splits.push('1M:' + line.firstMaleSplit);
+                  if (line.secondMaleSplit) splits.push('2M:' + line.secondMaleSplit);
+                  if (splits.length > 0) metaParts.push('Split: ' + splits.join('/'));
+                }
                 const metaLine1 = metaParts.slice(0, 4).join(' · ');
                 const metaLine2 = metaParts.slice(4).join(' · ');
                 return `
@@ -1372,7 +1477,7 @@ function showCropLinesPopup(cropId) {
       e.stopPropagation();
       const lineId = btn.dataset.id;
       popup.remove();
-      inventoryState.currentCategory = "lines";
+      inventoryState.currentCategory = "entries";
       openEditModal(lineId);
     });
   });
@@ -1382,33 +1487,33 @@ function showCropLinesPopup(cropId) {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const lineId = btn.dataset.id;
-      const line = inventoryState.items.lines.find(l => l.id === lineId);
+      const line = inventoryState.items.entries.find(l => l.id === lineId);
       const lineName = line ? line.name : lineId;
       showConfirmModal(
-        "Delete Line",
-        `Are you sure you want to delete line "${escapeHtml(lineName)}"? This action cannot be undone.`,
+        "Delete Entry",
+        `Are you sure you want to delete "${escapeHtml(lineName)}"? This action cannot be undone.`,
         async () => {
           try {
-            const idx = inventoryState.items.lines.findIndex(l => l.id === lineId);
+            const idx = inventoryState.items.entries.findIndex(l => l.id === lineId);
             if (idx >= 0) {
-              inventoryState.items.lines.splice(idx, 1);
+              inventoryState.items.entries.splice(idx, 1);
             }
             enqueueSync({
-              label: `Delete Lines: ${lineName} from Crops: ${escapeHtml(crop.name)}`,
-              run: () => deleteItemFromGoogleDrive("Lines", lineId),
+              label: `Delete Entry: ${lineName} from Crops: ${escapeHtml(crop.name)}`,
+              run: () => deleteItemFromGoogleDrive("Entries", lineId),
             });
             updateDashboardCounts();
             renderInventoryItems();
             if (typeof saveLocalCache === "function") {
               saveLocalCache("inventory", { items: inventoryState.items });
             }
-            showToast("Line deleted", "success");
+            showToast("Entry deleted", "success");
             // Re-open the crop lines popup to reflect changes
             popup.remove();
             showCropLinesPopup(crop.id);
           } catch (error) {
-            console.error("Error deleting line:", error);
-            showToast("Error deleting line. Please try again.", "error");
+            console.error("Error deleting entry:", error);
+            showToast("Error deleting entry. Please try again.", "error");
           }
         }
       );
@@ -1419,13 +1524,13 @@ function showCropLinesPopup(cropId) {
 // Open add line for crop modal
 function openAddLineForCropModal(crop) {
   inventoryState.editingItemId = null;
-  inventoryState.currentCategory = "lines"; // Set category to lines for saving
+  inventoryState.currentCategory = "entries"; // Set category to entries for saving
 
   document.getElementById("modalTitle").textContent =
-    `Add Line to ${escapeHtml(crop.name)}`;
+    `Add to ${escapeHtml(crop.name)}`;
   document.getElementById("itemName").value = "";
 
-  // Hide crops fields, show lines fields
+  // Hide crops fields, show entries fields
   toggleCropFields(false);
   toggleLineFields(true);
 
@@ -1444,16 +1549,31 @@ function openAddLineForCropModal(crop) {
     lineCropSelect.value = crop.id;
   }
 
-  // Reset other line fields (but not lineCrop)
+  // Set entry type from crop's entryType
+  _currentEntryType = crop.entryType || "parental";
+  handleLineTypeChange(_currentEntryType);
+
+  // Reset shared line fields
   document.getElementById("lineQuantity").value = "";
   document.getElementById("lineStage").value = "";
   document.getElementById("lineSeedOrigin").value = "";
-  document.getElementById("lineArrivalDate").value = "";
   document.getElementById("lineRegisteredDate").value = "";
+
+  // Reset parental-only fields
+  document.getElementById("lineArrivalDate").value = "";
   document.getElementById("lineParentCode").value = "";
   document.getElementById("lineHybridCode").value = "";
   document.getElementById("lineSprCode").value = "";
   document.getElementById("lineRole").value = "";
+
+  // Reset hybrid-only fields
+  document.getElementById("lineHybridName").value = "";
+  document.getElementById("lineFieldCode").value = "";
+  document.getElementById("lineFemaleParent").value = "";
+  document.getElementById("lineMaleParent").value = "";
+  document.getElementById("lineFemaleSplit").value = "";
+  document.getElementById("lineFirstMaleSplit").value = "";
+  document.getElementById("lineSecondMaleSplit").value = "";
 
   document.getElementById("itemModal").classList.add("active");
   document.getElementById("itemName").focus();
@@ -1474,21 +1594,38 @@ function openEditModal(itemId) {
   if (inventoryState.currentCategory === "crops") {
     updateCropTypeSuggestions();
     document.getElementById("cropType").value = item.cropType || "";
+    const cropEntryTypeSelect = document.getElementById("cropEntryType");
+    if (cropEntryTypeSelect) {
+      cropEntryTypeSelect.value = item.entryType || "";
+    }
   }
-  toggleLineFields(inventoryState.currentCategory === "lines");
-  if (inventoryState.currentCategory === "lines") {
+  toggleLineFields(inventoryState.currentCategory === "entries");
+  if (inventoryState.currentCategory === "entries") {
     updateLineCropOptions();
     document.getElementById("lineCrop").value = item.cropId || item.crop || "";
+    // Derive entry type from parent crop
+    const parentCrop = inventoryState.items.crops.find(c => c.id === (item.cropId || item.crop));
+    _currentEntryType = parentCrop?.entryType || item.lineType || "parental";
     document.getElementById("lineQuantity").value = item.quantity ?? "";
     document.getElementById("lineStage").value = item.stage || "";
     document.getElementById("lineSeedOrigin").value = item.seedOrigin || "";
-    document.getElementById("lineArrivalDate").value = item.arrivalDate || "";
     document.getElementById("lineRegisteredDate").value =
       item.registeredDate || "";
+    // Parental-only fields
+    document.getElementById("lineArrivalDate").value = item.arrivalDate || "";
     document.getElementById("lineParentCode").value = item.parentCode || "";
     document.getElementById("lineHybridCode").value = item.hybridCode || "";
     document.getElementById("lineSprCode").value = item.sprCode || "";
     document.getElementById("lineRole").value = item.role || "";
+    // Hybrid-only fields
+    document.getElementById("lineHybridName").value = item.hybridName || "";
+    document.getElementById("lineFieldCode").value = item.fieldCode || "";
+    document.getElementById("lineFemaleParent").value = item.femaleParent || "";
+    document.getElementById("lineMaleParent").value = item.maleParent || "";
+    document.getElementById("lineFemaleSplit").value = item.femaleSplit ?? "";
+    document.getElementById("lineFirstMaleSplit").value = item.firstMaleSplit ?? "";
+    document.getElementById("lineSecondMaleSplit").value = item.secondMaleSplit ?? "";
+    handleLineTypeChange(_currentEntryType);
   }
   toggleLocationFields(inventoryState.currentCategory === "locations");
   if (inventoryState.currentCategory === "locations") {
@@ -1573,10 +1710,19 @@ function openEditModal(itemId) {
 function closeModal() {
   document.getElementById("itemModal").classList.remove("active");
   inventoryState.editingItemId = null;
+  // If we were editing/adding entries, switch back to crops view
+  if (inventoryState.currentCategory === "entries") {
+    inventoryState.currentCategory = "crops";
+    renderInventoryItems();
+  }
   document.getElementById("itemForm").reset();
   const cropTypeInput = document.getElementById("cropType");
   if (cropTypeInput) {
     cropTypeInput.value = "";
+  }
+  const cropEntryTypeInput = document.getElementById("cropEntryType");
+  if (cropEntryTypeInput) {
+    cropEntryTypeInput.value = "";
   }
   const lineFields = [
     "lineCrop",
@@ -1589,6 +1735,13 @@ function closeModal() {
     "lineHybridCode",
     "lineSprCode",
     "lineRole",
+    "lineHybridName",
+    "lineFieldCode",
+    "lineFemaleParent",
+    "lineMaleParent",
+    "lineFemaleSplit",
+    "lineFirstMaleSplit",
+    "lineSecondMaleSplit",
   ];
   lineFields.forEach((id) => {
     const field = document.getElementById(id);
@@ -1673,7 +1826,7 @@ function closeModal() {
 async function saveItem() {
   let name = document.getElementById("itemName").value.trim();
   const isCrops = inventoryState.currentCategory === "crops";
-  const isLines = inventoryState.currentCategory === "lines";
+  const isEntries = inventoryState.currentCategory === "entries";
   const isLocations = inventoryState.currentCategory === "locations";
   const isParameters = inventoryState.currentCategory === "parameters";
   const isAgronomy = inventoryState.currentCategory === "agronomy";
@@ -1686,36 +1839,67 @@ async function saveItem() {
 
   const cropTypeInput = document.getElementById("cropType");
   const cropType = isCrops && cropTypeInput ? cropTypeInput.value.trim() : "";
+  const cropEntryTypeInput = document.getElementById("cropEntryType");
+  const cropEntryType = isCrops && cropEntryTypeInput ? cropEntryTypeInput.value.trim() : "";
 
-  const lineCrop = isLines
+  const lineCrop = isEntries
     ? document.getElementById("lineCrop")?.value.trim()
     : "";
-  const lineQuantity = isLines
+  // Derive lineType from parent crop's entryType
+  let lineType = "parental";
+  if (isEntries) {
+    const parentCrop = inventoryState.items.crops.find(c => c.id === lineCrop);
+    lineType = parentCrop?.entryType || _currentEntryType || "parental";
+  }
+  const lineQuantity = isEntries
     ? document.getElementById("lineQuantity")?.value.trim()
     : "";
-  const lineStage = isLines
+  const lineStage = isEntries
     ? document.getElementById("lineStage")?.value.trim()
     : "";
-  const lineSeedOrigin = isLines
+  const lineSeedOrigin = isEntries
     ? document.getElementById("lineSeedOrigin")?.value.trim()
     : "";
-  const lineArrivalDate = isLines
-    ? document.getElementById("lineArrivalDate")?.value
-    : "";
-  const lineRegisteredDate = isLines
+  const lineRegisteredDate = isEntries
     ? document.getElementById("lineRegisteredDate")?.value
     : "";
-  const lineParentCode = isLines
+  // Parental-only fields
+  const lineArrivalDate = isEntries && lineType === "parental"
+    ? document.getElementById("lineArrivalDate")?.value
+    : "";
+  const lineParentCode = isEntries && lineType === "parental"
     ? document.getElementById("lineParentCode")?.value.trim()
     : "";
-  const lineHybridCode = isLines
+  const lineHybridCode = isEntries && lineType === "parental"
     ? document.getElementById("lineHybridCode")?.value.trim()
     : "";
-  const lineSprCode = isLines
+  const lineSprCode = isEntries && lineType === "parental"
     ? document.getElementById("lineSprCode")?.value.trim()
     : "";
-  const lineRole = isLines
+  const lineRole = isEntries && lineType === "parental"
     ? document.getElementById("lineRole")?.value.trim()
+    : "";
+  // Hybrid-only fields
+  const lineHybridName = isEntries && lineType === "hybrid"
+    ? document.getElementById("lineHybridName")?.value.trim()
+    : "";
+  const lineFieldCode = isEntries && lineType === "hybrid"
+    ? document.getElementById("lineFieldCode")?.value.trim()
+    : "";
+  const lineFemaleParent = isEntries && lineType === "hybrid"
+    ? document.getElementById("lineFemaleParent")?.value.trim()
+    : "";
+  const lineMaleParent = isEntries && lineType === "hybrid"
+    ? document.getElementById("lineMaleParent")?.value.trim()
+    : "";
+  const lineFemaleSplit = isEntries && lineType === "hybrid"
+    ? document.getElementById("lineFemaleSplit")?.value.trim()
+    : "";
+  const lineFirstMaleSplit = isEntries && lineType === "hybrid"
+    ? document.getElementById("lineFirstMaleSplit")?.value.trim()
+    : "";
+  const lineSecondMaleSplit = isEntries && lineType === "hybrid"
+    ? document.getElementById("lineSecondMaleSplit")?.value.trim()
     : "";
 
   const locationCoord = isLocations
@@ -1792,7 +1976,12 @@ async function saveItem() {
     return;
   }
 
-  if (isLines) {
+  if (isCrops && !cropEntryType) {
+    showToast("Please select an entry type (Parental or Hybrid)", "error");
+    return;
+  }
+
+  if (isEntries) {
     if (!lineCrop) {
       showToast("Please select a crop", "error");
       return;
@@ -1805,7 +1994,7 @@ async function saveItem() {
       showToast("Please select a stage", "error");
       return;
     }
-    if (!lineRole) {
+    if (lineType === "parental" && !lineRole) {
       showToast("Please select a role", "error");
       return;
     }
@@ -1881,19 +2070,45 @@ async function saveItem() {
         item.name = name;
         if (isCrops) {
           item.cropType = cropType;
+          item.entryType = cropEntryType;
         }
-        if (isLines) {
+        if (isEntries) {
           item.crop = lineCrop;
           item.cropId = lineCrop;
+          item.lineType = lineType;
           item.quantity = Number(lineQuantity);
           item.stage = lineStage;
           item.seedOrigin = lineSeedOrigin;
-          item.arrivalDate = lineArrivalDate;
           item.registeredDate = lineRegisteredDate;
-          item.parentCode = lineParentCode;
-          item.hybridCode = lineHybridCode;
-          item.sprCode = lineSprCode;
-          item.role = lineRole;
+          if (lineType === "parental") {
+            item.arrivalDate = lineArrivalDate;
+            item.parentCode = lineParentCode;
+            item.hybridCode = lineHybridCode;
+            item.sprCode = lineSprCode;
+            item.role = lineRole;
+            // Clear hybrid fields
+            delete item.hybridName;
+            delete item.fieldCode;
+            delete item.femaleParent;
+            delete item.maleParent;
+            delete item.femaleSplit;
+            delete item.firstMaleSplit;
+            delete item.secondMaleSplit;
+          } else {
+            item.hybridName = lineHybridName;
+            item.fieldCode = lineFieldCode;
+            item.femaleParent = lineFemaleParent;
+            item.maleParent = lineMaleParent;
+            item.femaleSplit = lineFemaleSplit ? Number(lineFemaleSplit) : undefined;
+            item.firstMaleSplit = lineFirstMaleSplit ? Number(lineFirstMaleSplit) : undefined;
+            item.secondMaleSplit = lineSecondMaleSplit ? Number(lineSecondMaleSplit) : undefined;
+            // Clear parental fields
+            delete item.arrivalDate;
+            delete item.parentCode;
+            delete item.hybridCode;
+            delete item.sprCode;
+            delete item.role;
+          }
         }
         if (isLocations) {
           item.coordinates = locationCoord;
@@ -1932,21 +2147,32 @@ async function saveItem() {
         id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         name: name,
         cropType: isCrops ? cropType : undefined,
-        cropId: isLines ? lineCrop : undefined,
-        crop: isLines ? lineCrop : undefined,
-        quantity: isLines
+        entryType: isCrops ? cropEntryType : undefined,
+        cropId: isEntries ? lineCrop : undefined,
+        crop: isEntries ? lineCrop : undefined,
+        lineType: isEntries ? lineType : undefined,
+        quantity: isEntries
           ? Number(lineQuantity)
           : isParameters && paramQuantity
             ? Number(paramQuantity)
             : undefined,
-        stage: isLines ? lineStage : undefined,
-        seedOrigin: isLines ? lineSeedOrigin : undefined,
-        arrivalDate: isLines ? lineArrivalDate : undefined,
-        registeredDate: isLines ? lineRegisteredDate : undefined,
-        parentCode: isLines ? lineParentCode : undefined,
-        hybridCode: isLines ? lineHybridCode : undefined,
-        sprCode: isLines ? lineSprCode : undefined,
-        role: isLines ? lineRole : undefined,
+        stage: isEntries ? lineStage : undefined,
+        seedOrigin: isEntries ? lineSeedOrigin : undefined,
+        registeredDate: isEntries ? lineRegisteredDate : undefined,
+        // Parental-only fields
+        arrivalDate: isEntries && lineType === "parental" ? lineArrivalDate : undefined,
+        parentCode: isEntries && lineType === "parental" ? lineParentCode : undefined,
+        hybridCode: isEntries && lineType === "parental" ? lineHybridCode : undefined,
+        sprCode: isEntries && lineType === "parental" ? lineSprCode : undefined,
+        role: isEntries && lineType === "parental" ? lineRole : undefined,
+        // Hybrid-only fields
+        hybridName: isEntries && lineType === "hybrid" ? lineHybridName : undefined,
+        fieldCode: isEntries && lineType === "hybrid" ? lineFieldCode : undefined,
+        femaleParent: isEntries && lineType === "hybrid" ? lineFemaleParent : undefined,
+        maleParent: isEntries && lineType === "hybrid" ? lineMaleParent : undefined,
+        femaleSplit: isEntries && lineType === "hybrid" && lineFemaleSplit ? Number(lineFemaleSplit) : undefined,
+        firstMaleSplit: isEntries && lineType === "hybrid" && lineFirstMaleSplit ? Number(lineFirstMaleSplit) : undefined,
+        secondMaleSplit: isEntries && lineType === "hybrid" && lineSecondMaleSplit ? Number(lineSecondMaleSplit) : undefined,
         coordinates: isLocations ? locationCoord : undefined,
         initial: isParameters ? paramInitial : undefined,
         type: isParameters ? paramType : undefined,
@@ -1998,9 +2224,9 @@ async function saveItem() {
     if (isCrops) {
       updateCropTypeSuggestions();
     }
-    if (isLines) {
+    if (isEntries) {
       updateLineCropOptions();
-      // Switch back to crops view after adding a line
+      // Switch back to crops view after adding an entry
       inventoryState.currentCategory = "crops";
     }
 
@@ -2212,6 +2438,7 @@ function getImportFields(category) {
       return [
         { key: "name", label: "Crop Name", icon: "label", required: true },
         { key: "cropType", label: "Crop Type", icon: "category", required: true },
+        { key: "entryType", label: "Entry Type", icon: "spa", required: false, hint: "parental / hybrid (defaults to parental)" },
       ];
     case "parameters":
       return [
@@ -2239,19 +2466,38 @@ function getImportFields(category) {
         { key: "dose", label: "Dose", icon: "medication", required: false },
         { key: "remark", label: "Remark", icon: "notes", required: false },
       ];
-    case "lines":
-      return [
-        { key: "name", label: "Line Name", icon: "label", required: true },
+    case "entries": {
+      const entryType = importState.targetCropId
+        ? (inventoryState.items.crops.find(c => c.id === importState.targetCropId)?.entryType || "parental")
+        : "parental";
+      const shared = [
+        { key: "name", label: "Item Name", icon: "label", required: true },
         { key: "quantity", label: "Quantity", icon: "tag", required: false },
         { key: "stage", label: "Stage", icon: "trending_up", required: false, hint: "Breeder Seed / Pre Basic 1 / Pre Basic 2 / Basic Seed / Parent Seed / Commercial" },
         { key: "seedOrigin", label: "Seed Origin", icon: "eco", required: false },
-        { key: "arrivalDate", label: "Arrival Date", icon: "event", required: false, hint: "YYYY-MM-DD" },
         { key: "registeredDate", label: "Registered Date", icon: "event", required: false, hint: "YYYY-MM-DD" },
+      ];
+      if (entryType === "hybrid") {
+        return [
+          ...shared,
+          { key: "hybridName", label: "Hybrid Name", icon: "label", required: false },
+          { key: "fieldCode", label: "Field Code", icon: "code", required: false },
+          { key: "femaleParent", label: "Female Parent", icon: "person", required: false },
+          { key: "maleParent", label: "Male Parent", icon: "person", required: false },
+          { key: "femaleSplit", label: "Female Split", icon: "call_split", required: false },
+          { key: "firstMaleSplit", label: "1st Male Split", icon: "call_split", required: false },
+          { key: "secondMaleSplit", label: "2nd Male Split", icon: "call_split", required: false },
+        ];
+      }
+      return [
+        ...shared,
+        { key: "arrivalDate", label: "Arrival Date", icon: "event", required: false, hint: "YYYY-MM-DD" },
         { key: "parentCode", label: "Parent Code", icon: "code", required: false },
         { key: "hybridCode", label: "Hybrid Code", icon: "code", required: false },
         { key: "sprCode", label: "SPR Code", icon: "code", required: false },
         { key: "role", label: "Role", icon: "person", required: false, hint: "Male / Female / Both" },
       ];
+    }
     default:
       return [];
   }
@@ -2310,9 +2556,9 @@ function exportInventoryData() {
       rows.push([item.name || "", lat, lng]);
     });
   } else if (cat === "crops") {
-    rows.push(["Crop Name", "Crop Type"]);
+    rows.push(["Crop Name", "Crop Type", "Entry Type"]);
     items.forEach(item => {
-      rows.push([item.name || "", item.cropType || ""]);
+      rows.push([item.name || "", item.cropType || "", item.entryType || "parental"]);
     });
   } else if (cat === "parameters") {
     rows.push(["Parameter Name", "Initial", "Type", "Range Min", "Range Max",
@@ -2377,15 +2623,19 @@ function exportInventoryData() {
 }
 
 // ===========================
-// EXPORT LINES PER CROP
+// EXPORT ENTRIES PER CROP
 // ===========================
 function exportCropLines(cropId) {
   const crop = inventoryState.items.crops.find(c => c.id === cropId);
   if (!crop) return;
 
-  const lines = (inventoryState.items.lines || []).filter(l => l.cropId === cropId || l.crop === cropId);
+  const entryType = crop.entryType || "parental";
+  const isParental = entryType === "parental";
+  const typeLabel = isParental ? "Parental" : "Hybrid";
+
+  const lines = (inventoryState.items.entries || []).filter(l => l.cropId === cropId || l.crop === cropId);
   if (lines.length === 0) {
-    showToast("No lines to export for this crop", "error");
+    showToast("No items to export for this crop", "error");
     return;
   }
 
@@ -2395,21 +2645,43 @@ function exportCropLines(cropId) {
   }
 
   const rows = [];
-  rows.push(["Line Name", "Quantity", "Stage", "Seed Origin", "Arrival Date", "Registered Date", "Parent Code", "Hybrid Code", "SPR Code", "Role"]);
-  lines.forEach(line => {
-    rows.push([
-      line.name || "",
-      line.quantity ?? "",
-      line.stage || "",
-      line.seedOrigin || "",
-      line.arrivalDate || "",
-      line.registeredDate || "",
-      line.parentCode || "",
-      line.hybridCode || "",
-      line.sprCode || "",
-      line.role || "",
-    ]);
-  });
+  if (isParental) {
+    rows.push(["Item Name", "Quantity", "Stage", "Seed Origin", "Registered Date",
+      "Arrival Date", "Parent Code", "Hybrid Code", "SPR Code", "Role"]);
+    lines.forEach(line => {
+      rows.push([
+        line.name || "",
+        line.quantity ?? "",
+        line.stage || "",
+        line.seedOrigin || "",
+        line.registeredDate || "",
+        line.arrivalDate || "",
+        line.parentCode || "",
+        line.hybridCode || "",
+        line.sprCode || "",
+        line.role || "",
+      ]);
+    });
+  } else {
+    rows.push(["Item Name", "Quantity", "Stage", "Seed Origin", "Registered Date",
+      "Hybrid Name", "Field Code", "Female Parent", "Male Parent", "Female Split", "1st Male Split", "2nd Male Split"]);
+    lines.forEach(line => {
+      rows.push([
+        line.name || "",
+        line.quantity ?? "",
+        line.stage || "",
+        line.seedOrigin || "",
+        line.registeredDate || "",
+        line.hybridName || "",
+        line.fieldCode || "",
+        line.femaleParent || "",
+        line.maleParent || "",
+        line.femaleSplit ?? "",
+        line.firstMaleSplit ?? "",
+        line.secondMaleSplit ?? "",
+      ]);
+    });
+  }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const colWidths = rows[0].map((_, colIdx) => {
@@ -2423,28 +2695,28 @@ function exportCropLines(cropId) {
   ws["!cols"] = colWidths;
 
   const wb = XLSX.utils.book_new();
-  const safeName = (crop.name || "Lines").replace(/[^a-zA-Z0-9_ ]/g, "").substring(0, 30);
+  const safeName = (crop.name || "Entries").replace(/[^a-zA-Z0-9_ ]/g, "").substring(0, 30);
   XLSX.utils.book_append_sheet(wb, ws, safeName);
-  XLSX.writeFile(wb, `${safeName}_Lines_Export.xlsx`);
-  showToast(`Exported ${lines.length} line(s) for ${crop.name}`, "success");
+  XLSX.writeFile(wb, `${safeName}_${typeLabel}_Export.xlsx`);
+  showToast(`Exported ${lines.length} ${typeLabel.toLowerCase()} item(s) for ${crop.name}`, "success");
 }
 
 // ===========================
-// IMPORT LINES PER CROP
+// IMPORT ENTRIES PER CROP
 // ===========================
 function importCropLines(cropId) {
   const crop = inventoryState.items.crops.find(c => c.id === cropId);
   if (!crop) return;
 
-  // Temporarily switch category to "lines" so the import modal works for lines
+  // Temporarily switch category to "entries" so the import modal works for entries
   const prevCategory = inventoryState.currentCategory;
-  inventoryState.currentCategory = "lines";
+  inventoryState.currentCategory = "entries";
   // Store the target cropId for this import session
   importState.targetCropId = cropId;
   importState.targetCropName = crop.name;
   importState.returnCategory = prevCategory;
 
-  const fields = getImportFields("lines");
+  const fields = getImportFields("entries");
   if (fields.length === 0) {
     showToast("Import not supported", "error");
     inventoryState.currentCategory = prevCategory;
@@ -2458,7 +2730,8 @@ function importCropLines(cropId) {
   importState.parsedItems = [];
   importState.duplicates = [];
 
-  document.getElementById("importModalTitle").textContent = `Import Lines — ${escapeHtml(crop.name)}`;
+  const typeLabel = (crop.entryType || "parental") === "hybrid" ? "Hybrid" : "Parental";
+  document.getElementById("importModalTitle").textContent = `Import ${typeLabel} — ${escapeHtml(crop.name)}`;
   document.getElementById("importStep1").classList.remove("hidden");
   document.getElementById("importStep2").classList.add("hidden");
   document.getElementById("importStep3").classList.add("hidden");
@@ -2779,7 +3052,7 @@ function renderImportPreview() {
       isDup = existingItems.some(existing =>
         (existing.activity || existing.name || "").toLowerCase().trim() === (item.activity || "").toLowerCase().trim()
       );
-    } else if (cat === "lines") {
+    } else if (cat === "entries") {
       const targetCropId = importState.targetCropId;
       isDup = existingItems.some(existing =>
         (existing.cropId === targetCropId || existing.crop === targetCropId) &&
@@ -2889,14 +3162,14 @@ async function executeImport() {
     if (skipped > 0) msg += `, skipped ${skipped} duplicate(s)`;
     showToast(msg, "success");
 
-    // Re-open crop lines popup if we were importing lines
+    // Re-open crop lines popup if we were importing entries
     const targetCropId = importState.targetCropId;
     closeImportModal();
 
     // Render after closing modal so category is restored
     renderInventoryItems();
 
-    if (cat === "lines" && targetCropId) {
+    if (cat === "entries" && targetCropId) {
       showCropLinesPopup(targetCropId);
     }
   } catch (err) {
@@ -2944,7 +3217,7 @@ function findExistingDuplicate(cat, existingItems, rawItem) {
     return existingItems.findIndex(ex =>
       (ex.activity || ex.name || "").toLowerCase().trim() === (rawItem.activity || "").toLowerCase().trim()
     );
-  } else if (cat === "lines") {
+  } else if (cat === "entries") {
     const targetCropId = importState.targetCropId;
     return existingItems.findIndex(ex =>
       (ex.cropId === targetCropId || ex.crop === targetCropId) &&
@@ -2961,6 +3234,8 @@ function applyImportUpdate(cat, existing, rawItem) {
   } else if (cat === "crops") {
     existing.name = rawItem.name;
     existing.cropType = rawItem.cropType;
+    const et = (rawItem.entryType || "").toLowerCase().trim();
+    if (et === "parental" || et === "hybrid") existing.entryType = et;
   } else if (cat === "parameters") {
     const normalizedType = (rawItem.type || "").toLowerCase().trim();
     const importedDoo = parseParamDooImport(rawItem.daysOfObservation);
@@ -2991,17 +3266,30 @@ function applyImportUpdate(cat, existing, rawItem) {
     if (rawItem.chemical !== undefined) existing.chemical = rawItem.chemical;
     if (rawItem.dose !== undefined) existing.dose = rawItem.dose;
     if (rawItem.remark !== undefined) existing.remark = rawItem.remark;
-  } else if (cat === "lines") {
+  } else if (cat === "entries") {
     existing.name = rawItem.name || existing.name;
+    // Derive type from parent crop's entryType
+    const parentCrop = inventoryState.items.crops.find(c => c.id === importState.targetCropId);
+    const entryType = parentCrop?.entryType || existing.lineType || "parental";
+    existing.lineType = entryType;
     if (rawItem.quantity) existing.quantity = rawItem.quantity;
     if (rawItem.stage) existing.stage = rawItem.stage;
     if (rawItem.seedOrigin) existing.seedOrigin = rawItem.seedOrigin;
-    if (rawItem.arrivalDate) existing.arrivalDate = rawItem.arrivalDate;
     if (rawItem.registeredDate) existing.registeredDate = rawItem.registeredDate;
+    // Parental fields
+    if (rawItem.arrivalDate) existing.arrivalDate = rawItem.arrivalDate;
     if (rawItem.parentCode) existing.parentCode = rawItem.parentCode;
     if (rawItem.hybridCode) existing.hybridCode = rawItem.hybridCode;
     if (rawItem.sprCode) existing.sprCode = rawItem.sprCode;
     if (rawItem.role) existing.role = rawItem.role;
+    // Hybrid fields
+    if (rawItem.hybridName) existing.hybridName = rawItem.hybridName;
+    if (rawItem.fieldCode) existing.fieldCode = rawItem.fieldCode;
+    if (rawItem.femaleParent) existing.femaleParent = rawItem.femaleParent;
+    if (rawItem.maleParent) existing.maleParent = rawItem.maleParent;
+    if (rawItem.femaleSplit) existing.femaleSplit = Number(rawItem.femaleSplit) || undefined;
+    if (rawItem.firstMaleSplit) existing.firstMaleSplit = Number(rawItem.firstMaleSplit) || undefined;
+    if (rawItem.secondMaleSplit) existing.secondMaleSplit = Number(rawItem.secondMaleSplit) || undefined;
   }
 }
 
@@ -3016,9 +3304,11 @@ function buildNewItem(cat, rawItem, idx) {
       createdAt: now, updatedAt: now,
     };
   } else if (cat === "crops") {
+    const et = (rawItem.entryType || "parental").toLowerCase().trim();
     return {
       id, name: rawItem.name || "Unnamed",
       cropType: rawItem.cropType || "",
+      entryType: (et === "hybrid") ? "hybrid" : "parental",
       createdAt: now, updatedAt: now,
     };
   } else if (cat === "parameters") {
@@ -3056,21 +3346,36 @@ function buildNewItem(cat, rawItem, idx) {
       remark: rawItem.remark || "",
       createdAt: now, updatedAt: now,
     };
-  } else if (cat === "lines") {
-    return {
+  } else if (cat === "entries") {
+    // Derive type from parent crop's entryType
+    const parentCrop = inventoryState.items.crops.find(c => c.id === importState.targetCropId);
+    const lt = parentCrop?.entryType || "parental";
+    const item = {
       id, name: rawItem.name || "Unnamed",
       cropId: importState.targetCropId || "",
+      lineType: lt,
       quantity: rawItem.quantity || "",
       stage: rawItem.stage || "",
       seedOrigin: rawItem.seedOrigin || "",
-      arrivalDate: rawItem.arrivalDate || "",
       registeredDate: rawItem.registeredDate || "",
-      parentCode: rawItem.parentCode || "",
-      hybridCode: rawItem.hybridCode || "",
-      sprCode: rawItem.sprCode || "",
-      role: rawItem.role || "",
       createdAt: now, updatedAt: now,
     };
+    if (lt === "parental") {
+      item.arrivalDate = rawItem.arrivalDate || "";
+      item.parentCode = rawItem.parentCode || "";
+      item.hybridCode = rawItem.hybridCode || "";
+      item.sprCode = rawItem.sprCode || "";
+      item.role = rawItem.role || "";
+    } else {
+      item.hybridName = rawItem.hybridName || "";
+      item.fieldCode = rawItem.fieldCode || "";
+      item.femaleParent = rawItem.femaleParent || "";
+      item.maleParent = rawItem.maleParent || "";
+      item.femaleSplit = rawItem.femaleSplit ? Number(rawItem.femaleSplit) : undefined;
+      item.firstMaleSplit = rawItem.firstMaleSplit ? Number(rawItem.firstMaleSplit) : undefined;
+      item.secondMaleSplit = rawItem.secondMaleSplit ? Number(rawItem.secondMaleSplit) : undefined;
+    }
+    return item;
   }
   return null;
 }

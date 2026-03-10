@@ -441,8 +441,7 @@ function openEditTrialModal(trialId) {
   document.getElementById("trialMpPanel").value = trial.mpPanel ?? "";
   document.getElementById("trialRatioFemale").value = trial.ratioFemale ?? "";
   document.getElementById("trialRatioMale").value = trial.ratioMale ?? "";
-  document.getElementById("trialMpFemaleLineNames").value = trial.mpFemaleLineNames || "";
-  document.getElementById("trialMpMaleLineNames").value = trial.mpMaleLineNames || "";
+
   document.getElementById("trialMpPlotLength").value = trial.mpPlotLength ?? "";
   document.getElementById("trialMpSpacingWidth").value = trial.mpSpacingWidth ?? "";
   document.getElementById("trialMpSpacingHeight").value = trial.mpSpacingHeight ?? "";
@@ -934,7 +933,7 @@ function renderTrialTreatmentsInputs(factorCount, factorDefinitions = []) {
             id="trialFactorName_${index + 1}"
             class="trial-factor-name-input"
             data-index="${index}"
-            placeholder="e.g., Line / Planting Space"
+            placeholder="e.g., Parental / Hybrid / Planting Space"
             value="${escapeHtml(value.name)}"
           >
           <label for="trialFactorTreatments_${index + 1}" style="margin-top:0.5rem;">Treatments for Factor ${index + 1}</label>
@@ -3196,8 +3195,7 @@ async function saveTrial() {
   const mpPanel = parseFloat(document.getElementById("trialMpPanel")?.value || "");
   const ratioFemale = parseFloat(document.getElementById("trialRatioFemale")?.value || "");
   const ratioMale = parseFloat(document.getElementById("trialRatioMale")?.value || "");
-  const mpFemaleLineNames = String(document.getElementById("trialMpFemaleLineNames")?.value || "").trim();
-  const mpMaleLineNames = String(document.getElementById("trialMpMaleLineNames")?.value || "").trim();
+
   const mpPlotLength = parseFloat(document.getElementById("trialMpPlotLength")?.value || "");
   const mpSpacingWidth = parseFloat(document.getElementById("trialMpSpacingWidth")?.value || "");
   const mpSpacingHeight = parseFloat(document.getElementById("trialMpSpacingHeight")?.value || "");
@@ -3314,7 +3312,7 @@ async function saveTrial() {
     if (!trialState.editingTrialId) {
       const insufficientLines = [];
       for (const [lineId, neededQty] of Object.entries(lineUsage)) {
-        const lineItem = inventoryState.items.lines.find(l => l.id === lineId);
+        const lineItem = inventoryState.items.entries.find(l => l.id === lineId);
         if (lineItem) {
           const availableQty = lineItem.quantity || 0;
           if (availableQty < neededQty) {
@@ -3333,9 +3331,9 @@ async function saveTrial() {
         ).join('\n');
         
         showAlert(
-          `Insufficient line quantity:\n\n${errorMsg}\n\nPlease adjust line quantities or remove lines from trial layout.`,
+          `Insufficient entry quantity:\n\n${errorMsg}\n\nPlease adjust entry quantities or remove entries from trial layout.`,
           "error",
-          "Insufficient Lines"
+          "Insufficient Entries"
         );
         return;
       }
@@ -3388,8 +3386,7 @@ async function saveTrial() {
         trial.mpPanel = Number.isFinite(mpPanel) ? mpPanel : null;
         trial.ratioFemale = Number.isFinite(ratioFemale) ? ratioFemale : null;
         trial.ratioMale = Number.isFinite(ratioMale) ? ratioMale : null;
-        trial.mpFemaleLineNames = mpFemaleLineNames;
-        trial.mpMaleLineNames = mpMaleLineNames;
+
         trial.mpTotalFemaleRows = Number.isFinite(mpTotalFemaleRows) ? mpTotalFemaleRows : null;
         trial.mpTotalMaleRows = Number.isFinite(mpTotalMaleRows) ? mpTotalMaleRows : null;
         trial.mpPlotLength = Number.isFinite(mpPlotLength) ? mpPlotLength : null;
@@ -3445,8 +3442,7 @@ async function saveTrial() {
         mpPanel: Number.isFinite(mpPanel) ? mpPanel : null,
         ratioFemale: Number.isFinite(ratioFemale) ? ratioFemale : null,
         ratioMale: Number.isFinite(ratioMale) ? ratioMale : null,
-        mpFemaleLineNames: mpFemaleLineNames,
-        mpMaleLineNames: mpMaleLineNames,
+
         mpTotalFemaleRows: Number.isFinite(mpTotalFemaleRows) ? mpTotalFemaleRows : null,
         mpTotalMaleRows: Number.isFinite(mpTotalMaleRows) ? mpTotalMaleRows : null,
         mpPlotLength: Number.isFinite(mpPlotLength) ? mpPlotLength : null,
@@ -3481,8 +3477,8 @@ async function saveTrial() {
     
     // Sync inventory to Drive
     enqueueSync({
-      label: "Save Lines",
-      run: () => saveItemsToGoogleDrive("Lines", inventoryState.items.lines)
+      label: "Save Entries",
+      run: () => saveItemsToGoogleDrive("Entries", inventoryState.items.entries)
     });
 
     // Save to Google Drive
@@ -3511,7 +3507,7 @@ async function saveTrial() {
 // Consume line quantities
 function consumeLineQuantities(lineUsage) {
   for (const [lineId, qty] of Object.entries(lineUsage)) {
-    const lineItem = inventoryState.items.lines.find(l => l.id === lineId);
+    const lineItem = inventoryState.items.entries.find(l => l.id === lineId);
     if (lineItem) {
       lineItem.quantity = Math.max(0, (lineItem.quantity || 0) - qty);
     }
@@ -3521,7 +3517,7 @@ function consumeLineQuantities(lineUsage) {
 // Restore line quantities
 function restoreLineQuantities(lineUsage) {
   for (const [lineId, qty] of Object.entries(lineUsage)) {
-    const lineItem = inventoryState.items.lines.find(l => l.id === lineId);
+    const lineItem = inventoryState.items.entries.find(l => l.id === lineId);
     if (lineItem) {
       lineItem.quantity = (lineItem.quantity || 0) + qty;
     }
@@ -3543,16 +3539,16 @@ function showDeleteTrialModal(trial, linesList, callback) {
       <div class="confirm-modal-body">
         <p>Are you sure you want to delete trial "<strong>${escapeHtml(trial.name)}</strong>"?</p>
         <p>This action cannot be undone.</p>
-        ${linesList !== 'No lines to restore' ? `
+        ${linesList !== 'No entries to restore' ? `
           <div class="delete-trial-restore-section">
             <label class="delete-trial-restore-label">
               <input type="checkbox" id="deleteTrialRestoreCheckbox" checked>
-              <span>Restore line quantities</span>
+              <span>Restore entry quantities</span>
             </label>
             <div class="delete-trial-lines-list">
               ${linesList}
             </div>
-            <small class="form-hint">If unchecked, line quantities will remain consumed.</small>
+            <small class="form-hint">If unchecked, entry quantities will remain consumed.</small>
           </div>
         ` : ''}
       </div>
@@ -3638,10 +3634,10 @@ function deleteTrial(trialId) {
   const consumedLines = trial.consumedLines || {};
   const linesList = Object.keys(consumedLines).length > 0 
     ? Object.entries(consumedLines).map(([lineId, qty]) => {
-        const lineItem = inventoryState.items.lines.find(l => l.id === lineId);
+        const lineItem = inventoryState.items.entries.find(l => l.id === lineId);
         return lineItem ? `• ${lineItem.name}: ${qty} units` : null;
       }).filter(Boolean).join('\n')
-    : 'No lines to restore';
+    : 'No entries to restore';
   
   // Show custom modal with restore option
   showDeleteTrialModal(trial, linesList, (restoreLines) => {
@@ -3664,8 +3660,8 @@ function deleteTrial(trialId) {
         
         // Sync inventory to Drive
         enqueueSync({
-          label: "Save Lines",
-          run: () => saveItemsToGoogleDrive("Lines", inventoryState.items.lines)
+          label: "Save Entries",
+          run: () => saveItemsToGoogleDrive("Entries", inventoryState.items.entries)
         });
       }
 
@@ -3682,7 +3678,7 @@ function deleteTrial(trialId) {
         saveLocalCache("trials", { trials: trialState.trials });
       }
       
-      showAlert(restoreLines ? "Trial deleted and line quantities restored" : "Trial deleted", "success");
+      showAlert(restoreLines ? "Trial deleted and entry quantities restored" : "Trial deleted", "success");
     } catch (error) {
       console.error("Error deleting trial:", error);
       showAlert("Error deleting trial. Please try again.", "error");
@@ -4022,7 +4018,7 @@ function initializeLayoutingSection() {
     warningDiv.className = "td-no-items";
     warningDiv.innerHTML = `
             <p>The Field section is not filled yet. Layouting can still be done using the dummy map.</p>
-            <p style="font-size:0.8rem;color:var(--text-tertiary);margin-top:6px;">Layout dummy akan otomatis diterapkan ke Area 1 setelah Anda menambahkan area di Field.</p>
+            <p style="font-size:0.8rem;color:var(--text-tertiary);margin-top:6px;">The dummy layout will be automatically applied to Area 1 after you add an area in the Field.</p>
         `;
     container.appendChild(warningDiv);
 
@@ -4064,7 +4060,7 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     cropSelect.options[cropSelect.selectedIndex].dataset.name || "";
 
   // Filter lines by crop ID
-  const matchingLines = inventoryState.items.lines.filter((line) => {
+  const matchingLines = inventoryState.items.entries.filter((line) => {
     return line.cropId === selectedCropId || line.cropType === selectedCropName;
   });
 
@@ -4090,7 +4086,7 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     .join("");
 
   if (matchingLines.length === 0) {
-    linesHTML = '<p class="layouting-empty">No lines available for this crop.</p>';
+    linesHTML = '<p class="layouting-empty">No entries available for this crop.</p>';
   }
 
   areaDiv.innerHTML = `
@@ -4108,18 +4104,18 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
         <div class="layouting-grid">
           <div class="layouting-lines">
             <label class="layouting-label">
-              Select Lines
+              Select Entries
               <span class="layouting-hint"> (matching ${escapeHtml(selectedCropName)})</span>
             </label>
             <div class="dual-picklist">
               <div class="picklist-column">
-                <div class="picklist-header form-hint">Available Lines</div>
+                <div class="picklist-header form-hint">Available Entries</div>
                 <div class="picklist-search">
                   <span class="material-symbols-rounded">search</span>
                   <input 
                     type="text" 
                     class="area-line-search" 
-                    placeholder="Search lines..." 
+                    placeholder="Search entries..." 
                     data-area-index="${areaIndex}"
                   >
                 </div>
@@ -4151,7 +4147,7 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
                 </button>
               </div>
               <div class="picklist-column">
-                <div class="picklist-header form-hint">Selected Lines</div>
+                <div class="picklist-header form-hint">Selected Entries</div>
                 <div class="area-selected-lines picklist-list" data-area-index="${areaIndex}" data-list="selected">
                   <!-- Selected lines populated here -->
                 </div>
@@ -4307,7 +4303,7 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
 
     if (filtered.length === 0) {
       availableList.innerHTML =
-        '<p class="layouting-empty">No lines available for this crop.</p>';
+        '<p class="layouting-empty">No entries available for this crop.</p>';
       updateCheckedIndicators();
       return;
     }
@@ -4380,7 +4376,7 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
 
     if (selectedLineIds.length === 0) {
       selectedList.innerHTML =
-        '<p class="layouting-empty">No lines selected</p>';
+        '<p class="layouting-empty">No entries selected</p>';
       updateCheckedIndicators();
       return;
     }
@@ -4751,7 +4747,7 @@ function generateLayoutForArea(areaIndex, options = {}) {
   if (selectedLines.length === 0) {
     if (resultContainer) {
       resultContainer.innerHTML =
-        '<div class="td-no-items">Select lines to generate layout</div>';
+        '<div class="td-no-items">Select entries to generate layout</div>';
     }
     return;
   }
@@ -4844,22 +4840,32 @@ function calculateLayout(
     let lineIndex = 0;
 
     if (direction === "serpentine") {
-      // Serpentine: alternate top-to-bottom and bottom-to-top
-      for (let col = 0; col < numColumns; col++) {
-        const isReverseCol = col % 2 === 1;
-        const rowOrder = isReverseCol
-          ? Array.from({ length: numRanges }, (_, i) => numRanges - 1 - i)
-          : Array.from({ length: numRanges }, (_, i) => i);
+      // Serpentine: fill row by row, alternating left-to-right and right-to-left
+      for (let row = 0; row < numRanges; row++) {
+        if (!grid[row]) grid[row] = [];
+        const isReverseRow = row % 2 === 1;
 
-        rowOrder.forEach((row) => {
-          if (!grid[row]) grid[row] = [];
-          if (lineIndex < repLines.length) {
-            grid[row][col] = repLines[lineIndex];
-            lineIndex++;
-          } else {
-            grid[row][col] = null;
+        if (isReverseRow) {
+          // Right to left
+          for (let col = numColumns - 1; col >= 0; col--) {
+            if (lineIndex < repLines.length) {
+              grid[row][col] = repLines[lineIndex];
+              lineIndex++;
+            } else {
+              grid[row][col] = null;
+            }
           }
-        });
+        } else {
+          // Left to right
+          for (let col = 0; col < numColumns; col++) {
+            if (lineIndex < repLines.length) {
+              grid[row][col] = repLines[lineIndex];
+              lineIndex++;
+            } else {
+              grid[row][col] = null;
+            }
+          }
+        }
       }
     } else {
       // Straight: top to bottom in all columns
@@ -6352,13 +6358,13 @@ function selectLine(areaIndex, paramId, lineId, repIndex, sampleIndex = 0) {
   if (isLineChange && runTrialState.currentLineId) {
     if (typeof showConfirmModal === "function") {
       showConfirmModal(
-        "Change Line",
-        "Are you sure you want to move to another line? Current progress will be saved automatically.",
+        "Change Entry",
+        "Are you sure you want to move to another entry? Current progress will be saved automatically.",
         proceed,
         "Proceed",
         "btn-primary",
       );
-    } else if (window.confirm("Are you sure you want to move to another line? Current progress will be saved automatically.")) {
+    } else if (window.confirm("Are you sure you want to move to another entry? Current progress will be saved automatically.")) {
       proceed();
     }
     return;
@@ -6374,7 +6380,7 @@ function renderEmptyQuestionState() {
   container.innerHTML = `
     <div class="run-empty-state">
       <span class="material-symbols-rounded">touch_app</span>
-      <p>Select a line from the navigation to start recording data</p>
+      <p>Select an entry from the navigation to start recording data</p>
     </div>
   `;
 }
@@ -6423,7 +6429,7 @@ function renderQuestionCard() {
   const isLastInArea = currentIdx >= 0 && (currentIdx === lines.length - 1 || lines[currentIdx + 1].areaIndex !== areaIndex);
   const isLastOverall = currentIdx >= 0 && currentIdx === lines.length - 1;
   const nextLineButtonClass = isLastOverall ? "btn btn-primary" : "btn btn-secondary";
-  const nextLineButtonLabel = isLastOverall ? "Finish" : "Next Line";
+  const nextLineButtonLabel = isLastOverall ? "Finish" : "Next Entry";
   const nextLineButtonIcon = isLastOverall ? "check" : "arrow_forward";
   const nextLineButtonHandler = isLastOverall ? "finishRunTrialLastQuestion()" : "navigateNextLine()";
 
@@ -6632,7 +6638,7 @@ function renderQuestionCard() {
           </button>
           <button class="btn btn-secondary" id="runPrevLineBtn" onclick="navigatePrevLine()">
             <span class="material-symbols-rounded">arrow_back</span>
-            Previous Line
+            Previous Entry
           </button>
           <button class="${nextLineButtonClass}" id="runNextLineBtn" onclick="${nextLineButtonHandler}">
             ${nextLineButtonLabel}
@@ -7532,7 +7538,7 @@ async function autoSaveProgress() {
       const areaName = area?.name || `Area ${saveAreaIndex + 1}`;
       const paramName = param?.name || "Param";
       const repLabel = `Rep ${saveRepIndex + 1}`;
-      const lineName = line?.name || `Line ${saveLineId}`;
+      const lineName = line?.name || `Entry ${saveLineId}`;
       const sampleLabel = numberOfSamples > 1 ? ` · S${saveSampleIndex + 1}` : "";
       
       enqueueSync({
@@ -8409,9 +8415,7 @@ function buildTrialGeneralSheetRows(trial) {
     rows.push(["Panel", trial.mpPanel != null ? String(trial.mpPanel) : ""]);
     rows.push(["Ratio Female", trial.ratioFemale != null ? String(trial.ratioFemale) : ""]);
     rows.push(["Ratio Male", trial.ratioMale != null ? String(trial.ratioMale) : ""]);
-    rows.push(["Name Female Lines", trial.mpFemaleLineNames || ""]);
     rows.push(["Total Female Rows", trial.mpTotalFemaleRows != null ? String(trial.mpTotalFemaleRows) : ""]);
-    rows.push(["Name Male Lines", trial.mpMaleLineNames || ""]);
     rows.push(["Total Male Rows", trial.mpTotalMaleRows != null ? String(trial.mpTotalMaleRows) : ""]);
     rows.push(["Plot Length (m)", trial.mpPlotLength != null ? String(trial.mpPlotLength) : ""]);
     rows.push(["Plant Spacing Width (cm)", trial.mpSpacingWidth != null ? String(trial.mpSpacingWidth) : ""]);
@@ -8460,7 +8464,7 @@ function buildTrialObservationSheetRows(trial, area, areaIndex, trialParameters)
     "Nomor",
     "Area",
     "Replication",
-    "Line",
+    "Entry",
     "Sample",
     "Parameter",
     "Value",
@@ -9184,7 +9188,7 @@ function buildDatabaseDataset() {
   );
 
   const allParameters = inventoryState.items.parameters || [];
-  const lines = inventoryState.items.lines || [];
+  const lines = inventoryState.items.entries || [];
   const locations = inventoryState.items.locations || [];
 
   const linesById = new Map(lines.map((line) => [String(line.id), line]));
@@ -9221,10 +9225,10 @@ function buildDatabaseDataset() {
     { key: "trialType", label: "Trial Type", source: "extra", defaultVisible: false },
     { key: "expDesign", label: "Exp Design", source: "extra", defaultVisible: false },
     { key: "plantingDate", label: "Planting Date", source: "extra", defaultVisible: false },
-    { key: "line", label: "Line", source: "extra", defaultVisible: false },
-    { key: "lineRole", label: "Line Role", source: "extra", defaultVisible: false },
-    { key: "lineStage", label: "Line Stage", source: "extra", defaultVisible: false },
-    { key: "lineQty", label: "Line Qty", source: "extra", defaultVisible: false },
+    { key: "line", label: "Entry", source: "extra", defaultVisible: false },
+    { key: "lineRole", label: "Entry Role", source: "extra", defaultVisible: false },
+    { key: "lineStage", label: "Entry Stage", source: "extra", defaultVisible: false },
+    { key: "lineQty", label: "Entry Qty", source: "extra", defaultVisible: false },
     { key: "area", label: "Area", source: "extra", defaultVisible: false },
     { key: "range", label: "Range", source: "extra", defaultVisible: false },
     { key: "row", label: "Row", source: "extra", defaultVisible: false },
@@ -9889,25 +9893,11 @@ function showTrialDetail(trialId) {
 
     <div class='td-section'>
       <div class='td-icon'>
-        <span class="material-symbols-rounded td-info-icon">science</span>
+        <span class="material-symbols-rounded"> activity_zone </span>
       </div>
       <div class='td-content'>
         <div class='td-label'>Plot Area</div>
         <div class='td-value'>${trial.mpPlotArea != null ? trial.mpPlotArea.toFixed(2) + ' m²' : '-'}</div>
-      </div>
-    </div>
-
-  </div>
-
-  <div class='td-container grid-4'>
-
-    <div class='td-section'>
-      <div class='td-icon'>
-        <span class="material-symbols-rounded">badge</span>
-      </div>
-      <div class='td-content'>
-        <div class='td-label'>Name Female Lines</div>
-        <div class='td-value'>${escapeHtml(trial.mpFemaleLineNames || '-')}</div>
       </div>
     </div>
 
@@ -9923,7 +9913,7 @@ function showTrialDetail(trialId) {
 
     <div class='td-section'>
       <div class='td-icon'>
-        <span class="material-symbols-rounded td-info-icon">science</span>
+        <span class="material-symbols-rounded"> nest_farsight_eco </span>
       </div>
       <div class='td-content'>
         <div class='td-label'>Female Population/plot</div>
@@ -9933,25 +9923,11 @@ function showTrialDetail(trialId) {
 
     <div class='td-section'>
       <div class='td-icon'>
-        <span class="material-symbols-rounded td-info-icon">science</span>
+        <span class="material-symbols-rounded"> nest_eco_leaf </span>
       </div>
       <div class='td-content'>
         <div class='td-label'>Female Population/ha</div>
         <div class='td-value'>${trial.mpPopFemale != null ? Math.round(trial.mpPopFemale).toLocaleString() + ' plants' : '-'}</div>
-      </div>
-    </div>
-
-  </div>
-
-  <div class='td-container grid-4'>
-
-    <div class='td-section'>
-      <div class='td-icon'>
-        <span class="material-symbols-rounded">badge</span>
-      </div>
-      <div class='td-content'>
-        <div class='td-label'>Name Male Lines</div>
-        <div class='td-value'>${escapeHtml(trial.mpMaleLineNames || '-')}</div>
       </div>
     </div>
 
@@ -9967,7 +9943,7 @@ function showTrialDetail(trialId) {
 
     <div class='td-section'>
       <div class='td-icon'>
-        <span class="material-symbols-rounded td-info-icon">science</span>
+        <span class="material-symbols-rounded"> nest_farsight_eco </span>
       </div>
       <div class='td-content'>
         <div class='td-label'>Male Population/plot</div>
@@ -9977,7 +9953,7 @@ function showTrialDetail(trialId) {
 
     <div class='td-section'>
       <div class='td-icon'>
-        <span class="material-symbols-rounded td-info-icon">science</span>
+        <span class="material-symbols-rounded"> nest_eco_leaf </span>
       </div>
       <div class='td-content'>
         <div class='td-label'>Male Population/ha</div>
@@ -10011,7 +9987,7 @@ function showTrialDetail(trialId) {
 
     <div class='td-section td-expected-plant'>
       <div class='td-icon'>
-        <span class="material-symbols-rounded td-info-icon">science</span>
+        <span class="material-symbols-rounded td-info-icon">nest_farsight_eco</span>
       </div>
       <div class='td-content'>
         <div class='td-label'>Exp. No. of Plants per Plot</div>
@@ -10031,7 +10007,7 @@ function showTrialDetail(trialId) {
 
     <div class='td-section td-plot-area'>
       <div class='td-icon'>
-        <span class="material-symbols-rounded td-info-icon">science</span>
+        <span class="material-symbols-rounded"> activity_zone </span>
       </div>
       <div class='td-content'>
         <div class='td-label'>Plot Area</div>
@@ -10041,7 +10017,7 @@ function showTrialDetail(trialId) {
 
     <div class='td-section td-population'>
       <div class='td-icon'>
-        <span class="material-symbols-rounded td-info-icon">science</span>
+        <span class="material-symbols-rounded td-info-icon">nest_eco_leaf</span>
       </div>
       <div class='td-content'>
         <div class='td-label'>Population per Hectare</div>
@@ -10127,7 +10103,7 @@ function showTrialDetail(trialId) {
           <span class="material-symbols-rounded">grass</span>
         </div>
         <div class='td-content'>
-          <div class='td-label'>Lines used (${uniqueLines.length}):</div>
+          <div class='td-label'>Entries used (${uniqueLines.length}):</div>
           <div class='td-lines-flex'>
             ${uniqueLines.map(line => `<div class='td-item'><span class="td-param-name">${escapeHtml(line.name)}</span></div>`).join('')}
           </div>

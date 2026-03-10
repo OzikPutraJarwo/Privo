@@ -1527,7 +1527,7 @@ async function exportData() {
     exportedAt: new Date().toISOString(),
     inventory: {
       crops: inventoryState.items.crops || [],
-      lines: inventoryState.items.lines || [],
+      entries: inventoryState.items.entries || [],
       locations: inventoryState.items.locations || [],
       parameters: inventoryState.items.parameters || [],
       agronomy: inventoryState.items.agronomy || [],
@@ -1611,12 +1611,17 @@ async function handleImportFile(file) {
 
     // Merge & detect duplicates
     const incoming = payload.inventory || {};
+    // Backward compat: map old "lines" key to "entries"
+    if (incoming.lines && !incoming.entries) {
+      incoming.entries = incoming.lines;
+      delete incoming.lines;
+    }
     const incomingTrials = payload.trials || [];
 
     const duplicates = [];
 
     // Check each category
-    const categories = ["crops", "lines", "locations", "parameters", "agronomy"];
+    const categories = ["crops", "entries", "locations", "parameters", "agronomy"];
     for (const cat of categories) {
       const existing = inventoryState.items[cat] || [];
       const newItems = incoming[cat] || [];
@@ -1759,7 +1764,7 @@ async function applyImport(incoming, incomingTrials, duplicates) {
   }
 
   // Merge inventory categories
-  const categories = ["crops", "lines", "locations", "parameters", "agronomy"];
+  const categories = ["crops", "entries", "locations", "parameters", "agronomy"];
   for (const cat of categories) {
     const existing = inventoryState.items[cat] || [];
     const newItems = incoming[cat] || [];
@@ -1917,8 +1922,8 @@ async function syncDownFromDrive() {
     updateDataTransfer("Checking for new data...", 30);
     await new Promise(r => setTimeout(r, 150));
 
-    const categories = ["crops", "lines", "locations", "parameters", "agronomy"];
-    const newItems = { crops: [], lines: [], locations: [], parameters: [], agronomy: [] };
+    const categories = ["crops", "entries", "locations", "parameters", "agronomy"];
+    const newItems = { crops: [], entries: [], locations: [], parameters: [], agronomy: [] };
     const conflicts = [];
 
     // Check each inventory category

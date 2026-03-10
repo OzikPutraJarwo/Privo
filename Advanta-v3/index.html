@@ -216,8 +216,8 @@
                   <span class="material-symbols-rounded">timeline</span>
                 </div>
                 <div class="card-content">
-                  <h3>Lines</h3>
-                  <p id="linesCount" class="card-count">0 items</p>
+                  <h3>Entries</h3>
+                  <p id="entriesCount" class="card-count">0 items</p>
                 </div>
               </div>
               <div class="dashboard-card" data-category="locations">
@@ -661,10 +661,7 @@
                             </div>
                           </div>
                         </div>
-                        <div class="form-group">
-                          <label for="trialMpFemaleLineNames">Name Female Lines</label>
-                          <textarea id="trialMpFemaleLineNames" rows="2" placeholder="e.g., UBASK F1, UBASK F2"></textarea>
-                        </div>
+
                         <div class="td-grid grid-3">
                           <div class="form-group">
                             <label for="trialMpTotalFemaleRows">Total Female Rows</label>
@@ -679,10 +676,7 @@
                             <input type="text" id="trialMpPopFemale" readonly placeholder="Auto-calculated">
                           </div>
                         </div>
-                        <div class="form-group">
-                          <label for="trialMpMaleLineNames">Name Male Lines</label>
-                          <textarea id="trialMpMaleLineNames" rows="2" placeholder="e.g., UBASK M1"></textarea>
-                        </div>
+
                         <div class="td-grid grid-3">
                           <div class="form-group">
                             <label for="trialMpTotalMaleRows">Total Male Rows</label>
@@ -1122,10 +1116,19 @@
               <input type="text" id="cropType" placeholder="Enter or select crop type" list="cropTypeList">
               <datalist id="cropTypeList"></datalist>
             </div>
+            <div class="form-group hidden" id="cropEntryTypeGroup">
+              <label for="cropEntryType">Entry Type</label>
+              <select id="cropEntryType" required>
+                <option value="">Select entry type</option>
+                <option value="parental">Parental</option>
+                <option value="hybrid">Hybrid</option>
+              </select>
+            </div>
             <div class="form-group hidden" id="lineCropGroup">
               <label for="lineCrop">Crop</label>
               <select id="lineCrop"></select>
             </div>
+            <!-- Shared fields (both Parental and Hybrid) -->
             <div class="form-group hidden" id="lineQuantityGroup">
               <label for="lineQuantity">Quantity</label>
               <input type="number" id="lineQuantity" placeholder="Enter quantity" min="0" step="1">
@@ -1146,13 +1149,14 @@
               <label for="lineSeedOrigin">Seed Origin</label>
               <input type="text" id="lineSeedOrigin" placeholder="Enter seed origin">
             </div>
-            <div class="form-group hidden" id="lineArrivalDateGroup">
-              <label for="lineArrivalDate">Arrival Date</label>
-              <input type="date" id="lineArrivalDate">
-            </div>
             <div class="form-group hidden" id="lineRegisteredDateGroup">
               <label for="lineRegisteredDate">Registered Date</label>
               <input type="date" id="lineRegisteredDate">
+            </div>
+            <!-- Parental-only fields -->
+            <div class="form-group hidden" id="lineArrivalDateGroup">
+              <label for="lineArrivalDate">Arrival Date</label>
+              <input type="date" id="lineArrivalDate">
             </div>
             <div class="form-group hidden" id="lineParentCodeGroup">
               <label for="lineParentCode">Parent Code</label>
@@ -1174,6 +1178,40 @@
                 <option value="Female">Female</option>
                 <option value="Both">Both</option>
               </select>
+            </div>
+            <!-- Hybrid-only fields -->
+            <div class="form-group hidden" id="lineHybridNameGroup">
+              <label for="lineHybridName">Hybrid Name</label>
+              <input type="text" id="lineHybridName" placeholder="Enter hybrid name">
+            </div>
+            <div class="form-group hidden" id="lineFieldCodeGroup">
+              <label for="lineFieldCode">Field Code</label>
+              <input type="text" id="lineFieldCode" placeholder="Enter field code">
+            </div>
+            <div class="form-group hidden" id="lineFemaleParentGroup">
+              <label for="lineFemaleParent">Female Parent</label>
+              <input type="text" id="lineFemaleParent" placeholder="Enter female parent">
+            </div>
+            <div class="form-group hidden" id="lineMaleParentGroup">
+              <label for="lineMaleParent">Male Parent</label>
+              <input type="text" id="lineMaleParent" placeholder="Enter male parent">
+            </div>
+            <div class="form-group hidden" id="lineSplitPlantingGroup">
+              <label>Split Planting</label>
+              <div class="form-grid-3 plant-spacing-grid">
+                <div>
+                  <input type="number" id="lineFemaleSplit" min="0" step="1" placeholder="0">
+                  <small class="form-hint">Female Split</small>
+                </div>
+                <div>
+                  <input type="number" id="lineFirstMaleSplit" min="0" step="1" placeholder="0">
+                  <small class="form-hint">1st Male Split</small>
+                </div>
+                <div>
+                  <input type="number" id="lineSecondMaleSplit" min="0" step="1" placeholder="0">
+                  <small class="form-hint">2nd Male Split</small>
+                </div>
+              </div>
             </div>
             <div class="form-group hidden" id="locationCoordGroup">
               <label for="locationCoord">Location Coordinates</label>

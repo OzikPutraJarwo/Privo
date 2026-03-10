@@ -385,6 +385,7 @@ body {
   display: flex;
   flex-direction: column;
   transition: var(--transition-slow);
+  overflow: auto;
 }
 
 /* ===========================
@@ -2095,7 +2096,6 @@ body.trial-fullscreen-active .main-content {
 .trial-section-title {
   margin-bottom: 1.5rem;
   color: var(--text-primary);
-  font-weight: 600;
 }
 
 .layouting-areas {
@@ -2332,6 +2332,7 @@ body.trial-fullscreen-active .main-content {
 
 .layouting-table-wrap {
   overflow-x: auto;
+  max-width: 100%;
 }
 
 .layouting-table-title {
@@ -2345,7 +2346,8 @@ body.trial-fullscreen-active .main-content {
 }
 
 .layouting-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.8rem;
 }
@@ -2357,6 +2359,7 @@ body.trial-fullscreen-active .main-content {
   text-align: center;
   color: var(--text-primary);
   animation: slideUp 0.2s ease-out;
+  white-space: nowrap;
 }
 
 .layouting-row-header {
@@ -5979,6 +5982,7 @@ body.no-scroll {
   display: flex;
   gap: .25rem;
   flex-direction: column;
+  min-width: 0;
 }
 
 .td-label {
@@ -6601,6 +6605,29 @@ img.leaflet-tile {
 
 .crop-line-name {
   font-size: 0.95rem;
+}
+
+/* --- Line Type Badges --- */
+.line-type-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+  margin-right: 0.25rem;
+}
+.line-type-badge.parental {
+  background: var(--primary-50, #e3f2fd);
+  color: var(--primary-700, #1565c0);
+  border: 1px solid var(--primary-200, #90caf9);
+}
+.line-type-badge.hybrid {
+  background: #fce4ec;
+  color: #c62828;
+  border: 1px solid #ef9a9a;
 }
 
 /* --- Library Preview Fallback --- */

@@ -3,7 +3,7 @@ const ADVANTA_FOLDER_NAME = "Advanta";
 const INVENTORY_FOLDER_NAME = "Inventory";
 const USER_SETTINGS_FOLDER_NAME = "UserSettings";
 const USER_SETTINGS_FILE_NAME = "settings.json";
-const CATEGORIES = ["Crops", "Lines", "Locations", "Parameters", "Agronomy"];
+const CATEGORIES = ["Crops", "Entries", "Locations", "Parameters", "Agronomy"];
 
 let driveState = {
   advantaFolderId: null,
