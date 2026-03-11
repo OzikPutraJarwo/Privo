@@ -96,3 +96,4 @@
 - [x] `.layouting-table-wrap` width scroll fix
 - [x] `Inventory > Parameters` default sort by last updated
 - [x] `Trial` new/edit modal and move to another nav fullscreen bug fixes
+- [x] Missing selected entries on saved trials when edited

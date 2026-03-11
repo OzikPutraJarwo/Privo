@@ -252,7 +252,17 @@ function hasTrialFieldSetup(trial) {
 }
 
 function hasTrialLayoutSetup(trial) {
-  return hasTrialFieldSetup(trial) && trial.areas.some((area) => area?.layout?.result);
+  return hasTrialFieldSetup(trial) && trial.areas.some((area) => {
+    const layout = area?.layout;
+    if (!layout) return false;
+
+    const hasResult = Array.isArray(layout.result)
+      ? layout.result.length > 0
+      : Boolean(layout.result);
+    if (hasResult) return true;
+
+    return layout.layoutType === "custom" && Array.isArray(layout.lines) && layout.lines.length > 0;
+  });
 }
 
 function hasTrialPlantingDateForRun(trial) {
@@ -319,7 +329,7 @@ function applyDummyLayoutToFirstArea() {
   }
 
   trialState.dummyLayoutArea = null;
-  showToast("Layout dummy otomatis diterapkan ke Area 1.", "success");
+  showToast("The dummy layout is automatically applied to the first area.", "success");
 }
 
 // Toggle archived trials visibility
@@ -3327,16 +3337,18 @@ async function saveTrial() {
   }
 
   try {
-    // Calculate line usage across all areas
+    // Calculate line usage across all areas based on actual layout cells
     const lineUsage = {}; // {lineId: count}
-    trialState.currentAreas.forEach(area => {
-      if (area.layout && area.layout.lines) {
-        area.layout.lines.forEach(line => {
-          // Count how many times this line appears (lines × replications)
-          const numReps = area.layout.numReps || 1;
-          lineUsage[line.id] = (lineUsage[line.id] || 0) + numReps;
+    trialState.currentAreas.forEach((area) => {
+      const layouts = Array.isArray(area?.layout?.result) ? area.layout.result : [];
+      layouts.forEach((rep) => {
+        (rep || []).forEach((row) => {
+          (row || []).forEach((cell) => {
+            if (!cell?.id) return;
+            lineUsage[cell.id] = (lineUsage[cell.id] || 0) + 1;
+          });
         });
-      }
+      });
     });
 
     // Validate line availability (only for new trials, not edits)
@@ -4058,7 +4070,7 @@ function initializeLayoutingSection() {
     });
     container.appendChild(dummyAreaDiv);
 
-    if (trialState.dummyLayoutArea?.layout?.result) {
+    if (trialState.dummyLayoutArea?.layout?.result && trialState.dummyLayoutArea?.layout?.layoutType !== "custom") {
       renderLayoutResult(0, trialState.dummyLayoutArea.layout.result, {
         isDummy: true,
       });
@@ -4074,7 +4086,7 @@ function initializeLayoutingSection() {
       isDummy: false,
     });
     container.appendChild(areaDiv);
-    if (area.layout && area.layout.result) {
+    if (area.layout && area.layout.result && area.layout.layoutType !== "custom") {
       renderLayoutResult(areaIndex, area.layout.result, {
         isDummy: false,
       });
@@ -4099,6 +4111,8 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   areaDiv.className = "layouting-area-card";
   areaDiv.dataset.areaIndex = areaIndex;
   areaDiv.dataset.isDummy = isDummy ? "true" : "false";
+
+  const initialLayoutType = area?.layout?.layoutType === "custom" ? "custom" : "template";
 
   let linesHTML = matchingLines
     .map((line) => {
@@ -4200,6 +4214,14 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
                   >
                 </div>
                 <div class="layouting-field">
+                    <label>Type</label>
+                    <select class="area-layout-type" data-area-index="${areaIndex}">
+                      <option value="template" ${initialLayoutType === "template" ? "selected" : ""}>Template</option>
+                      <option value="custom" ${initialLayoutType === "custom" ? "selected" : ""}>Custom</option>
+                    </select>
+                </div>
+                <div class="layouting-template-controls ${initialLayoutType === "custom" ? "hidden" : ""}">
+                <div class="layouting-field">
                     <label>Number of Ranges</label>
                     <input 
                         type="number" 
@@ -4239,7 +4261,13 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
                         <option value="random">Random (all randomized)</option>
                     </select>
                 </div>
-
+                </div>
+                <div class="layouting-custom-controls ${initialLayoutType === "template" ? "hidden" : ""}">
+                  <div class="layouting-custom-header">
+                    <span>Custom Layout Builder</span>
+                    <small>Builder controls are shown in the layout result section below.</small>
+                  </div>
+                </div>
             </div>
         </div>
         
@@ -4261,9 +4289,66 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     `.picklist-control-btn[data-area-index="${areaIndex}"]`,
   );
 
-  let selectedLineIds = Array.isArray(area.layout?.lines)
-    ? area.layout.lines.map((line) => line.id)
-    : [];
+  let selectedLineIds = (() => {
+    const ids = Array.isArray(area.layout?.lines)
+      ? area.layout.lines.map((line) => line.id).filter(Boolean)
+      : [];
+
+    if (area?.layout?.layoutType === "custom" && Array.isArray(area?.layout?.result)) {
+      area.layout.result.forEach((rep) => {
+        (rep || []).forEach((row) => {
+          (row || []).forEach((cell) => {
+            if (cell?.id && !ids.includes(cell.id)) {
+              ids.push(cell.id);
+            }
+          });
+        });
+      });
+    }
+
+    return ids;
+  })();
+
+  const cloneGrid = (grid) =>
+    (Array.isArray(grid) ? grid : []).map((row) =>
+      (Array.isArray(row) ? row : []).map((cell) =>
+        cell ? { id: cell.id, name: cell.name } : null,
+      ),
+    );
+
+  const sanitizeCustomReplications = (replications) => {
+    if (!Array.isArray(replications) || replications.length === 0) {
+      return [[[null]]];
+    }
+
+    return replications.map((rep) => {
+      const grid = cloneGrid(rep);
+      const rows = Math.max(1, grid.length || 1);
+      const cols = Math.max(
+        1,
+        grid.reduce((acc, row) => Math.max(acc, (row || []).length), 0) || 1,
+      );
+
+      const normalized = Array.from({ length: rows }, (_, rowIndex) => {
+        const sourceRow = grid[rowIndex] || [];
+        return Array.from({ length: cols }, (_, colIndex) => sourceRow[colIndex] || null);
+      });
+
+      return normalized;
+    });
+  };
+
+  const makeEmptyGrid = (rows = 1, cols = 1) =>
+    Array.from({ length: Math.max(1, rows) }, () =>
+      Array.from({ length: Math.max(1, cols) }, () => null),
+    );
+
+  let customReplications = (() => {
+    const existing = area?.layout?.layoutType === "custom" && Array.isArray(area?.layout?.result)
+      ? area.layout.result
+      : null;
+    return sanitizeCustomReplications(existing || [makeEmptyGrid(1, 1)]);
+  })();
   const checkedState = {
     available: new Set(),
     selected: new Set(),
@@ -4298,6 +4383,56 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     checkedState.selected.clear();
   };
 
+  const getLineById = (lineId) => matchingLines.find((line) => line.id === lineId);
+
+  const getPersistedLineById = (lineId) => {
+    const sourceArea = isDummy
+      ? trialState.dummyLayoutArea
+      : trialState.currentAreas?.[areaIndex];
+    const persistedLines = Array.isArray(sourceArea?.layout?.lines)
+      ? sourceArea.layout.lines
+      : [];
+    return persistedLines.find((line) => line?.id === lineId) || null;
+  };
+
+  const getLineFromCustomGridById = (lineId) => {
+    for (const rep of customReplications || []) {
+      for (const row of rep || []) {
+        for (const cell of row || []) {
+          if (cell?.id === lineId) return cell;
+        }
+      }
+    }
+    return null;
+  };
+
+  const syncSelectedLinesFromCustomGrid = () => {
+    if (!Array.isArray(customReplications)) {
+      selectedLineIds = [];
+      return;
+    }
+
+    const usedIds = [];
+    customReplications.forEach((rep) => {
+      (rep || []).forEach((row) => {
+        (row || []).forEach((cell) => {
+          if (cell?.id) usedIds.push(cell.id);
+        });
+      });
+    });
+
+    const orderedUnique = [];
+    usedIds.forEach((id) => {
+      if (!orderedUnique.includes(id)) orderedUnique.push(id);
+    });
+
+    selectedLineIds.forEach((id) => {
+      if (!orderedUnique.includes(id)) orderedUnique.push(id);
+    });
+
+    selectedLineIds = orderedUnique;
+  };
+
   const updateCheckedIndicators = () => {
     if (availableCheckedCountEl) {
       availableCheckedCountEl.textContent = String(checkedState.available.size);
@@ -4305,6 +4440,263 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     if (selectedCheckedCountEl) {
       selectedCheckedCountEl.textContent = String(checkedState.selected.size);
     }
+  };
+
+  const getCurrentLayoutType = () => {
+    const select = areaDiv.querySelector(".area-layout-type");
+    return select?.value === "custom" ? "custom" : "template";
+  };
+
+  const toggleLayoutModeFields = () => {
+    const type = getCurrentLayoutType();
+    const templateControls = areaDiv.querySelector(".layouting-template-controls");
+    const customControls = areaDiv.querySelector(".layouting-custom-controls");
+    if (templateControls) templateControls.classList.toggle("hidden", type !== "template");
+    if (customControls) customControls.classList.toggle("hidden", type !== "custom");
+  };
+
+  const persistCustomLayoutToState = () => {
+    const plantingDateValue = areaDiv.querySelector(".area-planting-date")?.value || "";
+    const normalizedReplications = sanitizeCustomReplications(customReplications);
+    customReplications = normalizedReplications;
+    syncSelectedLinesFromCustomGrid();
+
+    const selectedLines = selectedLineIds
+      .map((id) => {
+        const line = getLineById(id) || getPersistedLineById(id) || getLineFromCustomGridById(id);
+        return line ? { id: line.id, name: line.name } : null;
+      })
+      .filter(Boolean);
+
+    const payload = {
+      layoutType: "custom",
+      lines: selectedLines,
+      numRanges: Math.max(...normalizedReplications.map((rep) => rep.length || 1)),
+      numReps: normalizedReplications.length,
+      direction: "custom",
+      randomization: "custom",
+      plantingDate: plantingDateValue,
+      result: normalizedReplications,
+    };
+
+    if (isDummy) {
+      trialState.dummyLayoutArea = {
+        ...getDummyLayoutArea(),
+        plantingDate: plantingDateValue,
+        layout: payload,
+      };
+    } else {
+      if (!trialState.currentAreas[areaIndex]) return;
+      trialState.currentAreas[areaIndex].layout = payload;
+      trialState.currentAreas[areaIndex].plantingDate = plantingDateValue;
+    }
+  };
+
+  const renderCustomReplications = () => {
+    const resultContainer = areaDiv.querySelector(`.area-layout-result[data-area-index="${areaIndex}"]`);
+    if (!resultContainer) return;
+
+    const repHtml = customReplications
+      .map((grid, repIndex) => {
+        const rows = Math.max(1, grid.length);
+        const cols = Math.max(1, grid[0]?.length || 1);
+
+        const usedIdsInReplication = new Set();
+        (grid || []).forEach((row) => {
+          (row || []).forEach((cell) => {
+            if (cell?.id) usedIdsInReplication.add(cell.id);
+          });
+        });
+
+        const selectedEntriesHtml = selectedLineIds
+          .filter((lineId) => !usedIdsInReplication.has(lineId))
+          .map((lineId) => {
+            const line = getLineById(lineId) || getPersistedLineById(lineId) || getLineFromCustomGridById(lineId);
+            if (!line) return "";
+            return `
+              <div class="layouting-custom-entry-chip" draggable="true" data-line-id="${line.id}" data-rep-index="${repIndex}">
+                <span>${escapeHtml(line.name)}</span>
+              </div>
+            `;
+          })
+          .join("");
+
+        const rowsHtml = grid
+          .map((row, rowIndex) => {
+            const cellsHtml = row
+              .map((cell, colIndex) => {
+                const name = cell?.name ? escapeHtml(cell.name) : "-";
+                return `
+                  <td class="layouting-td layouting-custom-cell ${cell ? "filled" : ""}" data-rep-index="${repIndex}" data-row-index="${rowIndex}" data-col-index="${colIndex}">
+                    <div class="layouting-custom-cell-content">
+                      <span>${name}</span>
+                      ${cell ? '<button type="button" class="layouting-custom-clear" title="Clear cell"><span class="material-symbols-rounded">close</span></button>' : ""}
+                    </div>
+                  </td>
+                `;
+              })
+              .join("");
+
+            return `
+              <tr>
+                <td class="layouting-row-header">Range ${rowIndex + 1}</td>
+                ${cellsHtml}
+              </tr>
+            `;
+          })
+          .join("");
+
+        return `
+          <div class="layouting-custom-result-block" data-rep-index="${repIndex}">
+            <div class="layouting-custom-rep-head">
+              <div>
+                <strong>Replication ${repIndex + 1}</strong>
+                <small>${rows} range(s) × ${cols} column(s)</small>
+              </div>
+              <div class="layouting-custom-toolbar" data-rep-index="${repIndex}">
+                <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn" data-action="insert-col" data-rep-index="${repIndex}" title="Insert Column">
+                  <span class="material-symbols-rounded">view_column</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn btn-danger" data-action="remove-col" data-rep-index="${repIndex}" title="Remove Column">
+                  <span class="material-symbols-rounded">view_column</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn" data-action="insert-range" data-rep-index="${repIndex}" title="Insert Range">
+                  <span class="material-symbols-rounded">table_rows_narrow</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn btn-danger" data-action="remove-range" data-rep-index="${repIndex}" title="Remove Range">
+                  <span class="material-symbols-rounded">table_rows_narrow</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn" data-action="add-rep-empty" data-rep-index="${repIndex}" title="Add Empty Replication">
+                  <span class="material-symbols-rounded">add</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn" data-action="add-rep-duplicate" data-rep-index="${repIndex}" title="Duplicate Replication">
+                  <span class="material-symbols-rounded">content_copy</span>
+                </button>
+              </div>
+            </div>
+            <div class="layouting-custom-entry-list" data-rep-index="${repIndex}">
+              ${selectedEntriesHtml || '<span class="layouting-empty">No selected entries to drag</span>'}
+            </div>
+            <div class="layouting-table-wrap">
+              <table class="layouting-table">
+                <tbody>
+                  ${rowsHtml}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    resultContainer.innerHTML = repHtml;
+
+    resultContainer.querySelectorAll("[data-action]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const action = btn.dataset.action;
+        const repIndex = parseInt(btn.dataset.repIndex, 10);
+        const grid = customReplications[repIndex];
+        if (!grid) return;
+
+        if (action === "insert-col") {
+          grid.forEach((row) => row.push(null));
+        }
+
+        if (action === "remove-col") {
+          if ((grid[0]?.length || 1) <= 1) return;
+          grid.forEach((row) => row.pop());
+        }
+
+        if (action === "insert-range") {
+          const cols = Math.max(1, grid[0]?.length || 1);
+          grid.push(Array.from({ length: cols }, () => null));
+        }
+
+        if (action === "remove-range") {
+          if (grid.length <= 1) return;
+          grid.pop();
+        }
+
+        if (action === "add-rep-empty") {
+          const rows = Math.max(1, grid.length);
+          const cols = Math.max(1, grid[0]?.length || 1);
+          customReplications.push(makeEmptyGrid(rows, cols));
+        }
+
+        if (action === "add-rep-duplicate") {
+          customReplications.push(cloneGrid(grid));
+        }
+
+        persistCustomLayoutToState();
+        renderCustomReplications();
+      });
+    });
+
+    resultContainer.querySelectorAll(".layouting-custom-entry-chip").forEach((entryEl) => {
+      entryEl.addEventListener("dragstart", (event) => {
+        const lineId = entryEl.dataset.lineId;
+        if (!lineId) return;
+        event.dataTransfer.setData("text/plain", lineId);
+        event.dataTransfer.setData("source", "custom-selected");
+      });
+    });
+
+    resultContainer.querySelectorAll(".layouting-custom-cell").forEach((cellEl) => {
+      const repIndex = parseInt(cellEl.dataset.repIndex, 10);
+      const rowIndex = parseInt(cellEl.dataset.rowIndex, 10);
+      const colIndex = parseInt(cellEl.dataset.colIndex, 10);
+
+      cellEl.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        cellEl.classList.add("drag-over");
+      });
+
+      cellEl.addEventListener("dragleave", () => {
+        cellEl.classList.remove("drag-over");
+      });
+
+      cellEl.addEventListener("drop", (event) => {
+        event.preventDefault();
+        cellEl.classList.remove("drag-over");
+        const draggedId = event.dataTransfer.getData("text/plain");
+        if (!draggedId || !selectedLineIds.includes(draggedId)) return;
+
+        const line = getLineById(draggedId) || getPersistedLineById(draggedId) || getLineFromCustomGridById(draggedId);
+        if (!line) return;
+
+        const targetGrid = customReplications[repIndex];
+        if (!targetGrid || !targetGrid[rowIndex]) return;
+
+        for (let r = 0; r < targetGrid.length; r += 1) {
+          for (let c = 0; c < targetGrid[r].length; c += 1) {
+            if (targetGrid[r][c]?.id === draggedId) {
+              targetGrid[r][c] = null;
+            }
+          }
+        }
+
+        targetGrid[rowIndex][colIndex] = { id: line.id, name: line.name };
+        persistCustomLayoutToState();
+        renderCustomReplications();
+      });
+    });
+
+    resultContainer.querySelectorAll(".layouting-custom-clear").forEach((btn) => {
+      btn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const parentCell = btn.closest(".layouting-custom-cell");
+        if (!parentCell) return;
+
+        const repIndex = parseInt(parentCell.dataset.repIndex, 10);
+        const rowIndex = parseInt(parentCell.dataset.rowIndex, 10);
+        const colIndex = parseInt(parentCell.dataset.colIndex, 10);
+
+        if (!customReplications[repIndex]?.[rowIndex]) return;
+        customReplications[repIndex][rowIndex][colIndex] = null;
+        persistCustomLayoutToState();
+        renderCustomReplications();
+      });
+    });
   };
 
   const getListByType = (type) =>
@@ -4518,7 +4910,12 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
       setSelection(availableList, "");
       renderSelected();
       renderAvailable(searchInput.value);
-      autoGenerateLayout();
+      if (getCurrentLayoutType() === "template") {
+        autoGenerateLayout();
+      } else {
+        persistCustomLayoutToState();
+        renderCustomReplications();
+      }
       updateCheckedIndicators();
     }
   };
@@ -4534,7 +4931,12 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     setSelection(selectedList, "");
     renderSelected();
     renderAvailable(searchInput.value);
-    autoGenerateLayout();
+    if (getCurrentLayoutType() === "template") {
+      autoGenerateLayout();
+    } else {
+      persistCustomLayoutToState();
+      renderCustomReplications();
+    }
     updateCheckedIndicators();
   };
 
@@ -4576,7 +4978,12 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     if (!hadCheckedSelection && actionIds.length === 1) {
       setSelection(selectedList, actionIds[0]);
     }
-    autoGenerateLayout();
+    if (getCurrentLayoutType() === "template") {
+      autoGenerateLayout();
+    } else {
+      persistCustomLayoutToState();
+      renderCustomReplications();
+    }
     updateCheckedIndicators();
   };
 
@@ -4592,7 +4999,12 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
         checkedState.available.delete(draggedId);
         renderSelected();
         renderAvailable(searchInput.value);
-        autoGenerateLayout();
+        if (getCurrentLayoutType() === "template") {
+          autoGenerateLayout();
+        } else {
+          persistCustomLayoutToState();
+          renderCustomReplications();
+        }
         updateCheckedIndicators();
       }
     }
@@ -4602,7 +5014,12 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
       checkedState.selected.delete(draggedId);
       renderSelected();
       renderAvailable(searchInput.value);
-      autoGenerateLayout();
+      if (getCurrentLayoutType() === "template") {
+        autoGenerateLayout();
+      } else {
+        persistCustomLayoutToState();
+        renderCustomReplications();
+      }
       updateCheckedIndicators();
     }
   };
@@ -4690,7 +5107,9 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   const autoGenerateLayout = () => {
     clearTimeout(layoutDebounceTimer);
     layoutDebounceTimer = setTimeout(() => {
-      generateLayoutForArea(areaIndex, { isDummy });
+      if (getCurrentLayoutType() === "template") {
+        generateLayoutForArea(areaIndex, { isDummy });
+      }
     }, 500);
   };
 
@@ -4707,6 +5126,19 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   areaDiv
     .querySelector(".area-randomization")
     .addEventListener("change", autoGenerateLayout);
+
+  const layoutTypeSelect = areaDiv.querySelector(".area-layout-type");
+  if (layoutTypeSelect) {
+    layoutTypeSelect.addEventListener("change", () => {
+      toggleLayoutModeFields();
+      if (getCurrentLayoutType() === "template") {
+        generateLayoutForArea(areaIndex, { isDummy });
+      } else {
+        persistCustomLayoutToState();
+        renderCustomReplications();
+      }
+    });
+  }
 
   const areaPlantingDateInput = areaDiv.querySelector(".area-planting-date");
   if (areaPlantingDateInput) {
@@ -4725,6 +5157,8 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
 
   renderAvailable();
   renderSelected();
+  toggleLayoutModeFields();
+  renderCustomReplications();
 
   // If editing and layout exists, pre-populate form
   if (area.layout && area.layout.lines) {
@@ -4744,9 +5178,40 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
       plantingDateInput.value = area?.plantingDate || area?.layout?.plantingDate || "";
     }
 
+    if (layoutTypeSelect) {
+      layoutTypeSelect.value = area.layout.layoutType === "custom" ? "custom" : "template";
+      toggleLayoutModeFields();
+    }
+
+    if (area.layout.layoutType === "custom" && Array.isArray(area.layout.result)) {
+      customReplications = sanitizeCustomReplications(area.layout.result);
+      persistCustomLayoutToState();
+      renderCustomReplications();
+    }
+
     // Render existing layout result
-    if (area.layout.result) {
+    if (area.layout.result && area.layout.layoutType !== "custom") {
       renderLayoutResult(areaIndex, area.layout.result, { isDummy });
+    }
+  }
+
+  // Only auto-generate / persist if there is no pre-existing saved layout.
+  // In edit mode the layout was already rendered above; re-triggering would
+  // overwrite the saved state with whatever the DOM happens to contain at
+  // that moment (potentially empty if matchingLines has no match), which is
+  // the root cause of the "selected entries disappear on edit" bug.
+  const alreadyHasLayout =
+    !!(area.layout && Array.isArray(area.layout.result) && area.layout.result.length > 0);
+
+  if (getCurrentLayoutType() === "template") {
+    if (!alreadyHasLayout) {
+      autoGenerateLayout();
+    }
+  } else {
+    // Custom mode: only call if not already handled inside the edit block above
+    if (area.layout?.layoutType !== "custom") {
+      persistCustomLayoutToState();
+      renderCustomReplications();
     }
   }
 
@@ -4770,6 +5235,9 @@ function generateLayoutForArea(areaIndex, options = {}) {
     name: item.dataset.name || item.textContent.trim(),
   }));
 
+  const layoutTypeSelect = areaDiv.querySelector(".area-layout-type");
+  const layoutType = layoutTypeSelect?.value === "custom" ? "custom" : "template";
+
   const resultContainer = areaDiv.querySelector(
     `.area-layout-result[data-area-index="${areaIndex}"]`,
   );
@@ -4779,6 +5247,64 @@ function generateLayoutForArea(areaIndex, options = {}) {
     if (resultContainer) {
       resultContainer.innerHTML =
         '<div class="td-no-items">Select entries to generate layout</div>';
+    }
+
+    const plantingDateValue = areaDiv.querySelector(".area-planting-date")?.value || "";
+    const emptyLayout = {
+      layoutType,
+      lines: [],
+      numRanges: 1,
+      numReps: 1,
+      direction: layoutType === "template" ? "serpentine" : "custom",
+      randomization: layoutType === "template" ? "normal" : "custom",
+      plantingDate: plantingDateValue,
+      result: [],
+    };
+
+    if (isDummy) {
+      trialState.dummyLayoutArea = {
+        ...getDummyLayoutArea(),
+        plantingDate: plantingDateValue,
+        layout: emptyLayout,
+      };
+    } else if (trialState.currentAreas[areaIndex]) {
+      trialState.currentAreas[areaIndex].layout = emptyLayout;
+      trialState.currentAreas[areaIndex].plantingDate = plantingDateValue;
+    }
+
+    return;
+  }
+
+  if (layoutType === "custom") {
+    if (Array.isArray(options.customLayouts) && options.customLayouts.length > 0) {
+      const plantingDateValue = areaDiv.querySelector(".area-planting-date")?.value || "";
+      const customLayouts = options.customLayouts;
+      const maxRanges = Math.max(...customLayouts.map((rep) => (Array.isArray(rep) ? rep.length : 1)), 1);
+
+      const customLayout = {
+        layoutType: "custom",
+        lines: selectedLines,
+        numRanges: maxRanges,
+        numReps: customLayouts.length,
+        direction: "custom",
+        randomization: "custom",
+        plantingDate: plantingDateValue,
+        result: customLayouts,
+      };
+
+      if (isDummy) {
+        trialState.dummyLayoutArea = {
+          ...getDummyLayoutArea(),
+          plantingDate: plantingDateValue,
+          layout: customLayout,
+        };
+      } else {
+        if (!trialState.currentAreas[areaIndex]) return;
+        trialState.currentAreas[areaIndex].layout = customLayout;
+        trialState.currentAreas[areaIndex].plantingDate = plantingDateValue;
+      }
+
+      renderLayoutResult(areaIndex, customLayouts, { isDummy });
     }
     return;
   }
@@ -4811,6 +5337,7 @@ function generateLayoutForArea(areaIndex, options = {}) {
       ...getDummyLayoutArea(),
       plantingDate: plantingDateValue,
       layout: {
+        layoutType: "template",
         lines: selectedLines,
         numRanges: numRanges,
         numReps: numReps,
@@ -4826,6 +5353,7 @@ function generateLayoutForArea(areaIndex, options = {}) {
       trialState.currentAreas[areaIndex].layout = {};
     }
     trialState.currentAreas[areaIndex].layout = {
+      layoutType: "template",
       lines: selectedLines,
       numRanges: numRanges,
       numReps: numReps,
