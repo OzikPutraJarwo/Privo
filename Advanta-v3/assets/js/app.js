@@ -714,7 +714,22 @@ function exitDatabaseFullscreenMode() {
   databaseFullscreenState.active = false;
 }
 
-function switchPage(pageName) {
+function switchPage(pageName, options = {}) {
+  const trialEditor = document.getElementById("trialEditor");
+  const isTrialEditorOpen = Boolean(trialEditor?.classList.contains("active"));
+
+  if (!options.skipTrialConfirm && isTrialEditorOpen) {
+    const requestClose = typeof requestCloseTrialEditor === "function"
+      ? requestCloseTrialEditor
+      : (callback) => {
+          if (typeof closeTrialModal === "function") closeTrialModal();
+          if (typeof callback === "function") callback();
+        };
+
+    requestClose(() => switchPage(pageName, { ...options, skipTrialConfirm: true }));
+    return;
+  }
+
   if (pageName !== "database") {
     exitDatabaseFullscreenMode();
     setDatabaseTopbarControls(false);
@@ -769,6 +784,20 @@ function navigateToView(item) {
   const view = item.dataset.view;
   const sidebar = document.querySelector(".sidebar");
   const sidebarOverlay = document.getElementById("sidebarOverlay");
+
+  if (view === "external") {
+    const href = (item.getAttribute("href") || "").trim();
+    const dataUrl = (item.dataset.url || "").trim();
+    const targetUrl = dataUrl || href;
+
+    if (targetUrl && targetUrl !== "#") {
+      window.open(targetUrl, "_blank", "noopener,noreferrer");
+    }
+
+    if (sidebar) sidebar.classList.remove("open");
+    if (sidebarOverlay) sidebarOverlay.classList.remove("active");
+    return;
+  }
 
   if (item.classList.contains("nav-parent")) {
     const group = item.closest(".nav-group");
@@ -1176,6 +1205,15 @@ function setupEventListeners() {
         });
         return;
       }
+
+      const trialEditor = document.getElementById("trialEditor");
+      const isTrialEditorOpen = Boolean(trialEditor && trialEditor.classList.contains("active"));
+      if (isTrialEditorOpen && typeof requestCloseTrialEditor === "function") {
+        requestCloseTrialEditor(() => {
+          navigateToView(item);
+        });
+        return;
+      }
       
       navigateToView(item);
     });
@@ -1190,6 +1228,15 @@ function setupEventListeners() {
       const isInRunTrialMode = isRunTrialVisible();
       if (isInRunTrialMode) {
         showExitRunTrialConfirmation(() => {
+          navigateToSubView(item);
+        });
+        return;
+      }
+
+      const trialEditor = document.getElementById("trialEditor");
+      const isTrialEditorOpen = Boolean(trialEditor && trialEditor.classList.contains("active"));
+      if (isTrialEditorOpen && typeof requestCloseTrialEditor === "function") {
+        requestCloseTrialEditor(() => {
           navigateToSubView(item);
         });
         return;
@@ -1289,7 +1336,13 @@ function setupEventListeners() {
 
   document.querySelectorAll(".modal-close").forEach((btn) => {
     if (btn.id === "trialModalClose") {
-      btn.addEventListener("click", closeTrialModal);
+      btn.addEventListener("click", () => {
+        if (typeof requestCloseTrialEditor === "function") {
+          requestCloseTrialEditor();
+        } else {
+          closeTrialModal();
+        }
+      });
     } else {
       btn.addEventListener("click", closeModal);
     }
@@ -1298,7 +1351,13 @@ function setupEventListeners() {
   // Trial modal controls
   const trialModalCancelBtn = document.getElementById("trialModalCancelBtn");
   if (trialModalCancelBtn) {
-    trialModalCancelBtn.addEventListener("click", closeTrialModal);
+    trialModalCancelBtn.addEventListener("click", () => {
+      if (typeof requestCloseTrialEditor === "function") {
+        requestCloseTrialEditor();
+      } else {
+        closeTrialModal();
+      }
+    });
   }
   const trialModalSaveBtn = document.getElementById("trialModalSaveBtn");
   if (trialModalSaveBtn) {

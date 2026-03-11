@@ -55,7 +55,7 @@
 
 #### Update
 - [x] `Inventory > Crops` Import and export using Excel/CSV
-- [ ] `Trial > Report` Per-trial complete information
+- [x] `Trial > Report` Per-trial complete information
 - [x] `Trial > Edit, Detail` Experimental design
 - [x] `Inventory > Parameters` Formula type definition
 #### Bug Fixes and Redesigns
@@ -80,7 +80,9 @@
 - [x] `Trial` Add more details
 - [x] `Trial` Download detail as PDF
 - [x] `Trial` Remove Lines Name
+- [x] `Trial` Custom layouting
 - [x] `Database` All data
+- [x] New CropID navigation
 #### Bug Fixes and Redesigns
 - [x] Automatic logout when error initializing happened
 - [x] Planting date per location, not per trial
@@ -92,3 +94,5 @@
 - [x] No layout trial
 - [x] Serpentine fixes
 - [x] `.layouting-table-wrap` width scroll fix
+- [x] `Inventory > Parameters` default sort by last updated
+- [x] `Trial` new/edit modal and move to another nav fullscreen bug fixes

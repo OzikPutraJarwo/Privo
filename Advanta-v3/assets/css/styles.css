@@ -294,6 +294,12 @@ body {
   font-size: 20px;
 }
 
+.nav-item svg {
+  width: 16px;
+  height: 16px;
+  opacity: .65;
+}
+
 .nav-group {
   margin-bottom: 0.25rem;
 }

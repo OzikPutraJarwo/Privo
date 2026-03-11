@@ -13,6 +13,7 @@ let inventoryState = {
   editingItemId: null,
   filterCrop: "",
   sortBy: "name",
+  parametersSortInitialized: false,
 };
 
 function toggleCropFields(show) {
@@ -770,7 +771,7 @@ function updateInventoryFilters() {
     cropSelect.innerHTML = '<option value="">All Crops</option>' +
       crops.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
     cropSelect.value = inventoryState.filterCrop || '';
-    sortSelect.value = inventoryState.sortBy || 'name';
+    sortSelect.value = inventoryState.sortBy || (cat === 'parameters' ? 'updatedAt' : 'name');
   } else {
     container.style.display = 'none';
   }
@@ -937,6 +938,11 @@ function switchCategory(category) {
     return;
   }
   inventoryState.currentCategory = key;
+
+  if (key === "parameters" && !inventoryState.parametersSortInitialized) {
+    inventoryState.sortBy = "updatedAt";
+    inventoryState.parametersSortInitialized = true;
+  }
 
   if (typeof syncInventoryNavState === "function") {
     syncInventoryNavState(key);

@@ -513,6 +513,37 @@ function closeTrialModal() {
   destroyTrialMap();
 }
 
+function isTrialEditorActive() {
+  const editor = document.getElementById("trialEditor");
+  return Boolean(editor && editor.classList.contains("active"));
+}
+
+function requestCloseTrialEditor(onClosed) {
+  if (!isTrialEditorActive()) {
+    if (typeof onClosed === "function") onClosed();
+    return;
+  }
+
+  const proceed = () => {
+    closeTrialModal();
+    if (typeof onClosed === "function") onClosed();
+  };
+
+  if (document.getElementById("genericConfirmModal")) return;
+
+  if (typeof showConfirmModal === "function") {
+    showConfirmModal(
+      "Discard changes?",
+      "You have unsaved changes in this trial form. Exit and discard them?",
+      proceed,
+      "Discard",
+      "btn-danger"
+    );
+  } else if (window.confirm("You have unsaved changes in this trial form. Exit and discard them?")) {
+    proceed();
+  }
+}
+
 function toggleTrialEditor(show) {
   const editor = document.getElementById("trialEditor");
   const panel = document.getElementById("trialManagementPanel");
@@ -525,7 +556,7 @@ function toggleTrialEditor(show) {
     if (archive) archive.classList.add("hidden");
     enterTrialFullscreenMode({
       title: trialState.editingTrialId ? "Edit Trial" : "Create Trial",
-      onClose: closeTrialModal,
+      onClose: () => requestCloseTrialEditor(),
     });
   } else {
     editor.classList.remove("active");
