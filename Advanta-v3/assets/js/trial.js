@@ -9361,10 +9361,20 @@ function getDatabaseAllColumns() {
     ...(databaseViewState.columns.fixed || []).map((column) => ({
       key: column.key,
       label: column.label,
+      source: column.source || "fixed",
+      defaultVisible: !!column.defaultVisible,
+    })),
+    ...(databaseViewState.columns.extra || []).map((column) => ({
+      key: column.key,
+      label: column.label,
+      source: column.source || "extra",
+      defaultVisible: !!column.defaultVisible,
     })),
     ...(databaseViewState.columns.params || []).map((param) => ({
       key: `param_${param.id}`,
       label: param.name || "Parameter",
+      source: "param",
+      defaultVisible: !!param.defaultVisible,
     })),
   ];
 }
@@ -9423,11 +9433,28 @@ function setDatabaseVisibleColumns(columnKeys, options = {}) {
 function getDatabaseColumnOptionsForSettings() {
   const dataset = buildDatabaseDataset();
   const allColumns = [
-    ...dataset.fixedColumns.map((column) => ({ key: column.key, label: column.label })),
-    ...dataset.parameterColumns.map((param) => ({ key: `param_${param.id}`, label: param.name || "Parameter" })),
+    ...dataset.fixedColumns.map((column) => ({
+      key: column.key,
+      label: column.label,
+      source: column.source || "fixed",
+      defaultVisible: !!column.defaultVisible,
+    })),
+    ...(dataset.extraColumns || []).map((column) => ({
+      key: column.key,
+      label: column.label,
+      source: column.source || "extra",
+      defaultVisible: !!column.defaultVisible,
+    })),
+    ...dataset.parameterColumns.map((param) => ({
+      key: `param_${param.id}`,
+      label: param.name || "Parameter",
+      source: "param",
+      defaultVisible: !!param.defaultVisible,
+    })),
   ];
 
   databaseViewState.columns.fixed = dataset.fixedColumns;
+  databaseViewState.columns.extra = dataset.extraColumns || [];
   databaseViewState.columns.params = dataset.parameterColumns;
   databaseViewState.columns.all = allColumns;
 
@@ -9769,22 +9796,26 @@ function buildDatabaseDataset() {
   const headerColumns = [
     { key: "no", label: "No", source: "fixed", defaultVisible: true },
     { key: "season", label: "Season", source: "fixed", defaultVisible: true },
+    { key: "pollination", label: "Type of Pollination", source: "fixed", defaultVisible: true },
+    { key: "trialType", label: "Trial Type", source: "fixed", defaultVisible: true },
+    { key: "expDesign", label: "Experimental Design", source: "fixed", defaultVisible: true },
     { key: "location", label: "Location", source: "fixed", defaultVisible: true },
     { key: "year", label: "Year", source: "fixed", defaultVisible: true },
     { key: "parentCode", label: "Parent Code", source: "fixed", defaultVisible: true },
     { key: "sprCode", label: "SPR Code", source: "fixed", defaultVisible: true },
     { key: "hybridCode", label: "Hybrid Code", source: "fixed", defaultVisible: true },
+    { key: "fieldCode", label: "Field Code", source: "fixed", defaultVisible: true },
+    { key: "femaleParent", label: "Female Parent", source: "fixed", defaultVisible: true },
+    { key: "maleParent", label: "Male Parent", source: "fixed", defaultVisible: true },
     { key: "replication", label: "Replication", source: "fixed", defaultVisible: true },
   ];
 
   const extraColumns = [
     { key: "trialName", label: "Trial", source: "extra", defaultVisible: false },
     { key: "crop", label: "Crop", source: "extra", defaultVisible: false },
-    { key: "pollination", label: "Pollination", source: "extra", defaultVisible: false },
-    { key: "trialType", label: "Trial Type", source: "extra", defaultVisible: false },
-    { key: "expDesign", label: "Exp Design", source: "extra", defaultVisible: false },
     { key: "plantingDate", label: "Planting Date", source: "extra", defaultVisible: false },
     { key: "line", label: "Entry", source: "extra", defaultVisible: false },
+    { key: "lineType", label: "Entry Type", source: "extra", defaultVisible: false },
     { key: "lineRole", label: "Entry Role", source: "extra", defaultVisible: false },
     { key: "lineStage", label: "Entry Stage", source: "extra", defaultVisible: false },
     { key: "lineQty", label: "Entry Qty", source: "extra", defaultVisible: false },
@@ -9851,15 +9882,16 @@ function buildDatabaseDataset() {
               const row = {
                 no: rowNo++,
                 season,
+                pollination: trial.pollination || "",
+                trialType: trial.trialType || "",
+                expDesign: trial.expDesign || "",
                 location: locationName,
                 year,
                 trialName: trial.name || "",
                 crop: cropName,
-                pollination: trial.pollination || "",
-                trialType: trial.trialType || "",
-                expDesign: trial.expDesign || "",
                 plantingDate: getAreaPlantingDate(trial, areaIndex) || "",
                 line: lineRef?.name || cell.name || "",
+                lineType: lineRef?.lineType || "",
                 lineRole: lineRef?.role || "",
                 lineStage: lineRef?.stage || "",
                 lineQty: lineRef?.quantity ?? "",
@@ -9870,6 +9902,9 @@ function buildDatabaseDataset() {
                 parentCode: lineRef?.parentCode || "",
                 sprCode: lineRef?.sprCode || "",
                 hybridCode: lineRef?.hybridCode || "",
+                fieldCode: lineRef?.fieldCode || "",
+                femaleParent: lineRef?.femaleParent || "",
+                maleParent: lineRef?.maleParent || "",
                 replication: repIndex + 1,
               };
 

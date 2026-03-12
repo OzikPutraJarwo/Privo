@@ -7369,7 +7369,6 @@ img.leaflet-tile {
 .trial-report-table {
   width: max-content;
   min-width: 100%;
-  border-collapse: collapse;
   font-size: 0.8rem;
 }
 
@@ -7560,6 +7559,12 @@ img.leaflet-tile {
 .trial-report-table td {
   color: #1f1f1f;
   background-color: var(--bg-primary);
+}
+
+.trial-report-table td:first-child {
+  text-align: center;
+  font-weight: 100;
+  background-color: var(--bg-secondary);
 }
 
 .trial-report-col-index {

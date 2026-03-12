@@ -98,6 +98,8 @@
 - [x] `Trial` new/edit modal and move to another nav fullscreen bug fixes
 - [x] Missing selected entries on saved trials when edited
 - [x] New drive format (SPECTRA)
+- [x] Change `Hybrid Name` to `Hybrid Code` for Parental and Hybrid crop entries
+- [x] `Database` big updates
 
 ### UPCOMING PLANS
 

@@ -60,7 +60,7 @@ function toggleLineFields(show) {
   ];
   // Hybrid-only groups
   const hybridGroups = [
-    "lineHybridNameGroup",
+    "lineHybridCodeHybridGroup",
     "lineFieldCodeGroup",
     "lineFemaleParentGroup",
     "lineMaleParentGroup",
@@ -95,7 +95,7 @@ function handleLineTypeChange(entryType) {
     "lineRoleGroup",
   ];
   const hybridGroups = [
-    "lineHybridNameGroup",
+    "lineHybridCodeHybridGroup",
     "lineFieldCodeGroup",
     "lineFemaleParentGroup",
     "lineMaleParentGroup",
@@ -1271,7 +1271,7 @@ function openAddModal() {
     document.getElementById("lineSprCode").value = "";
     document.getElementById("lineRole").value = "";
     // Reset hybrid-only fields
-    document.getElementById("lineHybridName").value = "";
+    document.getElementById("lineHybridCodeHybrid").value = "";
     document.getElementById("lineFieldCode").value = "";
     document.getElementById("lineFemaleParent").value = "";
     document.getElementById("lineMaleParent").value = "";
@@ -1412,7 +1412,7 @@ function showCropLinesPopup(cropId) {
                   if (line.arrivalDate) metaParts.push('Arrival: ' + escapeHtml(line.arrivalDate));
                   if (line.registeredDate) metaParts.push('Reg: ' + escapeHtml(line.registeredDate));
                 } else {
-                  if (line.hybridName) metaParts.push('Hybrid Name: ' + escapeHtml(line.hybridName));
+                  if (line.hybridCode) metaParts.push('Hybrid Code: ' + escapeHtml(line.hybridCode));
                   if (line.fieldCode) metaParts.push('Field: ' + escapeHtml(line.fieldCode));
                   if (line.femaleParent) metaParts.push('♀: ' + escapeHtml(line.femaleParent));
                   if (line.maleParent) metaParts.push('♂: ' + escapeHtml(line.maleParent));
@@ -1573,7 +1573,7 @@ function openAddLineForCropModal(crop) {
   document.getElementById("lineRole").value = "";
 
   // Reset hybrid-only fields
-  document.getElementById("lineHybridName").value = "";
+  document.getElementById("lineHybridCodeHybrid").value = "";
   document.getElementById("lineFieldCode").value = "";
   document.getElementById("lineFemaleParent").value = "";
   document.getElementById("lineMaleParent").value = "";
@@ -1624,7 +1624,7 @@ function openEditModal(itemId) {
     document.getElementById("lineSprCode").value = item.sprCode || "";
     document.getElementById("lineRole").value = item.role || "";
     // Hybrid-only fields
-    document.getElementById("lineHybridName").value = item.hybridName || "";
+    document.getElementById("lineHybridCodeHybrid").value = item.hybridCode || "";
     document.getElementById("lineFieldCode").value = item.fieldCode || "";
     document.getElementById("lineFemaleParent").value = item.femaleParent || "";
     document.getElementById("lineMaleParent").value = item.maleParent || "";
@@ -1741,7 +1741,7 @@ function closeModal() {
     "lineHybridCode",
     "lineSprCode",
     "lineRole",
-    "lineHybridName",
+    "lineHybridCodeHybrid",
     "lineFieldCode",
     "lineFemaleParent",
     "lineMaleParent",
@@ -1886,8 +1886,8 @@ async function saveItem() {
     ? document.getElementById("lineRole")?.value.trim()
     : "";
   // Hybrid-only fields
-  const lineHybridName = isEntries && lineType === "hybrid"
-    ? document.getElementById("lineHybridName")?.value.trim()
+  const lineHybridCodeHybrid = isEntries && lineType === "hybrid"
+    ? document.getElementById("lineHybridCodeHybrid")?.value.trim()
     : "";
   const lineFieldCode = isEntries && lineType === "hybrid"
     ? document.getElementById("lineFieldCode")?.value.trim()
@@ -2093,7 +2093,6 @@ async function saveItem() {
             item.sprCode = lineSprCode;
             item.role = lineRole;
             // Clear hybrid fields
-            delete item.hybridName;
             delete item.fieldCode;
             delete item.femaleParent;
             delete item.maleParent;
@@ -2101,7 +2100,7 @@ async function saveItem() {
             delete item.firstMaleSplit;
             delete item.secondMaleSplit;
           } else {
-            item.hybridName = lineHybridName;
+            item.hybridCode = lineHybridCodeHybrid;
             item.fieldCode = lineFieldCode;
             item.femaleParent = lineFemaleParent;
             item.maleParent = lineMaleParent;
@@ -2111,7 +2110,6 @@ async function saveItem() {
             // Clear parental fields
             delete item.arrivalDate;
             delete item.parentCode;
-            delete item.hybridCode;
             delete item.sprCode;
             delete item.role;
           }
@@ -2168,11 +2166,12 @@ async function saveItem() {
         // Parental-only fields
         arrivalDate: isEntries && lineType === "parental" ? lineArrivalDate : undefined,
         parentCode: isEntries && lineType === "parental" ? lineParentCode : undefined,
-        hybridCode: isEntries && lineType === "parental" ? lineHybridCode : undefined,
+        hybridCode: isEntries
+          ? (lineType === "parental" ? lineHybridCode : lineHybridCodeHybrid)
+          : undefined,
         sprCode: isEntries && lineType === "parental" ? lineSprCode : undefined,
         role: isEntries && lineType === "parental" ? lineRole : undefined,
         // Hybrid-only fields
-        hybridName: isEntries && lineType === "hybrid" ? lineHybridName : undefined,
         fieldCode: isEntries && lineType === "hybrid" ? lineFieldCode : undefined,
         femaleParent: isEntries && lineType === "hybrid" ? lineFemaleParent : undefined,
         maleParent: isEntries && lineType === "hybrid" ? lineMaleParent : undefined,
@@ -2509,7 +2508,7 @@ function getImportFields(category) {
       if (entryType === "hybrid") {
         return [
           ...shared,
-          { key: "hybridName", label: "Hybrid Name", icon: "label", required: false },
+          { key: "hybridCode", label: "Hybrid Code", icon: "label", required: false },
           { key: "fieldCode", label: "Field Code", icon: "code", required: false },
           { key: "femaleParent", label: "Female Parent", icon: "person", required: false },
           { key: "maleParent", label: "Male Parent", icon: "person", required: false },
@@ -2693,7 +2692,7 @@ function exportCropLines(cropId) {
     });
   } else {
     rows.push(["Item Name", "Quantity", "Stage", "Seed Origin", "Registered Date",
-      "Hybrid Name", "Field Code", "Female Parent", "Male Parent", "Female Split", "1st Male Split", "2nd Male Split"]);
+      "Hybrid Code", "Field Code", "Female Parent", "Male Parent", "Female Split", "1st Male Split", "2nd Male Split"]);
     lines.forEach(line => {
       rows.push([
         line.name || "",
@@ -2701,7 +2700,7 @@ function exportCropLines(cropId) {
         line.stage || "",
         line.seedOrigin || "",
         line.registeredDate || "",
-        line.hybridName || "",
+        line.hybridCode || "",
         line.fieldCode || "",
         line.femaleParent || "",
         line.maleParent || "",
@@ -3314,7 +3313,7 @@ function applyImportUpdate(cat, existing, rawItem) {
     if (rawItem.sprCode) existing.sprCode = rawItem.sprCode;
     if (rawItem.role) existing.role = rawItem.role;
     // Hybrid fields
-    if (rawItem.hybridName) existing.hybridName = rawItem.hybridName;
+    if (rawItem.hybridCode) existing.hybridCode = rawItem.hybridCode;
     if (rawItem.fieldCode) existing.fieldCode = rawItem.fieldCode;
     if (rawItem.femaleParent) existing.femaleParent = rawItem.femaleParent;
     if (rawItem.maleParent) existing.maleParent = rawItem.maleParent;
@@ -3398,7 +3397,7 @@ function buildNewItem(cat, rawItem, idx) {
       item.sprCode = rawItem.sprCode || "";
       item.role = rawItem.role || "";
     } else {
-      item.hybridName = rawItem.hybridName || "";
+      item.hybridCode = rawItem.hybridCode || "";
       item.fieldCode = rawItem.fieldCode || "";
       item.femaleParent = rawItem.femaleParent || "";
       item.maleParent = rawItem.maleParent || "";
