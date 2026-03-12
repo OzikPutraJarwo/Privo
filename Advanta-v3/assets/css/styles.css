@@ -2965,7 +2965,7 @@ body.trial-fullscreen-active .main-content {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  z-index: 200;
+  z-index: 1000;
   opacity: 0;
   visibility: hidden;
   transform: translateY(-8px);

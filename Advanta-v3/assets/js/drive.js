@@ -1,5 +1,5 @@
 // Google Drive API Integration
-const ADVANTA_FOLDER_NAME = "Advanta";
+const ADVANTA_FOLDER_NAME = "SPECTRA";
 const INVENTORY_FOLDER_NAME = "Inventory";
 const USER_SETTINGS_FOLDER_NAME = "UserSettings";
 const USER_SETTINGS_FILE_NAME = "settings.json";
@@ -22,7 +22,7 @@ function handleDriveAuthError(error, contextMessage = "Session expired") {
 // Initialize Drive structure
 async function initializeDriveStructure() {
   try {
-    // Check/Create Advanta folder
+    // Check/Create SPECTRA root folder
     driveState.advantaFolderId = await getOrCreateFolder(
       ADVANTA_FOLDER_NAME,
       null,
@@ -248,9 +248,108 @@ async function createFolder(folderName, parentFolderId = null) {
   }
 }
 
+// ===========================
+// ENTRIES: per-crop file helpers
+// Each crop's entries are stored in Entries/{cropId}.json as an array
+// ===========================
+
+async function saveEntryToDrive(entry) {
+  const cropId = entry.cropId || entry.crop;
+  if (!cropId) throw new Error("Entry missing cropId");
+  const parentFolderId = driveState.categoryFolderIds["entries"];
+  if (!parentFolderId) throw new Error("Entries folder ID not found");
+  const fileName = `${cropId}.json`;
+
+  // Read existing entries for this crop
+  let cropEntries = [];
+  const existingFile = await findFile(fileName, parentFolderId);
+  if (existingFile) {
+    try {
+      const content = await getFileContent(existingFile.id);
+      cropEntries = Array.isArray(content) ? content : [];
+    } catch (_) { cropEntries = []; }
+  }
+
+  // Upsert: replace existing or push new
+  const idx = cropEntries.findIndex(e => e.id === entry.id);
+  if (idx >= 0) {
+    cropEntries[idx] = entry;
+  } else {
+    cropEntries.push(entry);
+  }
+
+  await upsertJsonFileInFolder(fileName, parentFolderId, cropEntries);
+  return true;
+}
+
+async function saveAllEntriesToDrive(entries) {
+  const parentFolderId = driveState.categoryFolderIds["entries"];
+  if (!parentFolderId) throw new Error("Entries folder ID not found");
+
+  // Group entries by cropId
+  const byCrop = {};
+  for (const entry of entries) {
+    const cropId = entry.cropId || entry.crop;
+    if (!cropId) continue;
+    if (!byCrop[cropId]) byCrop[cropId] = [];
+    byCrop[cropId].push(entry);
+  }
+
+  for (const [cropId, cropEntries] of Object.entries(byCrop)) {
+    await upsertJsonFileInFolder(`${cropId}.json`, parentFolderId, cropEntries);
+  }
+  return true;
+}
+
+async function deleteEntryFromDrive(entryId, entriesFolderId) {
+  // List all crop files in the Entries folder
+  const response = await gapi.client.drive.files.list({
+    q: `'${entriesFolderId}' in parents and mimeType='application/json' and trashed=false`,
+    spaces: "drive",
+    fields: "files(id, name)",
+    pageSize: 1000,
+  });
+
+  const files = response.result.files || [];
+
+  for (const file of files) {
+    try {
+      const content = await getFileContent(file.id);
+      if (!Array.isArray(content)) continue;
+
+      const entryIdx = content.findIndex(e => e.id === entryId);
+      if (entryIdx < 0) continue;
+
+      // Found — remove and resave (or delete file if now empty)
+      content.splice(entryIdx, 1);
+      if (content.length === 0) {
+        const token = getAccessToken();
+        if (token) {
+          await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+      } else {
+        await upsertJsonFileInFolder(file.name, entriesFolderId, content);
+      }
+      return true;
+    } catch (error) {
+      console.error(`Error processing entries file ${file.name}:`, error);
+    }
+  }
+
+  return false;
+}
+
 // Save item data to Google Drive as JSON file
 async function saveItemToGoogleDrive(category, item) {
   try {
+    // Entries are stored per-crop: {cropId}.json contains an array of all entries for that crop
+    if (category === "Entries") {
+      return await saveEntryToDrive(item);
+    }
+
     const fileName = `${item.id}.json`;
     const fileContent = JSON.stringify(item, null, 2);
     const parentFolderId = driveState.categoryFolderIds[category.toLowerCase()];
@@ -349,7 +448,12 @@ async function saveItemsToGoogleDrive(category, items) {
     if (!Array.isArray(items)) {
       return saveItemToGoogleDrive(category, items);
     }
-    
+
+    // Entries are stored per-crop: group by cropId and write one file per crop
+    if (category === "Entries") {
+      return await saveAllEntriesToDrive(items);
+    }
+
     // Save each item sequentially
     for (const item of items) {
       await saveItemToGoogleDrive(category, item);
@@ -400,6 +504,21 @@ async function loadItemsFromGoogleDrive(category) {
 
     const files = response.result.files || [];
     const items = [];
+
+    // Entries: each file is {cropId}.json containing an array — flatten all
+    if (category === "Entries") {
+      for (const file of files) {
+        try {
+          const content = await getFileContent(file.id);
+          if (Array.isArray(content)) {
+            items.push(...content);
+          }
+        } catch (error) {
+          console.error(`Error loading entries file ${file.name}:`, error);
+        }
+      }
+      return items;
+    }
 
     for (const file of files) {
       try {
@@ -453,12 +572,17 @@ async function getFileContent(fileId) {
 async function deleteItemFromGoogleDrive(category, itemId) {
   try {
     const parentFolderId = driveState.categoryFolderIds[category.toLowerCase()];
-    const fileName = `${itemId}.json`;
 
     if (!parentFolderId) {
       throw new Error(`Folder ID not found for category: ${category}`);
     }
 
+    // Entries: search all crop files for this entry and remove it
+    if (category === "Entries") {
+      return await deleteEntryFromDrive(itemId, parentFolderId);
+    }
+
+    const fileName = `${itemId}.json`;
     const existingFile = await findFile(fileName, parentFolderId);
 
     if (existingFile) {

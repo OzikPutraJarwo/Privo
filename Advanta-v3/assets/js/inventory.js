@@ -2431,6 +2431,29 @@ let importState = {
   duplicates: [],    // indices of duplicate rows
 };
 
+function ensureImportNextButtonElements() {
+  const nextBtn = document.getElementById("importNextBtn");
+  if (!nextBtn) return { nextBtn: null, nextLabel: null, nextIcon: null };
+
+  let nextLabel = document.getElementById("importNextLabel");
+  let nextIcon = document.getElementById("importNextIcon");
+
+  const missingOrDetached =
+    !nextLabel ||
+    !nextIcon ||
+    !nextBtn.contains(nextLabel) ||
+    !nextBtn.contains(nextIcon);
+
+  if (missingOrDetached) {
+    nextBtn.innerHTML =
+      '<span id="importNextLabel">Next</span><span class="material-symbols-rounded" id="importNextIcon">arrow_forward</span>';
+    nextLabel = document.getElementById("importNextLabel");
+    nextIcon = document.getElementById("importNextIcon");
+  }
+
+  return { nextBtn, nextLabel, nextIcon };
+}
+
 // --- Field definitions per category ---
 function getImportFields(category) {
   switch (category) {
@@ -2744,9 +2767,10 @@ function importCropLines(cropId) {
   document.getElementById("importFileInfo").classList.add("hidden");
   document.getElementById("importDropzone").style.display = "";
   document.getElementById("importBackBtn").style.display = "none";
-  document.getElementById("importNextBtn").disabled = true;
-  document.getElementById("importNextLabel").textContent = "Next";
-  document.getElementById("importNextIcon").textContent = "arrow_forward";
+  const { nextBtn, nextLabel, nextIcon } = ensureImportNextButtonElements();
+  if (nextBtn) nextBtn.disabled = true;
+  if (nextLabel) nextLabel.textContent = "Next";
+  if (nextIcon) nextIcon.textContent = "arrow_forward";
   document.getElementById("importModal").classList.remove("hidden");
 
   setupImportDropzone();
@@ -2775,9 +2799,10 @@ function openImportModal() {
   document.getElementById("importFileInfo").classList.add("hidden");
   document.getElementById("importDropzone").style.display = "";
   document.getElementById("importBackBtn").style.display = "none";
-  document.getElementById("importNextBtn").disabled = true;
-  document.getElementById("importNextLabel").textContent = "Next";
-  document.getElementById("importNextIcon").textContent = "arrow_forward";
+  const { nextBtn, nextLabel, nextIcon } = ensureImportNextButtonElements();
+  if (nextBtn) nextBtn.disabled = true;
+  if (nextLabel) nextLabel.textContent = "Next";
+  if (nextIcon) nextIcon.textContent = "arrow_forward";
   document.getElementById("importModal").classList.remove("hidden");
 
   // Setup drag-and-drop
