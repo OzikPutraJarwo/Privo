@@ -735,6 +735,10 @@ function switchPage(pageName, options = {}) {
     setDatabaseTopbarControls(false);
   }
 
+  if (pageName !== "analysis") {
+    if (typeof exitAnalysisFullscreenMode === "function") exitAnalysisFullscreenMode();
+  }
+
   // Hide all page contents
   document.querySelectorAll(".page-content").forEach((content) => {
     content.classList.remove("active");
@@ -746,6 +750,7 @@ function switchPage(pageName, options = {}) {
     inventory: "inventoryContent",
     trial: "trialContent",
     database: "databaseContent",
+    analysis: "analysisContent",
     library: "libraryContent",
     reminder: "reminderContent",
   };
@@ -760,6 +765,7 @@ function switchPage(pageName, options = {}) {
     inventory: "Inventory",
     trial: "Trial",
     database: "Database",
+    analysis: "Data Analysis",
     library: "Library",
     reminder: "Reminder",
   };
@@ -776,6 +782,11 @@ function switchPage(pageName, options = {}) {
     if (typeof renderDatabaseTable === "function") {
       renderDatabaseTable();
     }
+  }
+
+  if (pageName === "analysis") {
+    if (typeof enterAnalysisFullscreenMode === "function") enterAnalysisFullscreenMode();
+    if (typeof initAnalysis === "function") initAnalysis();
   }
 }
 

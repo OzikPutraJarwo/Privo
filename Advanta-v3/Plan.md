@@ -82,6 +82,7 @@
 - [x] `Trial` Remove Lines Name
 - [x] `Trial` Custom layouting
 - [x] `Database` All data
+- [x] `Data Analysis` Beta releases
 - [x] New CropID navigation
 #### Bug Fixes and Redesigns
 - [x] Automatic logout when error initializing happened

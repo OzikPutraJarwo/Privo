@@ -7761,3 +7761,420 @@ img.leaflet-tile {
   width: 100%;
   justify-content: center;
 }
+
+/* ===================================================================
+   Data Analysis (Beta)
+   =================================================================== */
+
+body.analysis-fullscreen-active .content {
+  padding: 0;
+  height: calc(100dvh - var(--topbar-height));
+  max-height: calc(100dvh - var(--topbar-height));
+  overflow: hidden;
+}
+
+.analysis-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--topbar-height));
+  overflow: hidden;
+  background: #eef0f4;
+}
+
+/* --- Shared section card --- */
+
+.analysis-section {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+/* --- Resize handle --- */
+
+.analysis-resize-handle {
+  flex: 0 0 7px;
+  cursor: row-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef0f4;
+  user-select: none;
+  position: relative;
+  z-index: 4;
+  transition: background .15s;
+}
+
+.analysis-resize-handle:hover,
+.analysis-resize-handle.active {
+  background: #dde1e8;
+}
+
+.analysis-resize-grip {
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: #bfc5ce;
+  transition: background .15s, width .15s;
+}
+
+.analysis-resize-handle:hover .analysis-resize-grip,
+.analysis-resize-handle.active .analysis-resize-grip {
+  background: var(--primary);
+  width: 48px;
+}
+
+/* --- Section 1: Results --- */
+
+.analysis-results {
+  flex: 1 1 30%;
+  min-height: 60px;
+  overflow-y: auto;
+  background: #fdfdfe;
+}
+
+.analysis-results-body {
+  padding: 1.25rem 1.5rem;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  color: var(--text-primary);
+}
+
+.analysis-results-empty {
+  color: var(--text-tertiary);
+  text-align: center;
+  padding: 2.5rem 0;
+  font-style: italic;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.analysis-result-block {
+  margin-bottom: 1.25rem;
+}
+
+.analysis-result-title {
+  font-weight: 700;
+  font-size: 0.92rem;
+  margin-bottom: 0.3rem;
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.analysis-result-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.85rem;
+  font-family: inherit;
+}
+
+.analysis-result-note {
+  margin-top: 0.85rem;
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  font-style: italic;
+  font-family: inherit;
+}
+
+/* ANOVA tables */
+.analysis-anova-table {
+  width: auto;
+  border-collapse: collapse;
+  margin-bottom: 0.65rem;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.8rem;
+}
+
+.analysis-anova-table th,
+.analysis-anova-table td {
+  padding: 0.4rem 1.1rem;
+  text-align: right;
+  border-bottom: 1px solid #e2e5ea;
+  white-space: nowrap;
+}
+
+.analysis-anova-table th {
+  text-align: right;
+  font-weight: 600;
+  background: #f5f6f8;
+  border-bottom: 2px solid #b8bcc3;
+}
+
+.analysis-anova-table th:first-child,
+.analysis-anova-table td:first-child {
+  text-align: left;
+}
+
+.analysis-anova-total-row td {
+  font-weight: 600;
+  border-top: 2px solid #b8bcc3;
+}
+
+/* --- Section 2: Controls --- */
+
+.analysis-controls {
+  flex: 0 0 auto;
+  padding: 0.85rem 1.25rem;
+  background: #fff;
+}
+
+.analysis-controls-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.7rem;
+}
+
+.analysis-select-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.analysis-select-group label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.analysis-select-group select {
+  padding: 0.42rem 0.65rem;
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  background: #fff;
+  color: var(--text-primary);
+  min-width: 185px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.analysis-select-group select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.analysis-dropzones-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.analysis-dropzone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.analysis-dropzone > label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.analysis-dropzone-area {
+  min-width: 185px;
+  min-height: 38px;
+  border: 2px dashed #ced3da;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0.65rem;
+  background: #f8f9fb;
+  transition: border-color .2s, background .2s, box-shadow .2s;
+}
+
+.analysis-dropzone-placeholder {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  font-style: italic;
+  pointer-events: none;
+  user-select: none;
+}
+
+.analysis-dropzone-highlight {
+  border-color: var(--primary);
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.analysis-dropzone-over {
+  border-color: var(--primary);
+  background: rgba(37, 99, 235, 0.09);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.analysis-dropzone-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem 0.45rem 0.22rem 0.65rem;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);
+}
+
+.analysis-dropzone-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  padding: 0;
+  transition: background .15s;
+}
+
+.analysis-dropzone-chip-remove:hover {
+  background: rgba(255,255,255,0.4);
+}
+
+#analysisRunBtn {
+  align-self: flex-end;
+  gap: 0.35rem;
+  padding: 0.48rem 1.4rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.2);
+  transition: box-shadow .15s, transform .1s;
+}
+
+#analysisRunBtn:not(:disabled):hover {
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+#analysisRunBtn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+#analysisRunBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* --- Section 3: Data Table --- */
+
+.analysis-table-section {
+  flex: 1 1 50%;
+  min-height: 80px;
+  overflow: hidden;
+}
+
+.analysis-table-info {
+  flex: 0 0 auto;
+  padding: 0.4rem 1.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  background: #f5f6f9;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.analysis-table-section .inventory-container {
+  flex: 1 1 0;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+.analysis-table-section .trial-report-body {
+  height: 100%;
+}
+
+.analysis-table-section .trial-report-preview {
+  height: 100%;
+}
+
+.analysis-table-section .trial-report-table-wrap {
+  height: 100%;
+  overflow: auto;
+}
+
+/* TH drag cursor */
+.analysis-table-section th[draggable="true"] {
+  cursor: grab;
+}
+
+.analysis-table-section th[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+th.analysis-th-dragging {
+  opacity: 0.5;
+}
+
+/* Nav beta badge */
+.nav-beta-badge {
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--primary);
+  color: #fff;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  margin-left: auto;
+  line-height: 1.3;
+}
+
+.sidebar-collapsed .nav-beta-badge {
+  display: none;
+}
+
+/* Prevent text selection while resizing */
+body.analysis-resizing {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+
+body.analysis-resizing * {
+  cursor: row-resize !important;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .analysis-controls-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .analysis-select-group select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .analysis-dropzones-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .analysis-dropzone-area {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #analysisRunBtn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .analysis-resize-grip {
+    width: 48px;
+  }
+}
