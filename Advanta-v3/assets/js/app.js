@@ -428,6 +428,9 @@ function enqueueSync(task) {
     run: task.run,
     status: "pending",
     createdAt: new Date().toISOString(),
+    startedAt: null,
+    finishedAt: null,
+    durationMs: null,
     error: null,
   };
 
@@ -445,16 +448,27 @@ async function processSyncQueue() {
     if (!next) break;
 
     next.status = "syncing";
+    next.startedAt = Date.now();
     syncState.status = "syncing";
     updateSyncUI();
 
     try {
       await next.run();
       next.status = "success";
+      next.finishedAt = Date.now();
+      next.durationMs =
+        typeof next.startedAt === "number"
+          ? Math.max(0, next.finishedAt - next.startedAt)
+          : null;
       next.error = null;
       syncState.lastError = null;
     } catch (error) {
       next.status = "error";
+      next.finishedAt = Date.now();
+      next.durationMs =
+        typeof next.startedAt === "number"
+          ? Math.max(0, next.finishedAt - next.startedAt)
+          : null;
       next.error = error?.message || "Unknown error";
       syncState.lastError = next.error;
       syncState.status = "error";
@@ -537,8 +551,7 @@ function updateSyncUI() {
       return;
     }
 
-    panel.innerHTML = syncState.queue
-      .slice(-20)
+    panel.innerHTML = [...syncState.queue]
       .reverse()
       .map((item) => {
         const statusClass =
@@ -546,19 +559,27 @@ function updateSyncUI() {
             ? "success"
             : item.status === "error"
               ? "error"
-              : "pending";
+              : item.status === "syncing"
+                ? "syncing"
+                : "pending";
         const statusLabel =
           item.status === "success"
             ? `<span class="material-symbols-rounded">check_circle</span>`
             : item.status === "error"
               ? `<span class="material-symbols-outlined"> error </span>`
-              : `<span class="material-symbols-rounded">cached</span>`;
+              : item.status === "syncing"
+                ? `<span class="material-symbols-rounded">cached</span>`
+                : `<span class="material-symbols-rounded">schedule</span>`;
         const errorHint =
           item.status === "error" && item.error ? ` - ${item.error}` : "";
+        const syncDurationHint =
+          item.status === "success" && typeof item.durationMs === "number"
+            ? ` <span class="sync-item-duration">(${(item.durationMs / 1000).toFixed(2)}s)</span>`
+            : "";
         return `
                     <div class="sync-item">
                       <span class="sync-item-status ${statusClass}">${statusLabel}</span>
-                      <span>${item.label}${errorHint}</span>
+                      <span>${item.label}${syncDurationHint}${errorHint}</span>
                     </div>
                 `;
       })

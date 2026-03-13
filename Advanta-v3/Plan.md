@@ -101,6 +101,8 @@
 - [x] New drive format (SPECTRA)
 - [x] Change `Hybrid Name` to `Hybrid Code` for Parental and Hybrid crop entries
 - [x] `Database` big updates
+- [x] Sync Queue with time
+- [ ] Smart syncing by syncing trials only the meta, response following
 
 ### UPCOMING PLANS
 

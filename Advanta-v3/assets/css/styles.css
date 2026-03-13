@@ -3041,6 +3041,11 @@ body.trial-fullscreen-active .main-content {
 .sync-item-status.pending {
   background: var(--info-soft);
   color: var(--info);
+}
+
+.sync-item-status.syncing {
+  background: var(--info-soft);
+  color: var(--info);
   animation: spin 0.8s linear infinite;
 }
 
@@ -3052,6 +3057,12 @@ body.trial-fullscreen-active .main-content {
 .sync-item-status.error {
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+.sync-item-duration {
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  margin-left: 0.1rem;
 }
 
 /* ===========================
