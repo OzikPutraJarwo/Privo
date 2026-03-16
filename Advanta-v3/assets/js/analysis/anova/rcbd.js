@@ -121,7 +121,7 @@
     };
   }
 
-  function renderRcbdOneWayResults(result, skippedCount, blockLabel, treatmentLabel, valueLabel) {
+  function renderRcbdOneWayResults(result, skippedCount, blockLabel, treatmentLabel, valueLabel, postHocTests) {
     const sigTreatment = computeSignificance(result.pTreatment);
     const sigBlock = computeSignificance(result.pBlock);
 
@@ -176,6 +176,10 @@
             ${result.treatmentGroups.map((g) => `<tr><td>${escapeHtml(g.name)}</td><td>${g.n}</td><td>${formatNumber(g.mean)}</td><td>${formatNumber(computeStdDev(g.values, g.mean))}</td></tr>`).join("")}
           </tbody>
         </table>
+
+        ${typeof app._postHocUtils?.runPostHocForGroups === "function"
+          ? app._postHocUtils.runPostHocForGroups(result.treatmentGroups, result.msError, result.dfError, postHocTests || [], treatmentLabel)
+          : ""}
 
         ${skippedCount > 0 ? `<div class="analysis-result-note">Note: ${skippedCount} rows were excluded (blank or non-numeric value).</div>` : ""}
       </div>
@@ -367,7 +371,7 @@
     };
   }
 
-  function renderRcbdFactorialResults(result, skippedCount, blockLabel, factorLabels, valueLabel) {
+  function renderRcbdFactorialResults(result, skippedCount, blockLabel, factorLabels, valueLabel, postHocTests) {
     const factorDesc = factorLabels.join(" × ");
 
     let anovaRows = "";
@@ -422,11 +426,13 @@
     const rSqAdj = result.ssTotal > 0 && result.dfTotal > 0 && result.dfError > 0
       ? (1 - (result.ssError / result.dfError) / (result.ssTotal / result.dfTotal)) * 100 : 0;
 
-    // Means tables per factor
+    // Means tables per factor (with post hoc)
     let meansTables = "";
+    const postHoc = app._postHocUtils;
     result.factorNames.forEach((name, fi) => {
       const levs = result.levels[fi];
       let rows = "";
+      const factorGroups = [];
       levs.forEach((level) => {
         const vals = [];
         result.cellMap.forEach((cellValues, cellKey) => {
@@ -436,6 +442,7 @@
         const mean = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
         const std = computeStdDev(vals, mean);
         rows += `<tr><td>${escapeHtml(level)}</td><td>${vals.length}</td><td>${formatNumber(mean)}</td><td>${formatNumber(std)}</td></tr>`;
+        factorGroups.push({ name: level, values: vals, n: vals.length, mean });
       });
       meansTables += `
         <div class="analysis-result-subtitle" style="margin-top:1rem">Means: ${escapeHtml(name)}</div>
@@ -444,6 +451,10 @@
           <tbody>${rows}</tbody>
         </table>
       `;
+      // Post hoc for this factor
+      if (typeof postHoc?.runPostHocForGroups === "function") {
+        meansTables += postHoc.runPostHocForGroups(factorGroups, result.msError, result.dfError, postHocTests || [], name);
+      }
     });
 
     const content = `
@@ -486,7 +497,7 @@
   // ═══════════════════════════════════════════════════════
 
   function runAnovaRcbd(context) {
-    const { assignedColumns, factorCount, rows, applyFilters, applySort } = context;
+    const { assignedColumns, factorCount, postHocTests, rows, applyFilters, applySort } = context;
     const numFactors = Number(factorCount) || 1;
     const preparedRows = applySort(applyFilters(rows));
 
@@ -550,6 +561,7 @@
         blockCol.label || "Block",
         treatmentCol.label || "Treatment",
         valueCol.label || "Value",
+        postHocTests,
       );
     } else {
       // Multi-factor (factorial) RCBD
@@ -609,6 +621,7 @@
         blockCol.label || "Block",
         factorLabels,
         valueCol.label || "Value",
+        postHocTests,
       );
     }
   }

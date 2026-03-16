@@ -1070,6 +1070,16 @@
                         <option value="1">1 Factor</option>
                       </select>
                     </div>
+                    <div class="analysis-select-group analysis-posthoc-group" id="analysisPostHocGroup" style="display:none">
+                      <label>Post Hoc</label>
+                      <div class="analysis-posthoc-options">
+                        <label class="analysis-posthoc-checkbox"><input type="checkbox" id="postHocLSD" value="lsd"> Fischer's LSD</label>
+                        <label class="analysis-posthoc-checkbox"><input type="checkbox" id="postHocHSD" value="hsd"> Tukey's HSD</label>
+                        <label class="analysis-posthoc-checkbox"><input type="checkbox" id="postHocDMRT" value="dmrt"> Duncan (DMRT)</label>
+                        <label class="analysis-posthoc-checkbox"><input type="checkbox" id="postHocSNK" value="snk"> SNK</label>
+                        <label class="analysis-posthoc-checkbox"><input type="checkbox" id="postHocSK" value="scott-knott"> Scott-Knott</label>
+                      </div>
+                    </div>
                   </div>
                   <div class="analysis-dropzones-row" id="analysisDropzonesRow">
                     <!-- Dropzones are generated dynamically by analysis-ui.js -->
@@ -1680,6 +1690,7 @@
     <script src="assets/js/analysis/analysis.js"></script>
     <script src="assets/js/analysis/core/analysis-ui.js"></script>
     <script src="assets/js/analysis/anova/crd.js"></script>
+    <script src="assets/js/analysis/anova/posthoc.js"></script>
     <script src="assets/js/analysis/anova/rcbd.js"></script>
     <script src="assets/js/analysis/anova/latin-square.js"></script>
     <script src="assets/js/analysis/descriptive-analysis/summary.js"></script>

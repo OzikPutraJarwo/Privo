@@ -162,7 +162,7 @@
     };
   }
 
-  function renderOneWayResults(result, skippedCount, treatmentLabel, valueLabel) {
+  function renderOneWayResults(result, skippedCount, treatmentLabel, valueLabel, postHocTests) {
     const sig = computeSignificance(result.pValue);
     const rSq = result.ssTotal > 0 ? (result.ssTreatment / result.ssTotal) * 100 : 0;
     const rSqAdj = result.ssTotal > 0 && result.dfTotal > 0
@@ -206,6 +206,10 @@
             ${result.groups.map((g) => `<tr><td>${escapeHtml(g.name)}</td><td>${g.n}</td><td>${formatNumber(g.mean)}</td><td>${formatNumber(computeStdDev(g.values, g.mean))}</td></tr>`).join("")}
           </tbody>
         </table>
+
+        ${typeof app._postHocUtils?.runPostHocForGroups === "function"
+          ? app._postHocUtils.runPostHocForGroups(result.groups, result.msError, result.dfError, postHocTests || [], treatmentLabel)
+          : ""}
 
         ${skippedCount > 0 ? `<div class="analysis-result-note">Note: ${skippedCount} rows were excluded (blank or non-numeric value).</div>` : ""}
       </div>
@@ -374,7 +378,7 @@
     };
   }
 
-  function renderFactorialResults(result, skippedCount, factorLabels, valueLabel) {
+  function renderFactorialResults(result, skippedCount, factorLabels, valueLabel, postHocTests) {
     const factorDesc = factorLabels.join(" × ");
 
     // Build ANOVA table rows
@@ -415,11 +419,13 @@
     const rSqAdj = result.ssTotal > 0 && result.dfTotal > 0 && result.dfError > 0
       ? (1 - (result.ssError / result.dfError) / (result.ssTotal / result.dfTotal)) * 100 : 0;
 
-    // Means tables per factor
+    // Means tables per factor (with post hoc)
     let meansTables = "";
+    const postHoc = app._postHocUtils;
     result.factorNames.forEach((name, fi) => {
       const levs = result.levels[fi];
       let rows = "";
+      const factorGroups = [];
       levs.forEach((level) => {
         const vals = [];
         result.cellMap.forEach((cellValues, cellKey) => {
@@ -429,6 +435,7 @@
         const mean = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
         const std = computeStdDev(vals, mean);
         rows += `<tr><td>${escapeHtml(level)}</td><td>${vals.length}</td><td>${formatNumber(mean)}</td><td>${formatNumber(std)}</td></tr>`;
+        factorGroups.push({ name: level, values: vals, n: vals.length, mean });
       });
       meansTables += `
         <div class="analysis-result-subtitle" style="margin-top:1rem">Means: ${escapeHtml(name)}</div>
@@ -437,6 +444,10 @@
           <tbody>${rows}</tbody>
         </table>
       `;
+      // Post hoc for this factor
+      if (typeof postHoc?.runPostHocForGroups === "function") {
+        meansTables += postHoc.runPostHocForGroups(factorGroups, result.msError, result.dfError, postHocTests || [], name);
+      }
     });
 
     const content = `
@@ -479,7 +490,7 @@
   // ═══════════════════════════════════════════════════════
 
   function runAnovaCrd(context) {
-    const { assignedColumns, factorCount, rows, applyFilters, applySort } = context;
+    const { assignedColumns, factorCount, postHocTests, rows, applyFilters, applySort } = context;
     const numFactors = Number(factorCount) || 1;
     const preparedRows = applySort(applyFilters(rows));
 
@@ -520,7 +531,7 @@
       }
 
       const result = computeAnovaCrdOneWay(data);
-      renderOneWayResults(result, skippedCount, treatmentCol.label || "Treatment", valueCol.label || "Value");
+      renderOneWayResults(result, skippedCount, treatmentCol.label || "Treatment", valueCol.label || "Value", postHocTests);
     } else {
       // Multi-factor (factorial) CRD
       const factorCols = [];
@@ -572,7 +583,7 @@
 
       const factorLabels = factorCols.map((fc) => fc.label || "Factor");
       const result = computeAnovaCrdFactorial(data, factorLabels);
-      renderFactorialResults(result, skippedCount, factorLabels, valueCol.label || "Value");
+      renderFactorialResults(result, skippedCount, factorLabels, valueCol.label || "Value", postHocTests);
     }
   }
 
@@ -601,7 +612,7 @@
 
   app.registerType({
     id: "anova",
-    label: "ANOVA",
+    label: "ANOVA & Post Hoc",
     designs: [
       {
         id: "crd",

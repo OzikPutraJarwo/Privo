@@ -17,6 +17,7 @@
     currentTypeId: null,
     currentDesignId: null,
     currentFactorCount: null,
+    selectedPostHoc: [],
     sectionLayout: "horizontal",
     sectionFocus: "balanced",
     resultTabs: [],
@@ -117,6 +118,16 @@
     return String(AnalysisApp.state.currentFactorCount);
   };
 
+  AnalysisApp.getSelectedPostHocTests = function getSelectedPostHocTests() {
+    const tests = [];
+    if (document.getElementById("postHocLSD")?.checked) tests.push("lsd");
+    if (document.getElementById("postHocHSD")?.checked) tests.push("hsd");
+    if (document.getElementById("postHocDMRT")?.checked) tests.push("dmrt");
+    if (document.getElementById("postHocSNK")?.checked) tests.push("snk");
+    if (document.getElementById("postHocSK")?.checked) tests.push("scott-knott");
+    return tests;
+  };
+
   AnalysisApp.populateSelectors = function populateSelectors() {
     const typeSelect = document.getElementById("analysisType");
     const designSelect = document.getElementById("analysisDesign");
@@ -167,6 +178,13 @@
       })
       .join("");
     factorsSelect.value = String(state.currentFactorCount);
+
+    // Show/hide Post Hoc group based on analysis type
+    const postHocGroup = document.getElementById("analysisPostHocGroup");
+    if (postHocGroup) {
+      const isAnova = state.currentTypeId === "anova";
+      postHocGroup.style.display = isAnova ? "" : "none";
+    }
   };
 
   AnalysisApp.resetAnalysisSelections = function resetAnalysisSelections() {
@@ -294,6 +312,7 @@
       design: selectedDesign,
       factorCount: AnalysisApp.getSelectedFactorCount(),
       assignedColumns: AnalysisApp.state.assignedColumns || {},
+      postHocTests: AnalysisApp.getSelectedPostHocTests(),
       rows: AnalysisApp.state.rows,
       applyFilters:
         typeof AnalysisApp.applyFilters === "function"

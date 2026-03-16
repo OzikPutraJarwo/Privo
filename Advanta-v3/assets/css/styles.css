@@ -7384,13 +7384,14 @@ img.leaflet-tile {
 .trial-report-table {
   width: max-content;
   min-width: 100%;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
+  border-collapse: collapse;
 }
 
 .trial-report-table th,
 .trial-report-table td {
   border: 1px solid var(--border);
-  padding: 0.45rem 0.6rem;
+  padding: 0.2rem 0.5rem;
   text-align: left;
   white-space: nowrap;
 }
@@ -7410,11 +7411,11 @@ img.leaflet-tile {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.45rem;
+  gap: 0.4rem;
   border: none;
   background: transparent;
-  padding: .6rem;
-  font-size: 0.75rem;
+  padding: .6rem .5rem;
+  font-size: 0.7rem;
   font-weight: 600;
   color: #222222;
   cursor: pointer;
@@ -7553,10 +7554,10 @@ img.leaflet-tile {
   gap: 0.25rem;
 }
 
-.trial-report-column-menu-filter-header strong {
+.trial-report-column-menu-filter-header strong, .analysis-column-visibility-header strong {
   font-size: 0.7rem;
   color: var(--text-secondary);
-  letter-spacing: 0.02em;
+  margin-left: .3rem;
 }
 
 .trial-report-column-menu-link {
@@ -7574,15 +7575,14 @@ img.leaflet-tile {
   background: var(--primary-soft);
 }
 
-.trial-report-column-menu-filter-list {
+.trial-report-column-menu-filter-list, .analysis-column-visibility-list {
   max-height: min(220px, calc(100vh - 220px));
   overflow: auto;
   display: grid;
-  gap: 0.2rem;
   padding-right: 0.1rem;
 }
 
-.trial-report-column-menu-filter-item {
+.trial-report-column-menu-filter-item, .analysis-column-visibility-item {
   display: flex;
   align-items: center;
   gap: 0.35rem;
@@ -7591,9 +7591,10 @@ img.leaflet-tile {
   padding: 0.22rem 0.28rem;
   border-radius: 6px;
   min-width: 0;
+  cursor: pointer;
 }
 
-.trial-report-column-menu-filter-item:hover {
+.trial-report-column-menu-filter-item:hover, .analysis-column-visibility-item:hover {
   background: var(--bg-tertiary);
 }
 
@@ -8069,6 +8070,11 @@ body.analysis-fullscreen-active .content {
   letter-spacing: 0.05em;
 }
 
+label.analysis-posthoc-checkbox {
+  font-weight: 600;
+  color: unset;
+}
+
 .analysis-select-group select {
   padding: 0.42rem 0.65rem;
   border: 1.5px solid var(--border-color);
@@ -8087,11 +8093,62 @@ body.analysis-fullscreen-active .content {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
 }
 
+/* Post Hoc checkbox group */
+.analysis-posthoc-group {
+  min-width: 185px;
+}
+
+.analysis-posthoc-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.analysis-posthoc-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.analysis-posthoc-checkbox input[type="checkbox"] {
+  accent-color: var(--primary);
+  cursor: pointer;
+  margin: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.analysis-posthoc-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Post Hoc result styling */
+.analysis-posthoc-title {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.analysis-posthoc-table .analysis-posthoc-letter {
+  font-weight: 700;
+  color: var(--primary);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}
+
 .analysis-dropzones-row {
   display: flex;
   align-items: flex-end;
   gap: 0.65rem;
   flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+  margin-top: 1.5rem;
+  padding-top: 1rem;
 }
 
 .analysis-dropzone {
@@ -8452,27 +8509,6 @@ body.analysis-resizing * {
   margin-bottom: 0.5rem;
 }
 
-.analysis-column-visibility-actions {
-  margin-bottom: 0.55rem;
-}
-
-.analysis-column-visibility-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  max-height: 280px;
-  overflow: auto;
-}
-
-.analysis-column-visibility-item {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.42rem 0.2rem;
-  font-size: 0.78rem;
-  color: var(--text-primary);
-}
-
 .analysis-column-visibility-item input[type="checkbox"] {
   margin: 0;
 }
@@ -8490,7 +8526,7 @@ body.analysis-resizing * {
   border: 1px solid var(--border);
   background: #fff;
   color: var(--text-primary);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   padding: 0.4rem .5rem;
   font-size: 0.6rem;
   cursor: pointer;
