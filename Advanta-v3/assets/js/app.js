@@ -117,6 +117,8 @@ const userSettingsState = {
       visibleColumns: [],
       sectionLayout: "horizontal",
       sectionFocus: "balanced",
+      pathDiagramDefaults: {},
+      ggeBiplotDefaults: {},
     },
   },
 };
@@ -153,8 +155,18 @@ function normalizeUserSettings(data) {
         : [],
       sectionLayout: normalizedLayout,
       sectionFocus: normalizedFocus,
+      pathDiagramDefaults: analysis.pathDiagramDefaults && typeof analysis.pathDiagramDefaults === "object"
+        ? { ...analysis.pathDiagramDefaults }
+        : {},
+      ggeBiplotDefaults: analysis.ggeBiplotDefaults && typeof analysis.ggeBiplotDefaults === "object"
+        ? { ...analysis.ggeBiplotDefaults }
+        : {},
     },
   };
+}
+
+function getStoredAnalysisUserSettings() {
+  return userSettingsState.data?.analysis || {};
 }
 
 function applyUserSettingsToModules() {
@@ -319,13 +331,71 @@ function renderUserSettingsAnalysisTab() {
       .join("");
   }
 
-  const layoutSelect = document.getElementById("userSettingsAnalysisLayout");
-  const focusSelect = document.getElementById("userSettingsAnalysisFocus");
-  if (layoutSelect) {
-    layoutSelect.value = userSettingsState.data?.analysis?.sectionLayout || "horizontal";
+  const savedLayout = userSettingsState.data?.analysis?.sectionLayout === "vertical"
+    ? "vertical"
+    : "horizontal";
+  const savedFocus = ["balanced", "focus-results", "focus-settings", "focus-dataset"]
+    .includes(userSettingsState.data?.analysis?.sectionFocus)
+    ? userSettingsState.data.analysis.sectionFocus
+    : "balanced";
+
+  const layoutInput = document.querySelector(`input[name="userSettingsAnalysisLayout"][value="${savedLayout}"]`);
+  if (layoutInput) layoutInput.checked = true;
+
+  const focusInput = document.querySelector(`input[name="userSettingsAnalysisFocus"][value="${savedFocus}"]`);
+  if (focusInput) focusInput.checked = true;
+
+  const pathDiagramDefaultsContainer = document.getElementById("userSettingsPathDiagramDefaultsUi");
+  if (pathDiagramDefaultsContainer) {
+    const rawDefaults = userSettingsState.data?.analysis?.pathDiagramDefaults || {};
+    if (typeof window.getPathDiagramSettingsEditorHtml === "function") {
+      pathDiagramDefaultsContainer.innerHTML = window.getPathDiagramSettingsEditorHtml(
+        rawDefaults,
+        Array.from({ length: 10 }, (_, idx) => `X${idx + 1}`),
+      );
+
+      const applyCompactVisibility = () => {
+        if (typeof window.collectPathDiagramOptionsFromContainer !== "function") return;
+        if (typeof window.syncPathDiagramOptionsEditorVisibility !== "function") return;
+        const options = window.collectPathDiagramOptionsFromContainer(pathDiagramDefaultsContainer, rawDefaults);
+        window.syncPathDiagramOptionsEditorVisibility(pathDiagramDefaultsContainer, options);
+      };
+
+      applyCompactVisibility();
+
+      if (!pathDiagramDefaultsContainer.dataset.boundSettingsEvents) {
+        pathDiagramDefaultsContainer.addEventListener("input", applyCompactVisibility);
+        pathDiagramDefaultsContainer.addEventListener("change", applyCompactVisibility);
+        pathDiagramDefaultsContainer.dataset.boundSettingsEvents = "1";
+      }
+    } else {
+      pathDiagramDefaultsContainer.innerHTML = '<div class="user-settings-column-item">Open Path Analysis once to load diagram settings editor.</div>';
+    }
   }
-  if (focusSelect) {
-    focusSelect.value = userSettingsState.data?.analysis?.sectionFocus || "balanced";
+
+  const ggeBiplotDefaultsContainer = document.getElementById("userSettingsGgeBiplotDefaultsUi");
+  if (ggeBiplotDefaultsContainer) {
+    const rawGgeDefaults = userSettingsState.data?.analysis?.ggeBiplotDefaults || {};
+    if (typeof window.getGgeBiplotSettingsEditorHtml === "function") {
+      ggeBiplotDefaultsContainer.innerHTML = window.getGgeBiplotSettingsEditorHtml(rawGgeDefaults);
+
+      const applyGgeVisibility = () => {
+        if (typeof window.collectGgeBiplotOptionsFromContainer !== "function") return;
+        if (typeof window.syncGgeBiplotOptionsEditorVisibility !== "function") return;
+        const options = window.collectGgeBiplotOptionsFromContainer(ggeBiplotDefaultsContainer, rawGgeDefaults);
+        window.syncGgeBiplotOptionsEditorVisibility(ggeBiplotDefaultsContainer, options);
+      };
+
+      applyGgeVisibility();
+
+      if (!ggeBiplotDefaultsContainer.dataset.boundSettingsEvents) {
+        ggeBiplotDefaultsContainer.addEventListener("input", applyGgeVisibility);
+        ggeBiplotDefaultsContainer.addEventListener("change", applyGgeVisibility);
+        ggeBiplotDefaultsContainer.dataset.boundSettingsEvents = "1";
+      }
+    } else {
+      ggeBiplotDefaultsContainer.innerHTML = '<div class="user-settings-column-item">Open GGE Biplot once to load biplot settings editor.</div>';
+    }
   }
 }
 
@@ -423,16 +493,38 @@ async function saveUserSettingsFromModal() {
     return;
   }
 
-  const analysisLayoutSelect = document.getElementById("userSettingsAnalysisLayout");
-  const analysisFocusSelect = document.getElementById("userSettingsAnalysisFocus");
+  const checkedLayout = document.querySelector('input[name="userSettingsAnalysisLayout"]:checked')?.value;
+  const checkedFocus = document.querySelector('input[name="userSettingsAnalysisFocus"]:checked')?.value;
+  const pathDiagramDefaultsContainer = document.getElementById("userSettingsPathDiagramDefaultsUi");
 
-  const sectionLayout = analysisLayoutSelect?.value === "vertical"
-    ? "vertical"
-    : "horizontal";
+  const sectionLayout = checkedLayout === "vertical" ? "vertical" : "horizontal";
   const sectionFocus = ["balanced", "focus-results", "focus-settings", "focus-dataset"]
-    .includes(analysisFocusSelect?.value)
-    ? analysisFocusSelect.value
+    .includes(checkedFocus)
+    ? checkedFocus
     : "balanced";
+
+  let parsedPathDiagramDefaults = userSettingsState.data?.analysis?.pathDiagramDefaults || {};
+  if (
+    pathDiagramDefaultsContainer
+    && typeof window.collectPathDiagramOptionsFromContainer === "function"
+    && typeof window.sanitizePathDiagramOptions === "function"
+  ) {
+    parsedPathDiagramDefaults = window.sanitizePathDiagramOptions(
+      window.collectPathDiagramOptionsFromContainer(pathDiagramDefaultsContainer, parsedPathDiagramDefaults),
+    );
+  }
+
+  const ggeBiplotDefaultsContainer = document.getElementById("userSettingsGgeBiplotDefaultsUi");
+  let parsedGgeBiplotDefaults = userSettingsState.data?.analysis?.ggeBiplotDefaults || {};
+  if (
+    ggeBiplotDefaultsContainer
+    && typeof window.collectGgeBiplotOptionsFromContainer === "function"
+    && typeof window.sanitizeGgeBiplotOptions === "function"
+  ) {
+    parsedGgeBiplotDefaults = window.sanitizeGgeBiplotOptions(
+      window.collectGgeBiplotOptionsFromContainer(ggeBiplotDefaultsContainer, parsedGgeBiplotDefaults),
+    );
+  }
 
   userSettingsState.data = normalizeUserSettings({
     ...userSettingsState.data,
@@ -445,6 +537,8 @@ async function saveUserSettingsFromModal() {
       visibleColumns: selectedAnalysisKeys,
       sectionLayout,
       sectionFocus,
+      pathDiagramDefaults: parsedPathDiagramDefaults,
+      ggeBiplotDefaults: parsedGgeBiplotDefaults,
     },
   });
 

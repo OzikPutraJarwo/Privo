@@ -85,6 +85,8 @@
 - [x] `Data Analysis` Beta releases
 - [x] New CropID navigation
 - [x] `Data Analysis` CRD, RCBD, and LSD with multiple factors (up to 3)
+- [x] `Data Analysis` Anova with Post Hoc: Fischer, Tukey, Duncan, SNK, and SK
+- [x] `Data Analysis` t-Test, Path Analysis, and GGE Biplot
 #### Bug Fixes and Redesigns
 - [x] Automatic logout when error initializing happened
 - [x] Planting date per location, not per trial

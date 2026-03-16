@@ -1064,7 +1064,7 @@
                         <option value="crd">Completely Randomized Design</option>
                       </select>
                     </div>
-                    <div class="analysis-select-group">
+                    <div class="analysis-select-group" id="analysisFactorsGroup">
                       <label>Factors</label>
                       <select id="analysisFactors">
                         <option value="1">1 Factor</option>
@@ -1605,24 +1605,57 @@
 
               <h4 class="user-settings-subtitle">Analysis Layout</h4>
               <p class="user-settings-hint">Configure split layout and focus mode defaults for Data Analysis.</p>
-              <div class="user-settings-analysis-grid">
-                <label class="user-settings-field">
-                  <span>Section Split</span>
-                  <select id="userSettingsAnalysisLayout" class="trial-report-topbar-select user-settings-select">
-                    <option value="horizontal">Horizontal Split</option>
-                    <option value="vertical">Vertical Split</option>
-                  </select>
-                </label>
-                <label class="user-settings-field">
-                  <span>Focus Mode</span>
-                  <select id="userSettingsAnalysisFocus" class="trial-report-topbar-select user-settings-select">
-                    <option value="balanced">Balanced</option>
-                    <option value="focus-results">Focus Results</option>
-                    <option value="focus-settings">Focus Settings</option>
-                    <option value="focus-dataset">Focus Dataset</option>
-                  </select>
-                </label>
+              <div class="user-settings-layout-panel">
+                <div class="user-settings-layout-block">
+                  <div class="user-settings-layout-label">Section Split</div>
+                  <div class="user-settings-choice-grid user-settings-choice-grid-2">
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsAnalysisLayout" value="horizontal" checked>
+                      <span class="material-symbols-rounded">splitscreen_horizontal</span>
+                      <span>Horizontal</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsAnalysisLayout" value="vertical">
+                      <span class="material-symbols-rounded">splitscreen_vertical</span>
+                      <span>Vertical</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="user-settings-layout-block">
+                  <div class="user-settings-layout-label">Focus Mode</div>
+                  <div class="user-settings-choice-grid user-settings-choice-grid-2">
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsAnalysisFocus" value="balanced" checked>
+                      <span class="material-symbols-rounded">dashboard</span>
+                      <span>Balanced</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsAnalysisFocus" value="focus-results">
+                      <span class="material-symbols-rounded">lab_profile</span>
+                      <span>Focus Results</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsAnalysisFocus" value="focus-settings">
+                      <span class="material-symbols-rounded">tune</span>
+                      <span>Focus Settings</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsAnalysisFocus" value="focus-dataset">
+                      <span class="material-symbols-rounded">table</span>
+                      <span>Focus Dataset</span>
+                    </label>
+                  </div>
+                </div>
               </div>
+
+              <h4 class="user-settings-subtitle">Path Diagram Defaults</h4>
+              <p class="user-settings-hint">All Path Diagram preview customizations are stored here and reused automatically.</p>
+              <div id="userSettingsPathDiagramDefaultsUi" class="user-settings-path-diagram-ui"></div>
+
+              <h4 class="user-settings-subtitle">GGE Biplot Defaults</h4>
+              <p class="user-settings-hint">All GGE Biplot preview customizations are stored here and reused automatically.</p>
+              <div id="userSettingsGgeBiplotDefaultsUi" class="user-settings-path-diagram-ui"></div>
             </div>
           </section>
         </div>
@@ -1693,6 +1726,7 @@
     <script src="assets/js/analysis/anova/posthoc.js"></script>
     <script src="assets/js/analysis/anova/rcbd.js"></script>
     <script src="assets/js/analysis/anova/latin-square.js"></script>
+    <script src="assets/js/analysis/t-test/t-test.js"></script>
     <script src="assets/js/analysis/descriptive-analysis/summary.js"></script>
     <script src="assets/js/analysis/normality/shapiro-wilk.js"></script>
     <script src="assets/js/analysis/regression-correlation/simple-linear-regression.js"></script>

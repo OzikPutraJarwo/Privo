@@ -615,9 +615,9 @@
 
     if (hiddenSections.size === 0) {
       if (layout === "horizontal") {
-        dataset.style.flex = "1 1 45%";
+        dataset.style.flex = "1 1 40%";
         controls.style.flex = "0 0 20%";
-        results.style.flex = "0 0 35%";
+        results.style.flex = "0 0 40%";
       } else {
         dataset.style.flex = "1 1 48%";
         controls.style.flex = "0 0 auto";

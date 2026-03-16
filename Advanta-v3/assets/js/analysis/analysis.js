@@ -142,7 +142,11 @@
     }
 
     typeSelect.innerHTML = types
-      .map((type) => `<option value="${type.id}">${escapeHtml(type.label)}</option>`)
+      .map((type) => {
+        // A type is implemented if at least one design has getDropzones
+        const hasImpl = type.designs.some((d) => typeof d.getDropzones === "function");
+        return `<option value="${type.id}"${hasImpl ? "" : " disabled"}>${escapeHtml(type.label)}</option>`;
+      })
       .join("");
     typeSelect.value = state.currentTypeId;
 
@@ -170,6 +174,10 @@
 
     factorsSelect.innerHTML = supportedFactors
       .map((value) => {
+        // Use custom option label from design if provided
+        if (typeof selectedDesign?.factorsOptionLabel === "function") {
+          return `<option value="${value}">${escapeHtml(selectedDesign.factorsOptionLabel(value))}</option>`;
+        }
         const factorNumber = Number(value);
         const label = Number.isFinite(factorNumber) && factorNumber > 1
           ? `${factorNumber} Factors`
@@ -178,6 +186,19 @@
       })
       .join("");
     factorsSelect.value = String(state.currentFactorCount);
+
+    // Update Factors group label and visibility
+    const factorsGroup = document.getElementById("analysisFactorsGroup");
+    if (factorsGroup) {
+      const hideFactors = state.currentTypeId === "ttest";
+      factorsGroup.style.display = hideFactors ? "none" : "";
+
+      // Update the label text based on design config
+      const factorsLabel = factorsGroup.querySelector("label");
+      if (factorsLabel) {
+        factorsLabel.textContent = selectedDesign?.factorsLabel || "Factors";
+      }
+    }
 
     // Show/hide Post Hoc group based on analysis type
     const postHocGroup = document.getElementById("analysisPostHocGroup");

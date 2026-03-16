@@ -5902,7 +5902,7 @@ body.no-scroll {
 .area-list-card {
   background: var(--bg-secondary);
   padding: 1rem;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius);
   margin-bottom: 1rem;
   display: flex;
   gap: 1rem;
@@ -7110,6 +7110,78 @@ img.leaflet-tile {
   margin-top: 1rem;
 }
 
+.user-settings-layout-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.user-settings-layout-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-primary);
+  padding: 0.65rem;
+}
+
+.user-settings-layout-label {
+  font-size: 0.77rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.55rem;
+}
+
+.user-settings-choice-grid {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.user-settings-choice-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.user-settings-choice-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  padding: 0.55rem 0.65rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.user-settings-choice-card input[type="radio"] {
+  margin: 0;
+}
+
+.user-settings-choice-card .material-symbols-rounded {
+  font-size: 0.95rem;
+  color: var(--text-tertiary);
+}
+
+.user-settings-choice-card:has(input[type="radio"]:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.user-settings-choice-card:has(input[type="radio"]:checked) .material-symbols-rounded {
+  color: var(--primary-dark);
+}
+
+.user-settings-path-diagram-ui {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  padding: 0.6rem;
+}
+
 .user-settings-columns-list {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -7189,7 +7261,7 @@ img.leaflet-tile {
   max-width: 100%;
   max-height: 70vh;
   object-fit: contain;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
@@ -7787,7 +7859,7 @@ img.leaflet-tile {
   padding: 0.875rem 1rem;
   border: none;
   background: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius);
   cursor: pointer;
   text-align: left;
   transition: background 0.15s;
@@ -7811,7 +7883,7 @@ img.leaflet-tile {
   padding: 0.75rem;
   border: none;
   background: var(--bg-secondary);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius);
   cursor: pointer;
   font-size: 0.875rem;
   font-weight: 500;
@@ -7960,11 +8032,11 @@ body.analysis-fullscreen-active .content {
 }
 
 .analysis-results-body {
-  padding: 1.25rem 1.5rem;
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   font-size: 0.82rem;
   line-height: 1.65;
   color: var(--text-primary);
+  height: 100%;
 }
 
 .analysis-results-empty {
@@ -7977,7 +8049,8 @@ body.analysis-fullscreen-active .content {
 }
 
 .analysis-result-block {
-  margin-bottom: 1.25rem;
+  padding: 1rem 1.1rem;
+  display: inline-block;
 }
 
 .analysis-result-title {
@@ -8001,6 +8074,401 @@ body.analysis-fullscreen-active .content {
   color: var(--text-tertiary);
   font-style: italic;
   font-family: inherit;
+}
+
+.analysis-result-warning {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  background: rgba(255, 179, 0, 0.1);
+  border: 1px solid rgba(255, 179, 0, 0.35);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  font-family: inherit;
+}
+
+.analysis-warning-icon {
+  margin-right: 0.35rem;
+  font-size: 1rem;
+}
+
+.analysis-path-diagonal {
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+/* Path Diagram */
+.path-diagram-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 1rem 0;
+}
+
+.path-diagram-image {
+  max-width: 400px;
+  border-radius: var(--radius);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.path-diagram-image:hover {
+  transform: scale(1.01);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.14);
+}
+
+.path-diagram-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.path-diagram-preview-btn,
+.path-diagram-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  padding: 0.45rem 1rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+/* Path Diagram Preview Modal */
+.path-diagram-modal-overlay {
+  transition: background 0.25s ease, opacity 0.25s ease;
+  opacity: 0;
+}
+
+.path-diagram-modal-overlay.active {
+  display: flex;
+  opacity: 1;
+}
+
+.path-diagram-preview-modal {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0.85rem;
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  width: min(1280px, 96vw);
+  max-height: 94vh;
+  position: relative;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
+  animation: pathDiagramFadeIn 0.2s ease;
+  overflow: hidden;
+}
+
+@keyframes pathDiagramFadeIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.path-diagram-modal-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: var(--transition);
+  z-index: 10;
+}
+
+.path-diagram-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.path-diagram-preview-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.path-diagram-preview-body {
+  display: grid;
+  grid-template-columns: 1fr minmax(290px, 360px);
+  gap: 1rem;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.path-diagram-preview-canvas-wrap {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: auto;
+}
+
+.path-diagram-settings {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.path-diagram-settings-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.65rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.path-diagram-settings-toolbar .btn {
+  height: 30px;
+  padding: 0 0.6rem;
+  font-size: 0.72rem;
+}
+
+.path-diagram-settings-toolbar .path-diagram-close-btn {
+  margin-left: auto;
+  min-width: 30px;
+  justify-content: center;
+  padding: 0;
+}
+
+.path-diagram-settings-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.path-diagram-setting-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-primary);
+  padding: 0.7rem;
+}
+
+.path-diagram-setting-group-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.55rem;
+}
+
+.path-diagram-setting-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.path-diagram-setting-row:last-child {
+  margin-bottom: 0;
+}
+
+.path-diagram-setting-row.is-hidden {
+  display: none;
+}
+
+.path-diagram-setting-label {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.path-diagram-setting-row input[type="text"],
+.path-diagram-setting-row input[type="number"],
+.path-diagram-setting-row select {
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 0.55rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.76rem;
+}
+
+.path-diagram-setting-row input[type="checkbox"] {
+  justify-self: start;
+  width: 16px;
+  height: 16px;
+}
+
+.path-diagram-setting-row input[type="color"] {
+  width: 46px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  background: var(--bg-primary);
+  cursor: pointer;
+}
+
+.path-diagram-setting-color {
+  grid-template-columns: minmax(140px, 1fr) auto;
+}
+
+.path-diagram-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.15rem;
+}
+
+@media (max-width: 1080px) {
+  .path-diagram-preview-modal {
+    width: min(960px, 96vw);
+  }
+
+  .path-diagram-preview-body {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .path-diagram-settings-scroll {
+    max-height: 38vh;
+  }
+}
+
+/* ─── GGE Biplot ──────────────────────────────────────── */
+
+.gge-biplot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.gge-biplot-card {
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-light, #e2e5ea);
+  border-radius: 10px;
+  padding: 0.85rem;
+  text-align: center;
+  transition: box-shadow 0.18s, border-color 0.18s;
+}
+
+.gge-biplot-card:hover {
+  border-color: var(--accent, #3b82f6);
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.10);
+}
+
+.gge-biplot-card-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary, #475569);
+  margin-bottom: 0.5rem;
+}
+
+.gge-biplot-image {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid var(--border-light, #e2e5ea);
+  background: var(--bg-secondary, #fafafa);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.gge-biplot-image:hover {
+  transform: scale(1.015);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+.gge-biplot-inline {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.gge-preview-modal {
+  max-width: min(1260px, 97vw);
+}
+
+.gge-preview-type-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.65rem 1rem 0.45rem;
+  border-bottom: 1px solid var(--border-light, #e2e5ea);
+  background: var(--bg-secondary, #f8fafc);
+  border-radius: 12px 12px 0 0;
+}
+
+.gge-preview-type-btn {
+  padding: 0.32rem 0.82rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-light, #e2e5ea);
+  background: var(--bg-primary, #fff);
+  color: var(--text-secondary, #475569);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.gge-preview-type-btn:hover {
+  border-color: var(--accent, #3b82f6);
+  color: var(--accent, #3b82f6);
+}
+
+.gge-preview-type-btn.active {
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  border-color: var(--accent, #3b82f6);
+}
+
+@media (max-width: 1080px) {
+  .gge-biplot-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.85rem;
+  }
+
+  .gge-preview-modal {
+    width: min(960px, 96vw);
+  }
+}
+
+@media (max-width: 640px) {
+  .gge-biplot-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gge-preview-type-tabs {
+    gap: 0.25rem;
+    padding: 0.5rem 0.65rem 0.35rem;
+  }
+
+  .gge-preview-type-btn {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.6rem;
+  }
+}
+
+#analysisType option:disabled {
+  color: var(--text-tertiary);
+  font-style: italic;
 }
 
 /* ANOVA tables */
@@ -8236,7 +8704,7 @@ label.analysis-posthoc-checkbox {
   align-self: flex-end;
   gap: 0.35rem;
   padding: .3rem .9rem;
-  margin: calc(-0.2rem + 0.25px) -0.5rem calc(-0.2rem + 0.25px) 0;
+  margin: calc(-0.2rem + 0.25px) -0.4rem calc(-0.2rem + 0.25px) 0;
   font-size: 0.8rem;
   border-radius: var(--radius-sm);
   box-shadow: 0 1px 4px rgba(37, 99, 235, 0.2);
@@ -8545,7 +9013,6 @@ body.analysis-resizing * {
 }
 
 .analysis-results-body {
-  padding: 1rem 1.1rem;
   overflow: auto;
 }
 
