@@ -171,6 +171,16 @@
             <button id="databaseExportBtn" class="btn btn-secondary database-topbar-control hidden" onclick="downloadDatabaseExcel()" style="display: none;" title="Download database">
               <span class="material-symbols-rounded">download</span>
             </button>
+            <select id="analysisSectionLayoutTopbar" class="trial-report-topbar-select analysis-topbar-control hidden" style="display: none;" title="Section layout">
+              <option value="vertical">Vertical Split</option>
+              <option value="horizontal">Horizontal Split</option>
+            </select>
+            <select id="analysisSectionFocusTopbar" class="trial-report-topbar-select analysis-topbar-control hidden" style="display: none;" title="Focus mode">
+              <option value="balanced">Balanced</option>
+              <option value="focus-results">Focus Results</option>
+              <option value="focus-settings">Focus Settings</option>
+              <option value="focus-dataset">Focus Dataset</option>
+            </select>
             <div class="user-menu" id="userMenu">
               <button class="user-menu-trigger" id="userMenuTrigger" aria-haspopup="true" aria-expanded="false">
                 <div id="userAvatar" class="user-avatar"></div>
@@ -999,76 +1009,18 @@
           </div>
         
           <div id="analysisContent" class="page-content">
-            <div class="analysis-container">
-              <!-- Section 1: Results -->
-              <div class="analysis-section analysis-results" id="analysisResults">
-                <div class="analysis-results-body" id="analysisResultsBody">
-                  <p class="analysis-results-empty">Run an analysis to see results here.</p>
-                </div>
-              </div>
-
-              <!-- Resize handle 1 -->
-              <div class="analysis-resize-handle" data-resize="results-controls" onmousedown="startAnalysisResize(event, 'results-controls')">
-                <div class="analysis-resize-grip"></div>
-              </div>
-
-              <!-- Section 2: Controls -->
-              <div class="analysis-section analysis-controls" id="analysisControls">
-                <div class="analysis-controls-row">
-                  <div class="analysis-select-group">
-                    <label>Analysis</label>
-                    <select id="analysisType">
-                      <option value="anova">ANOVA</option>
-                    </select>
+            <div class="analysis-container" id="analysisContainer" data-layout="horizontal">
+              <!-- Section 1: Dataset -->
+              <div class="analysis-section analysis-table-section" id="analysisDatasetSection">
+                <div class="analysis-section-header analysis-table-header">
+                  <div class="analysis-section-title-wrap">
+                    <span class="material-symbols-rounded">table_chart</span>
+                    <h3>Dataset</h3>
                   </div>
-                  <div class="analysis-select-group">
-                    <label>Design</label>
-                    <select id="analysisDesign">
-                      <option value="crd">Completely Randomized Design</option>
-                    </select>
-                  </div>
-                  <div class="analysis-select-group">
-                    <label>Factors</label>
-                    <select id="analysisFactors">
-                      <option value="1">1 Factor</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="analysis-dropzones-row" id="analysisDropzonesRow">
-                  <div class="analysis-dropzone">
-                    <label>Treatment</label>
-                    <div class="analysis-dropzone-area" id="analysisTreatmentArea" data-role="treatment"
-                         ondragover="handleAnalysisDropzoneDragOver(event)"
-                         ondragleave="handleAnalysisDropzoneDragLeave(event)"
-                         ondrop="handleAnalysisDropzoneDrop(event, 'treatment')">
-                      <span class="analysis-dropzone-placeholder">Drag a column header here</span>
-                    </div>
-                  </div>
-                  <div class="analysis-dropzone">
-                    <label>Value</label>
-                    <div class="analysis-dropzone-area" id="analysisValueArea" data-role="value"
-                         ondragover="handleAnalysisDropzoneDragOver(event)"
-                         ondragleave="handleAnalysisDropzoneDragLeave(event)"
-                         ondrop="handleAnalysisDropzoneDrop(event, 'value')">
-                      <span class="analysis-dropzone-placeholder">Drag a column header here</span>
-                    </div>
-                  </div>
-                  <button class="btn btn-primary" id="analysisRunBtn" onclick="runAnalysis()" disabled>
-                    <span class="material-symbols-rounded">play_arrow</span>
-                    Analyze
+                  <button type="button" id="analysisColumnsTrigger" class="analysis-columns-trigger" onclick="toggleAnalysisColumnVisibilityMenu(event)" aria-haspopup="true" aria-expanded="false">
+                    <span class="material-symbols-rounded">view_column</span>
+                    <span id="analysisColumnsTriggerLabel">Columns</span>
                   </button>
-                </div>
-              </div>
-
-              <!-- Resize handle 2 -->
-              <div class="analysis-resize-handle" data-resize="controls-table" onmousedown="startAnalysisResize(event, 'controls-table')">
-                <div class="analysis-resize-grip"></div>
-              </div>
-
-              <!-- Section 3: Data Table -->
-              <div class="analysis-section analysis-table-section">
-                <div class="analysis-table-info">
-                  <span id="analysisRowCount">0 rows</span>
                 </div>
                 <div class="inventory-container trial-report-content">
                   <div class="trial-report-body">
@@ -1078,6 +1030,73 @@
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              <!-- Resize handle 1 -->
+              <div class="analysis-resize-handle" data-resize="dataset-controls" onmousedown="startAnalysisResize(event, 'dataset-controls')">
+                <div class="analysis-resize-grip"></div>
+              </div>
+
+              <!-- Section 2: Settings -->
+              <div class="analysis-section analysis-controls" id="analysisControls">
+                <div class="analysis-section-header analysis-controls-header">
+                  <div class="analysis-section-title-wrap">
+                    <span class="material-symbols-rounded">tune</span>
+                    <h3>Settings</h3>
+                  </div>
+                  <button class="btn btn-primary analysis-kicker-action" id="analysisRunBtn" onclick="runAnalysis()" disabled>
+                    <span class="material-symbols-rounded">play_arrow</span>
+                    Analyze
+                  </button>
+                </div>
+                <div class="analysis-controls-wrapper">
+                  <div class="analysis-controls-row">
+                    <div class="analysis-select-group">
+                      <label>Analysis</label>
+                      <select id="analysisType">
+                        <option value="anova">ANOVA</option>
+                      </select>
+                    </div>
+                    <div class="analysis-select-group">
+                      <label>Design</label>
+                      <select id="analysisDesign">
+                        <option value="crd">Completely Randomized Design</option>
+                      </select>
+                    </div>
+                    <div class="analysis-select-group">
+                      <label>Factors</label>
+                      <select id="analysisFactors">
+                        <option value="1">1 Factor</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="analysis-dropzones-row" id="analysisDropzonesRow">
+                    <!-- Dropzones are generated dynamically by analysis-ui.js -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- Resize handle 2 -->
+              <div class="analysis-resize-handle" data-resize="controls-results" onmousedown="startAnalysisResize(event, 'controls-results')">
+                <div class="analysis-resize-grip"></div>
+              </div>
+
+              <!-- Section 3: Results -->
+              <div class="analysis-section analysis-results" id="analysisResults">
+                <div class="analysis-section-header analysis-results-header">
+                  <div class="analysis-section-title-wrap">
+                    <span class="material-symbols-rounded">summarize</span>
+                    <h3>Results</h3>
+                  </div>
+                  <div class="analysis-results-header-tools">
+                    <select id="analysisResultsTabSelect" class="analysis-results-tab-select" aria-label="Select result tab" disabled>
+                      <option value="">No output yet</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="analysis-results-body" id="analysisResultsBody">
+                  <p class="analysis-results-empty">Run an analysis to see results here.</p>
                 </div>
               </div>
             </div>
@@ -1549,6 +1568,10 @@
               <span class="material-symbols-rounded">database</span>
               <span>Database</span>
             </button>
+            <button type="button" class="user-settings-nav-item" data-settings-tab="analysis">
+              <span class="material-symbols-rounded">analytics</span>
+              <span>Analysis</span>
+            </button>
           </aside>
           <section class="user-settings-content">
             <div class="user-settings-tab active" id="userSettingsTabDatabase">
@@ -1559,6 +1582,37 @@
                 <button type="button" class="btn btn-secondary" id="dbSettingsClearAllBtn">Clear All</button>
               </div>
               <div id="dbSettingsColumnsList" class="user-settings-columns-list"></div>
+            </div>
+
+            <div class="user-settings-tab" id="userSettingsTabAnalysis">
+              <h4>Analysis Dataset Columns</h4>
+              <p class="user-settings-hint">Choose which columns are shown inside the Analysis dataset table.</p>
+              <div class="user-settings-actions">
+                <button type="button" class="btn btn-secondary" id="analysisSettingsSelectAllBtn">Select All</button>
+                <button type="button" class="btn btn-secondary" id="analysisSettingsClearAllBtn">Clear All</button>
+              </div>
+              <div id="analysisSettingsColumnsList" class="user-settings-columns-list"></div>
+
+              <h4 class="user-settings-subtitle">Analysis Layout</h4>
+              <p class="user-settings-hint">Configure split layout and focus mode defaults for Data Analysis.</p>
+              <div class="user-settings-analysis-grid">
+                <label class="user-settings-field">
+                  <span>Section Split</span>
+                  <select id="userSettingsAnalysisLayout" class="trial-report-topbar-select user-settings-select">
+                    <option value="horizontal">Horizontal Split</option>
+                    <option value="vertical">Vertical Split</option>
+                  </select>
+                </label>
+                <label class="user-settings-field">
+                  <span>Focus Mode</span>
+                  <select id="userSettingsAnalysisFocus" class="trial-report-topbar-select user-settings-select">
+                    <option value="balanced">Balanced</option>
+                    <option value="focus-results">Focus Results</option>
+                    <option value="focus-settings">Focus Settings</option>
+                    <option value="focus-dataset">Focus Dataset</option>
+                  </select>
+                </label>
+              </div>
             </div>
           </section>
         </div>
@@ -1623,7 +1677,16 @@
     <script src="assets/js/inventory.js"></script>
     <script src="assets/js/locations.js"></script>
     <script src="assets/js/trial.js"></script>
-    <script src="assets/js/analysis.js"></script>
+    <script src="assets/js/analysis/analysis.js"></script>
+    <script src="assets/js/analysis/core/analysis-ui.js"></script>
+    <script src="assets/js/analysis/anova/crd.js"></script>
+    <script src="assets/js/analysis/anova/rcbd.js"></script>
+    <script src="assets/js/analysis/anova/latin-square.js"></script>
+    <script src="assets/js/analysis/descriptive-analysis/summary.js"></script>
+    <script src="assets/js/analysis/normality/shapiro-wilk.js"></script>
+    <script src="assets/js/analysis/regression-correlation/simple-linear-regression.js"></script>
+    <script src="assets/js/analysis/gge-biplot/gge-biplot.js"></script>
+    <script src="assets/js/analysis/path-analysis/path-analysis.js"></script>
     <script src="assets/js/library.js"></script>
     <script src="assets/js/reminder.js"></script>
     <script src="assets/js/app.js"></script>

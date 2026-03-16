@@ -84,6 +84,7 @@
 - [x] `Database` All data
 - [x] `Data Analysis` Beta releases
 - [x] New CropID navigation
+- [x] `Data Analysis` CRD, RCBD, and LSD with multiple factors (up to 3)
 #### Bug Fixes and Redesigns
 - [x] Automatic logout when error initializing happened
 - [x] Planting date per location, not per trial
@@ -102,7 +103,9 @@
 - [x] Change `Hybrid Name` to `Hybrid Code` for Parental and Hybrid crop entries
 - [x] `Database` big updates
 - [x] Sync Queue with time
-- [ ] Smart syncing by syncing trials only the meta, response following
+- [ ] `Sync Queue` Smart syncing by syncing trials only the meta, response following
+- [x] `Data Analysis` JS restructured
+- [x] `Data Analisis` redesign with dynamic split, filter bug, etc
 
 ### UPCOMING PLANS
 

@@ -534,7 +534,7 @@ function _renderDashReminderSection(type) {
 
   if (items.length > MAX_ITEMS) {
     container.insertAdjacentHTML("beforeend", `
-      <div style="text-align:center; padding:0.5rem 0; font-size:0.75rem; color:var(--text-tertiary)">
+      <div style="text-align:center; padding:0.5rem 0; font-size:0.75rem; color:var(--text-tertiary); grid-column: span 3;">
         +${items.length - MAX_ITEMS} more
       </div>`);
   }

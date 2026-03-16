@@ -113,6 +113,11 @@ const userSettingsState = {
     database: {
       visibleColumns: [],
     },
+    analysis: {
+      visibleColumns: [],
+      sectionLayout: "horizontal",
+      sectionFocus: "balanced",
+    },
   },
 };
 
@@ -121,12 +126,33 @@ function normalizeUserSettings(data) {
   const database = safe.database && typeof safe.database === "object"
     ? safe.database
     : {};
+  const analysis = safe.analysis && typeof safe.analysis === "object"
+    ? safe.analysis
+    : {};
+
+  const normalizedLayout = analysis.sectionLayout === "vertical"
+    ? "vertical"
+    : "horizontal";
+  const rawFocus = analysis.sectionFocus === "focus-builder"
+    ? "focus-settings"
+    : analysis.sectionFocus;
+  const normalizedFocus = ["balanced", "focus-results", "focus-settings", "focus-dataset"]
+    .includes(rawFocus)
+    ? rawFocus
+    : "balanced";
 
   return {
     database: {
       visibleColumns: Array.isArray(database.visibleColumns)
         ? database.visibleColumns.map((key) => String(key))
         : [],
+    },
+    analysis: {
+      visibleColumns: Array.isArray(analysis.visibleColumns)
+        ? analysis.visibleColumns.map((key) => String(key))
+        : [],
+      sectionLayout: normalizedLayout,
+      sectionFocus: normalizedFocus,
     },
   };
 }
@@ -143,6 +169,11 @@ function applyUserSettingsToModules() {
     typeof renderDatabaseTable === "function"
   ) {
     renderDatabaseTable();
+  }
+
+  const analysisPrefs = userSettingsState.data?.analysis || {};
+  if (typeof applyAnalysisUserSettings === "function") {
+    applyAnalysisUserSettings(analysisPrefs);
   }
 }
 
@@ -255,7 +286,92 @@ function renderUserSettingsDatabaseTab() {
     .join("");
 }
 
-function openUserSettingsModal() {
+function renderUserSettingsAnalysisTab() {
+  const listEl = document.getElementById("analysisSettingsColumnsList");
+  if (!listEl) return;
+
+  const options = typeof getAnalysisColumnOptionsForSettings === "function"
+    ? getAnalysisColumnOptionsForSettings()
+    : [];
+
+  if (!Array.isArray(options) || options.length === 0) {
+    listEl.innerHTML = '<div class="user-settings-column-item">Open Analysis to load columns</div>';
+  } else {
+    const savedVisible = Array.isArray(userSettingsState.data?.analysis?.visibleColumns)
+      ? userSettingsState.data.analysis.visibleColumns
+      : [];
+    const useSaved = savedVisible.length > 0;
+    const currentVisible = new Set(
+      useSaved
+        ? savedVisible
+        : options.filter((item) => item.visible).map((item) => item.key),
+    );
+
+    listEl.innerHTML = options
+      .map(
+        (item) => `
+          <label class="user-settings-column-item">
+            <input type="checkbox" class="analysis-settings-col-checkbox" data-col-key="${escapeHtml(item.key)}" ${currentVisible.has(item.key) ? "checked" : ""}>
+            <span>${escapeHtml(item.label)}</span>
+          </label>
+        `,
+      )
+      .join("");
+  }
+
+  const layoutSelect = document.getElementById("userSettingsAnalysisLayout");
+  const focusSelect = document.getElementById("userSettingsAnalysisFocus");
+  if (layoutSelect) {
+    layoutSelect.value = userSettingsState.data?.analysis?.sectionLayout || "horizontal";
+  }
+  if (focusSelect) {
+    focusSelect.value = userSettingsState.data?.analysis?.sectionFocus || "balanced";
+  }
+}
+
+function switchUserSettingsTab(tabKey = "database") {
+  const safeTabKey = ["database", "analysis"].includes(tabKey)
+    ? tabKey
+    : "database";
+
+  document.querySelectorAll(".user-settings-nav-item").forEach((button) => {
+    button.classList.toggle("active", button.dataset.settingsTab === safeTabKey);
+  });
+
+  document.querySelectorAll(".user-settings-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.id === `userSettingsTab${safeTabKey === "database" ? "Database" : "Analysis"}`);
+  });
+}
+
+function updateStoredAnalysisUserSettings(patch = {}, options = {}) {
+  const { closeMenu = false } = options;
+
+  userSettingsState.data = normalizeUserSettings({
+    ...userSettingsState.data,
+    analysis: {
+      ...(userSettingsState.data?.analysis || {}),
+      ...patch,
+    },
+  });
+
+  if (typeof applyAnalysisUserSettings === "function") {
+    applyAnalysisUserSettings(userSettingsState.data.analysis);
+  }
+
+  saveUserSettingsLocalCache();
+  enqueueUserSettingsSync();
+
+  const modal = document.getElementById("userSettingsModal");
+  if (modal?.classList.contains("active")) {
+    renderUserSettingsAnalysisTab();
+  }
+
+  if (closeMenu && typeof closeUserSettingsModal === "function") {
+    closeUserSettingsModal();
+  }
+}
+
+function openUserSettingsModal(activeTab = "database") {
   const modal = document.getElementById("userSettingsModal");
   const dropdown = document.getElementById("userDropdown");
   const trigger = document.getElementById("userMenuTrigger");
@@ -265,6 +381,8 @@ function openUserSettingsModal() {
   if (trigger) trigger.classList.remove("active");
 
   renderUserSettingsDatabaseTab();
+  renderUserSettingsAnalysisTab();
+  switchUserSettingsTab(activeTab);
   modal.classList.remove("hidden");
   modal.classList.add("active");
 }
@@ -277,30 +395,65 @@ function closeUserSettingsModal() {
 }
 
 async function saveUserSettingsFromModal() {
-  const checkboxes = Array.from(
+  const databaseCheckboxes = Array.from(
     document.querySelectorAll("#dbSettingsColumnsList .db-settings-col-checkbox"),
   );
 
-  const selectedKeys = checkboxes
+  const selectedDatabaseKeys = databaseCheckboxes
     .filter((checkbox) => checkbox.checked)
     .map((checkbox) => String(checkbox.dataset.colKey || ""))
     .filter(Boolean);
 
-  if (selectedKeys.length === 0) {
+  if (selectedDatabaseKeys.length === 0) {
     showToast("At least one Database column must be visible", "warning");
     return;
   }
+
+  const analysisCheckboxes = Array.from(
+    document.querySelectorAll("#analysisSettingsColumnsList .analysis-settings-col-checkbox"),
+  );
+
+  const selectedAnalysisKeys = analysisCheckboxes
+    .filter((checkbox) => checkbox.checked)
+    .map((checkbox) => String(checkbox.dataset.colKey || ""))
+    .filter(Boolean);
+
+  if (analysisCheckboxes.length > 0 && selectedAnalysisKeys.length === 0) {
+    showToast("At least one Analysis column must be visible", "warning");
+    return;
+  }
+
+  const analysisLayoutSelect = document.getElementById("userSettingsAnalysisLayout");
+  const analysisFocusSelect = document.getElementById("userSettingsAnalysisFocus");
+
+  const sectionLayout = analysisLayoutSelect?.value === "vertical"
+    ? "vertical"
+    : "horizontal";
+  const sectionFocus = ["balanced", "focus-results", "focus-settings", "focus-dataset"]
+    .includes(analysisFocusSelect?.value)
+    ? analysisFocusSelect.value
+    : "balanced";
 
   userSettingsState.data = normalizeUserSettings({
     ...userSettingsState.data,
     database: {
       ...(userSettingsState.data?.database || {}),
-      visibleColumns: selectedKeys,
+      visibleColumns: selectedDatabaseKeys,
+    },
+    analysis: {
+      ...(userSettingsState.data?.analysis || {}),
+      visibleColumns: selectedAnalysisKeys,
+      sectionLayout,
+      sectionFocus,
     },
   });
 
   if (typeof setDatabaseVisibleColumns === "function") {
-    setDatabaseVisibleColumns(selectedKeys, { skipRender: false });
+    setDatabaseVisibleColumns(selectedDatabaseKeys, { skipRender: false });
+  }
+
+  if (typeof applyAnalysisUserSettings === "function") {
+    applyAnalysisUserSettings(userSettingsState.data.analysis);
   }
 
   saveUserSettingsLocalCache();
@@ -1184,6 +1337,8 @@ function setupEventListeners() {
   const userSettingsModal = document.getElementById("userSettingsModal");
   const dbSettingsSelectAllBtn = document.getElementById("dbSettingsSelectAllBtn");
   const dbSettingsClearAllBtn = document.getElementById("dbSettingsClearAllBtn");
+  const analysisSettingsSelectAllBtn = document.getElementById("analysisSettingsSelectAllBtn");
+  const analysisSettingsClearAllBtn = document.getElementById("analysisSettingsClearAllBtn");
 
   if (userSettingsCloseBtn) {
     userSettingsCloseBtn.addEventListener("click", closeUserSettingsModal);
@@ -1204,6 +1359,12 @@ function setupEventListeners() {
     });
   }
 
+  document.querySelectorAll(".user-settings-nav-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      switchUserSettingsTab(button.dataset.settingsTab || "database");
+    });
+  });
+
   if (dbSettingsSelectAllBtn) {
     dbSettingsSelectAllBtn.addEventListener("click", () => {
       document
@@ -1218,6 +1379,26 @@ function setupEventListeners() {
     dbSettingsClearAllBtn.addEventListener("click", () => {
       document
         .querySelectorAll("#dbSettingsColumnsList .db-settings-col-checkbox")
+        .forEach((checkbox, index) => {
+          checkbox.checked = index === 0;
+        });
+    });
+  }
+
+  if (analysisSettingsSelectAllBtn) {
+    analysisSettingsSelectAllBtn.addEventListener("click", () => {
+      document
+        .querySelectorAll("#analysisSettingsColumnsList .analysis-settings-col-checkbox")
+        .forEach((checkbox) => {
+          checkbox.checked = true;
+        });
+    });
+  }
+
+  if (analysisSettingsClearAllBtn) {
+    analysisSettingsClearAllBtn.addEventListener("click", () => {
+      document
+        .querySelectorAll("#analysisSettingsColumnsList .analysis-settings-col-checkbox")
         .forEach((checkbox, index) => {
           checkbox.checked = index === 0;
         });
