@@ -129,6 +129,9 @@
       ? ((result.ssBlock + result.ssTreatment) / result.ssTotal) * 100 : 0;
     const rSqAdj = result.ssTotal > 0 && result.dfTotal > 0 && result.dfError > 0
       ? (1 - (result.ssError / result.dfError) / (result.ssTotal / result.dfTotal)) * 100 : 0;
+    const cv = Math.abs(result.grandMean) > 1e-12
+      ? (Math.sqrt(result.msError) / Math.abs(result.grandMean)) * 100
+      : NaN;
 
     const content = `
       <div class="analysis-result-block">
@@ -161,9 +164,10 @@
 
         <div class="analysis-result-subtitle" style="margin-top:1rem">Model Summary</div>
         <table class="analysis-anova-table analysis-summary-table">
-          <thead><tr><th>S</th><th>R-sq</th><th>R-sq (adj)</th></tr></thead>
+          <thead><tr><th>S</th><th>CV (%)</th><th>R-sq</th><th>R-sq (adj)</th></tr></thead>
           <tbody><tr>
             <td>${formatNumber(Math.sqrt(result.msError))}</td>
+            <td>${formatNumber(cv, 2)}%</td>
             <td>${formatNumber(rSq, 2)}%</td>
             <td>${formatNumber(rSqAdj, 2)}%</td>
           </tr></tbody>
@@ -425,6 +429,9 @@
     const rSq = result.ssTotal > 0 ? (ssModel / result.ssTotal) * 100 : 0;
     const rSqAdj = result.ssTotal > 0 && result.dfTotal > 0 && result.dfError > 0
       ? (1 - (result.ssError / result.dfError) / (result.ssTotal / result.dfTotal)) * 100 : 0;
+    const cv = Math.abs(result.grandMean) > 1e-12
+      ? (Math.sqrt(result.msError) / Math.abs(result.grandMean)) * 100
+      : NaN;
 
     // Means tables per factor (with post hoc)
     let meansTables = "";
@@ -469,9 +476,10 @@
 
         <div class="analysis-result-subtitle" style="margin-top:1rem">Model Summary</div>
         <table class="analysis-anova-table analysis-summary-table">
-          <thead><tr><th>S</th><th>R-sq</th><th>R-sq (adj)</th></tr></thead>
+          <thead><tr><th>S</th><th>CV (%)</th><th>R-sq</th><th>R-sq (adj)</th></tr></thead>
           <tbody><tr>
             <td>${formatNumber(Math.sqrt(result.msError))}</td>
+            <td>${formatNumber(cv, 2)}%</td>
             <td>${formatNumber(rSq, 2)}%</td>
             <td>${formatNumber(rSqAdj, 2)}%</td>
           </tr></tbody>

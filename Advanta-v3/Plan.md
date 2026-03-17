@@ -109,6 +109,16 @@
 - [x] `Data Analysis` JS restructured
 - [x] `Data Analisis` redesign with dynamic split, filter bug, etc
 
-### UPCOMING PLANS
+## Mar 17, 2026
 
+### Update
+- [x] `MAIN` New logo
+- [ ] `Trial` Process Research with split plot design for factorial with custom layouting
+- [ ] `Trial` Report with import/export system
+- [ ] `Data Analysis` Custom dataset taken from `Library` (independent)
+- [x] `Data Analysis` ANOVA with Coefficient of Variation (CV)
+### Bug Fixes and Redesigns
+- [x] `MAIN` Remove CropID
+
+## UPCOMING PLANS
 - [ ] Resize/reformat uploaded image dashboard
