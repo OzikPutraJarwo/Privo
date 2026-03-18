@@ -528,8 +528,8 @@ function _renderDashReminderSection(type) {
     container.classList.remove("empty-grid");
   }
 
-  const iconMap = { overdue: "error", today: "today", upcoming: "schedule" };
-  const labelMap = { overdue: "Overdue", today: "Today", upcoming: "Upcoming" };
+  const iconMap = { overdue: "error", today: "today", upcoming: "schedule", "not-loaded": "cloud_off" };
+  const labelMap = { overdue: "Overdue", today: "Today", upcoming: "Upcoming", "not-loaded": "Not loaded" };
 
   container.innerHTML = shown.map(item => {
     const icon = iconMap[item.status] || "schedule";

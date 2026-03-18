@@ -2261,6 +2261,59 @@ function setupDataTransferEvents() {
 // LOAD LATEST DATA PANEL
 // ===========================
 
+// Background loading state — survives panel open/close
+const loadDataBgState = {
+  /** Map of trialId → { percentage, loaded, total, status: "loading"|"done"|"error", error } */
+  loadingTrials: {},
+  /** Whether loadAll is currently running */
+  loadAllActive: false,
+  loadAllLoaded: 0,
+  loadAllTotal: 0,
+};
+
+/** Helper: push progress into background state AND live-update DOM if visible */
+function _updateTrialLoadUI(trialId, info) {
+  loadDataBgState.loadingTrials[trialId] = info;
+
+  // Try to update live DOM elements (may not exist if panel is closed)
+  const itemEl = document.querySelector(`.load-data-trial-item[data-trial-id="${trialId}"]`);
+  if (!itemEl) return;
+
+  const statusEl = itemEl.querySelector(".load-data-status");
+  const progressEl = itemEl.querySelector(".load-data-trial-progress");
+  const progressFill = itemEl.querySelector(".load-data-progress-fill");
+  const progressText = itemEl.querySelector(".load-data-progress-text");
+  const trialBtn = itemEl.querySelector(".load-data-trial-btn");
+
+  if (info.status === "loading") {
+    if (statusEl) {
+      statusEl.className = "load-data-status loading";
+      statusEl.innerHTML = '<span class="material-symbols-rounded">sync</span> Loading...';
+    }
+    if (progressEl) progressEl.style.display = "";
+    if (progressFill) progressFill.style.width = (info.percentage || 0) + "%";
+    if (progressText) progressText.textContent = info.total > 0 ? `${info.loaded}/${info.total}` : "-";
+    if (trialBtn) {
+      trialBtn.disabled = true;
+      trialBtn.innerHTML = `<span class="spinner-sm"></span> ${info.percentage || 0}%`;
+    }
+  }
+}
+
+/** Helper: update the "Load All" button UI if visible */
+function _updateLoadAllUI() {
+  const btn = document.getElementById("loadAllTrialsBtn");
+  if (!btn) return;
+
+  if (loadDataBgState.loadAllActive) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-sm"></span> ${loadDataBgState.loadAllLoaded}/${loadDataBgState.loadAllTotal}`;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Load All';
+  }
+}
+
 function openLoadDataPanel(activeTab = "trial") {
   const user = getCurrentUser();
   if (!user || user.isGuest) {
@@ -2369,12 +2422,40 @@ function renderLoadDataTrialList() {
   }
 
   container.innerHTML = trials.map(trial => {
+    const bgInfo = loadDataBgState.loadingTrials[trial.id];
+    const isCurrentlyLoading = bgInfo && bgInfo.status === "loading";
     const isLoaded = !!trial._responsesLoaded;
-    const statusClass = isLoaded ? "loaded" : "not-loaded";
-    const statusIcon = isLoaded ? "check_circle" : "cloud_off";
-    const statusLabel = isLoaded ? "Loaded" : "Not loaded";
+
+    let statusClass, statusIcon, statusLabel;
+    if (isCurrentlyLoading) {
+      statusClass = "loading";
+      statusIcon = "sync";
+      statusLabel = "Loading...";
+    } else if (isLoaded) {
+      statusClass = "loaded";
+      statusIcon = "check_circle";
+      statusLabel = "Loaded";
+    } else {
+      statusClass = "not-loaded";
+      statusIcon = "cloud_off";
+      statusLabel = "Not loaded";
+    }
+
     const cropName = trial.cropName || "";
     const meta = [cropName, trial.trialType].filter(Boolean).join(" · ");
+
+    const progressDisplay = isCurrentlyLoading ? "" : "none";
+    const progressPct = isCurrentlyLoading ? (bgInfo.percentage || 0) : 0;
+    const progressLabel = isCurrentlyLoading && bgInfo.total > 0 ? `${bgInfo.loaded}/${bgInfo.total}` : "0%";
+
+    let buttonHtml;
+    if (isCurrentlyLoading) {
+      buttonHtml = `<button class="load-data-trial-btn" disabled><span class="spinner-sm"></span> ${progressPct}%</button>`;
+    } else if (isLoaded) {
+      buttonHtml = `<button class="load-data-trial-btn load-data-unload-btn" onclick="unloadSingleTrialFromPanel('${trial.id}', this)"><span class="material-symbols-rounded">cloud_off</span> Unload</button>`;
+    } else {
+      buttonHtml = `<button class="load-data-trial-btn" onclick="loadSingleTrialFromPanel('${trial.id}', this)"><span class="material-symbols-rounded">cloud_download</span> Load</button>`;
+    }
 
     return `
       <div class="load-data-trial-item" data-trial-id="${trial.id}">
@@ -2386,35 +2467,40 @@ function renderLoadDataTrialList() {
           <span class="material-symbols-rounded">${statusIcon}</span>
           ${statusLabel}
         </span>
-        ${isLoaded
-          ? `<button class="load-data-trial-btn load-data-unload-btn" onclick="unloadSingleTrialFromPanel('${trial.id}', this)"><span class="material-symbols-rounded">cloud_off</span> Unload</button>`
-          : `<button class="load-data-trial-btn" onclick="loadSingleTrialFromPanel('${trial.id}', this)"><span class="material-symbols-rounded">cloud_download</span> Load</button>`
-        }
+        <div class="load-data-trial-progress" style="display:${progressDisplay};">
+          <div class="load-data-progress-bar"><div class="load-data-progress-fill" style="width:${progressPct}%"></div></div>
+          <span class="load-data-progress-text">${progressLabel}</span>
+        </div>
+        ${buttonHtml}
       </div>
     `;
   }).join("");
+
+  // Also sync the Load All button state
+  _updateLoadAllUI();
 }
 
 async function loadSingleTrialFromPanel(trialId, btnEl) {
   const trial = trialState.trials.find(t => t.id === trialId);
   if (!trial || trial._responsesLoaded) return;
 
-  // Update UI to show loading
-  if (btnEl) {
-    btnEl.disabled = true;
-    btnEl.innerHTML = '<span class="spinner-sm"></span> Loading...';
-  }
+  // Prevent duplicate background loads
+  if (loadDataBgState.loadingTrials[trialId]?.status === "loading") return;
 
-  const statusEl = btnEl?.closest(".load-data-trial-item")?.querySelector(".load-data-status");
-  if (statusEl) {
-    statusEl.className = "load-data-status loading";
-    statusEl.innerHTML = '<span class="material-symbols-rounded">sync</span> Loading...';
-  }
+  // Register in background state
+  _updateTrialLoadUI(trialId, { status: "loading", percentage: 0, loaded: 0, total: 0 });
+
+  const onProgress = ({ loaded, total, percentage }) => {
+    _updateTrialLoadUI(trialId, { status: "loading", percentage, loaded, total });
+  };
 
   try {
-    await loadTrialResponsesFromDrive(trialId);
+    await loadTrialResponsesFromDrive(trialId, onProgress);
 
-    // Re-render the trial list to show Unload button
+    // Done — remove from loading state
+    delete loadDataBgState.loadingTrials[trialId];
+
+    // Re-render the trial list (panel may or may not be open)
     renderLoadDataTrialList();
 
     // Refresh dashboard indicators
@@ -2423,14 +2509,34 @@ async function loadSingleTrialFromPanel(trialId, btnEl) {
     if (typeof renderTrials === "function") renderTrials();
   } catch (err) {
     console.error("Error loading trial:", err);
-    if (statusEl) {
-      statusEl.className = "load-data-status not-loaded";
-      statusEl.innerHTML = '<span class="material-symbols-rounded">error</span> Error';
+
+    // Mark error in background state
+    loadDataBgState.loadingTrials[trialId] = { status: "error", error: err.message };
+
+    // Try to update DOM if panel is open
+    const itemEl = document.querySelector(`.load-data-trial-item[data-trial-id="${trialId}"]`);
+    if (itemEl) {
+      const progressEl = itemEl.querySelector(".load-data-trial-progress");
+      const statusEl = itemEl.querySelector(".load-data-status");
+      const trialBtn = itemEl.querySelector(".load-data-trial-btn");
+      if (progressEl) progressEl.style.display = "none";
+      if (statusEl) {
+        statusEl.className = "load-data-status not-loaded";
+        statusEl.innerHTML = '<span class="material-symbols-rounded">error</span> Error';
+      }
+      if (trialBtn) {
+        trialBtn.disabled = false;
+        trialBtn.innerHTML = '<span class="material-symbols-rounded">cloud_download</span> Retry';
+      }
     }
-    if (btnEl) {
-      btnEl.disabled = false;
-      btnEl.innerHTML = '<span class="material-symbols-rounded">cloud_download</span> Retry';
-    }
+
+    // Clean up error state after a moment so next render shows "Not loaded"
+    setTimeout(() => {
+      if (loadDataBgState.loadingTrials[trialId]?.status === "error") {
+        delete loadDataBgState.loadingTrials[trialId];
+      }
+    }, 3000);
+
     showToast("Error loading trial data: " + err.message, "error");
   }
 }
@@ -2461,56 +2567,92 @@ async function unloadSingleTrialFromPanel(trialId, btnEl) {
 }
 
 async function loadAllTrialResponses() {
-  const trials = (trialState.trials || []).filter(t => !t.archived && !t._responsesLoaded);
+  if (loadDataBgState.loadAllActive) return; // Already running
+
+  const trials = (trialState.trials || []).filter(t => !t.archived && !t._responsesLoaded
+    && loadDataBgState.loadingTrials[t.id]?.status !== "loading");
   if (trials.length === 0) {
     showToast("All trials are already loaded.", "info");
     return;
   }
 
-  const btn = document.getElementById("loadAllTrialsBtn");
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-sm"></span> Loading...';
-  }
+  loadDataBgState.loadAllActive = true;
+  loadDataBgState.loadAllLoaded = 0;
+  loadDataBgState.loadAllTotal = trials.length;
+  _updateLoadAllUI();
 
   let loaded = 0;
   for (const trial of trials) {
-    const itemEl = document.querySelector(`.load-data-trial-item[data-trial-id="${trial.id}"]`);
-    const statusEl = itemEl?.querySelector(".load-data-status");
-    const trialBtn = itemEl?.querySelector(".load-data-trial-btn");
-
-    if (statusEl) {
-      statusEl.className = "load-data-status loading";
-      statusEl.innerHTML = '<span class="material-symbols-rounded">sync</span> Loading...';
+    // Skip if it got loaded while we were iterating
+    if (trial._responsesLoaded) {
+      loaded++;
+      loadDataBgState.loadAllLoaded = loaded;
+      _updateLoadAllUI();
+      continue;
     }
 
-    try {
-      await loadTrialResponsesFromDrive(trial.id);
-      loaded++;
+    // Register in background state
+    _updateTrialLoadUI(trial.id, { status: "loading", percentage: 0, loaded: 0, total: 0 });
 
-      if (statusEl) {
-        statusEl.className = "load-data-status loaded";
-        statusEl.innerHTML = '<span class="material-symbols-rounded">check_circle</span> Loaded';
-      }
-      if (trialBtn) {
-        trialBtn.disabled = true;
-        trialBtn.innerHTML = '<span class="material-symbols-rounded">check</span> Loaded';
+    const onProgress = ({ loaded: l, total: t, percentage: pct }) => {
+      _updateTrialLoadUI(trial.id, { status: "loading", percentage: pct, loaded: l, total: t });
+    };
+
+    try {
+      await loadTrialResponsesFromDrive(trial.id, onProgress);
+      loaded++;
+      delete loadDataBgState.loadingTrials[trial.id];
+
+      // Update per-trial UI if panel is open
+      const itemEl = document.querySelector(`.load-data-trial-item[data-trial-id="${trial.id}"]`);
+      if (itemEl) {
+        const statusEl = itemEl.querySelector(".load-data-status");
+        const progressEl = itemEl.querySelector(".load-data-trial-progress");
+        const trialBtn = itemEl.querySelector(".load-data-trial-btn");
+        if (statusEl) {
+          statusEl.className = "load-data-status loaded";
+          statusEl.innerHTML = '<span class="material-symbols-rounded">check_circle</span> Loaded';
+        }
+        if (progressEl) progressEl.style.display = "none";
+        if (trialBtn) {
+          trialBtn.disabled = true;
+          trialBtn.innerHTML = '<span class="material-symbols-rounded">check</span> Loaded';
+        }
       }
     } catch (err) {
       console.error(`Error loading trial ${trial.id}:`, err);
-      if (statusEl) {
-        statusEl.className = "load-data-status not-loaded";
-        statusEl.innerHTML = '<span class="material-symbols-rounded">error</span> Error';
+      loadDataBgState.loadingTrials[trial.id] = { status: "error", error: err.message };
+
+      const itemEl = document.querySelector(`.load-data-trial-item[data-trial-id="${trial.id}"]`);
+      if (itemEl) {
+        const progressEl = itemEl.querySelector(".load-data-trial-progress");
+        const statusEl = itemEl.querySelector(".load-data-status");
+        if (progressEl) progressEl.style.display = "none";
+        if (statusEl) {
+          statusEl.className = "load-data-status not-loaded";
+          statusEl.innerHTML = '<span class="material-symbols-rounded">error</span> Error';
+        }
       }
+
+      // Clean up error state after a moment
+      const errTrialId = trial.id;
+      setTimeout(() => {
+        if (loadDataBgState.loadingTrials[errTrialId]?.status === "error") {
+          delete loadDataBgState.loadingTrials[errTrialId];
+        }
+      }, 3000);
     }
+
+    // Update Load All progress
+    loadDataBgState.loadAllLoaded = loaded;
+    _updateLoadAllUI();
   }
 
-  if (btn) {
-    btn.disabled = false;
-    btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Load All';
-  }
+  // Finished
+  loadDataBgState.loadAllActive = false;
+  _updateLoadAllUI();
 
-  // Re-render trial list to show Unload buttons for newly loaded trials
+  // Re-render trial list to show final state
   renderLoadDataTrialList();
 
   if (typeof updateDashboardCounts === "function") updateDashboardCounts();

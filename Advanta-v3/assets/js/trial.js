@@ -422,6 +422,16 @@ function openAddTrialModal() {
   if (agronomyContainer) agronomyContainer.classList.add('hidden');
   trialState.selectedAgronomyOrder = [];
 
+  // Reset split-plot state
+  trialState._splitPlotCodes = {};
+  trialState._splitPlotLocationAsFactor = false;
+  const arrangementSelect = document.getElementById("trialFactorArrangement");
+  if (arrangementSelect) arrangementSelect.value = "factorial";
+  const arrangementGroup = document.getElementById("trialFactorArrangementGroup");
+  if (arrangementGroup) arrangementGroup.style.display = "none";
+  const splitPlotNav = document.getElementById("splitPlotNavItem");
+  if (splitPlotNav) splitPlotNav.style.display = "none";
+
   // Setup pollination → trial type cascade
   setupPollinationTrialTypeCascade();
   updateTrialTypeOptions();
@@ -489,6 +499,14 @@ function openEditTrialModal(trialId) {
   const factorCount = normalizeTrialFactorsCount(trial.trialFactors);
   document.getElementById("trialFactors").value = String(factorCount);
   renderTrialTreatmentsInputs(factorCount, normalizeTrialFactorDefinitions(trial));
+
+  // Restore factor arrangement / split-plot state
+  const arrangementSelect = document.getElementById("trialFactorArrangement");
+  if (arrangementSelect) {
+    arrangementSelect.value = trial.factorArrangement || "factorial";
+  }
+  trialState._splitPlotCodes = trial.splitPlotCodes || {};
+  trialState._splitPlotLocationAsFactor = !!trial.splitPlotLocationAsFactor;
 
   // Restore Parent Test / Process Research fields
   document.getElementById("trialRowsPerPlot").value = trial.rowsPerPlot ?? "";
@@ -709,7 +727,23 @@ function switchTrialTab(tabName) {
 }
 
 function getTrialEditorSections() {
-  return ["basic", "experiment", "plotspec", "observation", "field", "layouting"];
+  const base = ["basic", "experiment"];
+  if (isSplitPlotMode()) {
+    base.push("splitplot");
+  }
+  base.push("plotspec", "observation", "field", "layouting");
+  return base;
+}
+
+/**
+ * Returns true when the current trial form is set to Process Research
+ * with more than 1 factor AND factor arrangement is "splitplot".
+ */
+function isSplitPlotMode() {
+  const trialType = document.getElementById("trialType")?.value || "";
+  const factorCount = normalizeTrialFactorsCount(document.getElementById("trialFactors")?.value);
+  const arrangement = document.getElementById("trialFactorArrangement")?.value || "factorial";
+  return trialType === "Process Research" && factorCount > 1 && arrangement === "splitplot";
 }
 
 function canAccessPlotSpecSection() {
@@ -737,6 +771,7 @@ function showTrialSection(sectionName) {
   const sectionMap = {
     basic: "trialSectionBasic",
     experiment: "trialSectionExperiment",
+    splitplot: "trialSectionSplitPlot",
     plotspec: "trialSectionPlotSpec",
     observation: "trialSectionObservation",
     field: "trialSectionField",
@@ -826,6 +861,8 @@ function showTrialSection(sectionName) {
     }, 100);
   } else if (sectionName === "layouting") {
     initializeLayoutingSection();
+  } else if (sectionName === "splitplot") {
+    renderSplitPlotCodesSection();
   } else if (sectionName === "plotspec") {
     if (!canAccessPlotSpecSection()) {
       showToast("Please select type of pollination and trial type first", "error");
@@ -960,6 +997,7 @@ function setupTrialFactorsAndTreatments() {
     }
     const current = getTrialTreatmentsFromForm();
     renderTrialTreatmentsInputs(count, current);
+    syncFactorArrangementVisibility();
   };
   factorsInput.addEventListener("input", factorsInput._treatmentSyncHandler);
 
@@ -974,6 +1012,64 @@ function setupTrialFactorsAndTreatments() {
     };
     cropSelect.addEventListener("change", cropSelect._factorEntriesRefresh);
   }
+
+  // Listen for trial type changes to show/hide factor arrangement
+  const trialTypeSelect = document.getElementById("trialType");
+  if (trialTypeSelect) {
+    trialTypeSelect.removeEventListener("change", trialTypeSelect._arrangementSync);
+    trialTypeSelect._arrangementSync = () => syncFactorArrangementVisibility();
+    trialTypeSelect.addEventListener("change", trialTypeSelect._arrangementSync);
+  }
+
+  // Listen for factor arrangement changes to update nav
+  const arrangementSelect = document.getElementById("trialFactorArrangement");
+  if (arrangementSelect) {
+    arrangementSelect.removeEventListener("change", arrangementSelect._navSync);
+    arrangementSelect._navSync = () => syncSplitPlotNavVisibility();
+    arrangementSelect.addEventListener("change", arrangementSelect._navSync);
+  }
+
+  syncFactorArrangementVisibility();
+}
+
+/**
+ * Show/hide the Factor Arrangement dropdown based on:
+ * - Trial type === "Process Research"
+ * - Factor count > 1
+ */
+function syncFactorArrangementVisibility() {
+  const group = document.getElementById("trialFactorArrangementGroup");
+  if (!group) return;
+  const trialType = document.getElementById("trialType")?.value || "";
+  const factorCount = normalizeTrialFactorsCount(document.getElementById("trialFactors")?.value);
+  const show = trialType === "Process Research" && factorCount > 1;
+  group.style.display = show ? "" : "none";
+  if (!show) {
+    // Reset to factorial if hidden
+    const sel = document.getElementById("trialFactorArrangement");
+    if (sel) sel.value = "factorial";
+  }
+  syncSplitPlotNavVisibility();
+}
+
+/**
+ * Show/hide the Split Plot nav item and renumber all nav items.
+ */
+function syncSplitPlotNavVisibility() {
+  const navItem = document.getElementById("splitPlotNavItem");
+  if (!navItem) return;
+  const show = isSplitPlotMode();
+  navItem.style.display = show ? "" : "none";
+
+  // Renumber visible nav items
+  const allNavItems = document.querySelectorAll(".trial-section-nav .section-nav-item");
+  let num = 1;
+  allNavItems.forEach((item) => {
+    if (item.style.display === "none") return;
+    const numEl = item.querySelector(".section-nav-number");
+    if (numEl) numEl.textContent = String(num);
+    num++;
+  });
 }
 
 function normalizeTrialFactorDefinitions(trial) {
@@ -1186,6 +1282,241 @@ function getEntriesFactorLineIds() {
     }
   }
   return null;
+}
+
+// ===========================
+// SPLIT PLOT — Treatment Codes Section
+// ===========================
+
+/**
+ * Render the Split Plot codes section.
+ * Each factor gets a list of its treatments with an input field for a short code.
+ */
+function renderSplitPlotCodesSection() {
+  const container = document.getElementById("splitPlotCodesContainer");
+  if (!container) return;
+
+  const factorDefs = getTrialTreatmentsFromForm();
+  const savedCodes = trialState._splitPlotCodes || {};
+
+  let html = "";
+  factorDefs.forEach((factor, factorIndex) => {
+    const factorKey = `factor_${factorIndex}`;
+    const savedFactorCodes = savedCodes[factorKey] || {};
+
+    html += `
+      <div class="splitplot-factor-group" data-factor-index="${factorIndex}">
+        <div class="splitplot-factor-title">
+          <span class="splitplot-factor-badge">${factorIndex === 0 ? "1st" : factorIndex === 1 ? "2nd" : `${factorIndex + 1}th`} Factor</span>
+          <strong>${escapeHtml(factor.name || `Factor ${factorIndex + 1}`)}</strong>
+        </div>
+        <div class="splitplot-treatments-list">
+          ${factor.treatments.map((treatment, tIdx) => {
+            const existingCode = savedFactorCodes[treatment] || "";
+            return `
+              <div class="splitplot-treatment-row">
+                <span class="splitplot-treatment-name">${escapeHtml(treatment)}</span>
+                <input
+                  type="text"
+                  class="splitplot-code-input"
+                  data-factor-index="${factorIndex}"
+                  data-treatment="${escapeHtml(treatment)}"
+                  value="${escapeHtml(existingCode)}"
+                  placeholder="Code"
+                  maxlength="5"
+                >
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+
+  // Restore "Use Location as Factor" checkbox
+  const locationCheckbox = document.getElementById("splitPlotLocationAsFactor");
+  if (locationCheckbox) {
+    locationCheckbox.checked = !!trialState._splitPlotLocationAsFactor;
+    locationCheckbox.onchange = () => {
+      trialState._splitPlotLocationAsFactor = locationCheckbox.checked;
+    };
+  }
+
+  // Auto-save code inputs to trialState
+  container.querySelectorAll(".splitplot-code-input").forEach((input) => {
+    input.addEventListener("input", () => saveSplitPlotCodesToState());
+  });
+}
+
+/**
+ * Read split plot codes from the form into trialState._splitPlotCodes.
+ * Structure: { factor_0: { "TreatmentName": "A", ... }, factor_1: { ... } }
+ */
+function saveSplitPlotCodesToState() {
+  const container = document.getElementById("splitPlotCodesContainer");
+  if (!container) return;
+
+  const codes = {};
+  container.querySelectorAll(".splitplot-code-input").forEach((input) => {
+    const fi = input.dataset.factorIndex;
+    const treatment = input.dataset.treatment;
+    const key = `factor_${fi}`;
+    if (!codes[key]) codes[key] = {};
+    codes[key][treatment] = input.value.trim();
+  });
+  trialState._splitPlotCodes = codes;
+}
+
+/**
+ * Get the split-plot codes from form or trialState.
+ * Returns { factor_0: { treatmentName: code }, factor_1: { ... } }
+ */
+function getSplitPlotCodes() {
+  // Try reading from DOM first (if section is rendered)
+  const container = document.getElementById("splitPlotCodesContainer");
+  if (container && container.querySelectorAll(".splitplot-code-input").length > 0) {
+    saveSplitPlotCodesToState();
+  }
+  return trialState._splitPlotCodes || {};
+}
+
+/**
+ * Build the treatment combinations for split-plot layout.
+ * Returns array of { id, name, codes: [code1, code2, ...], factorValues: [t1, t2, ...] }
+ */
+function buildSplitPlotCombinations() {
+  const factorDefs = getTrialTreatmentsFromForm();
+  const codes = getSplitPlotCodes();
+
+  if (factorDefs.length < 2) return [];
+
+  // Build code maps per factor
+  const factorCodeMaps = factorDefs.map((factor, fi) => {
+    const map = {};
+    const savedCodes = codes[`factor_${fi}`] || {};
+    factor.treatments.forEach((t, ti) => {
+      map[t] = savedCodes[t] || String(ti + 1);
+    });
+    return { factor, codeMap: map };
+  });
+
+  // Generate all combinations (cartesian product)
+  const combinations = [];
+  const generateCombos = (factorIdx, currentTreatments, currentCodes) => {
+    if (factorIdx >= factorCodeMaps.length) {
+      const comboName = currentCodes.join("");
+      const comboId = `splitplot_${currentCodes.join("_")}`;
+      combinations.push({
+        id: comboId,
+        name: comboName,
+        codes: [...currentCodes],
+        factorValues: [...currentTreatments],
+      });
+      return;
+    }
+    const { factor, codeMap } = factorCodeMaps[factorIdx];
+    for (const treatment of factor.treatments) {
+      generateCombos(
+        factorIdx + 1,
+        [...currentTreatments, treatment],
+        [...currentCodes, codeMap[treatment]],
+      );
+    }
+  };
+  generateCombos(0, [], []);
+  return combinations;
+}
+
+/**
+ * Generate split-plot layout for given combinations and parameters.
+ *
+ * Split-plot design:
+ * - 1st factor = main plot (columns) — randomly assigned per rep
+ * - 2nd factor = sub-plot (rows within each main plot) — randomized within each main plot per rep
+ * - Additional factors would extend via sub-sub-plot, but for now we handle 2 factors.
+ *
+ * Each cell in result is { id, name } where name is the combined code (e.g., "A1").
+ *
+ * @param {number} numReps - Number of replications
+ * @param {string} direction - "serpentine" or "straight"
+ * @param {string} randomization - "normal" or "random"
+ * @returns {Array} Array of reps, each rep is array of rows, each row is array of cells.
+ */
+function generateSplitPlotLayout(numReps, direction, randomization) {
+  const factorDefs = getTrialTreatmentsFromForm();
+  const codes = getSplitPlotCodes();
+
+  if (factorDefs.length < 2) return [];
+
+  const factor1 = factorDefs[0]; // Main plot
+  const factor2 = factorDefs[1]; // Sub-plot
+  const codes1 = codes["factor_0"] || {};
+  const codes2 = codes["factor_1"] || {};
+
+  const shuffle = (arr) => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+
+  const replicationLayouts = [];
+
+  for (let rep = 0; rep < numReps; rep++) {
+    // Main plot order: columns = 1st factor treatments
+    let mainPlotOrder = factor1.treatments.map((t) => ({
+      treatment: t,
+      code: codes1[t] || t,
+    }));
+
+    // Randomize main plots
+    if (randomization === "random" || (randomization === "normal" && rep > 0)) {
+      mainPlotOrder = shuffle(mainPlotOrder);
+    }
+
+    // For each main plot (column), randomize sub-plot (2nd factor) treatments
+    const numRows = factor2.treatments.length;
+    const numCols = mainPlotOrder.length;
+
+    const grid = Array.from({ length: numRows }, () =>
+      Array.from({ length: numCols }, () => null),
+    );
+
+    mainPlotOrder.forEach((mainPlot, colIdx) => {
+      let subPlotOrder = factor2.treatments.map((t) => ({
+        treatment: t,
+        code: codes2[t] || t,
+      }));
+
+      // Randomize sub-plots within each main plot
+      if (randomization === "random" || (randomization === "normal" && rep > 0)) {
+        subPlotOrder = shuffle(subPlotOrder);
+      }
+
+      subPlotOrder.forEach((subPlot, rowIdx) => {
+        const comboName = mainPlot.code + subPlot.code;
+        const comboId = `splitplot_${mainPlot.code}_${subPlot.code}`;
+        grid[rowIdx][colIdx] = { id: comboId, name: comboName };
+      });
+    });
+
+    // Apply direction (serpentine)
+    if (direction === "serpentine") {
+      for (let rowIdx = 0; rowIdx < grid.length; rowIdx++) {
+        if (rowIdx % 2 === 1) {
+          grid[rowIdx].reverse();
+        }
+      }
+    }
+
+    replicationLayouts.push(grid);
+  }
+
+  return replicationLayouts;
 }
 
 // Validate location section
@@ -3371,6 +3702,11 @@ async function saveTrial() {
   );
   const factorDefinitions = getTrialTreatmentsFromForm();
 
+  // Split-plot fields
+  const factorArrangement = document.getElementById("trialFactorArrangement")?.value || "factorial";
+  const splitPlotCodes = getSplitPlotCodes();
+  const splitPlotLocationAsFactor = document.getElementById("splitPlotLocationAsFactor")?.checked || false;
+
   // Parent Test / Process Research fields
   const rowsPerPlot = parseFloat(
     document.getElementById("trialRowsPerPlot").value || "",
@@ -3599,6 +3935,9 @@ async function saveTrial() {
         trial.trialFactors = trialFactors;
         trial.factorDefinitions = factorDefinitions;
         trial.treatments = factorDefinitions.map((factor) => factor.name);
+        trial.factorArrangement = factorArrangement;
+        trial.splitPlotCodes = splitPlotCodes;
+        trial.splitPlotLocationAsFactor = splitPlotLocationAsFactor;
         trial.rowsPerPlot = Number.isFinite(rowsPerPlot) ? rowsPerPlot : null;
         trial.plotLength = Number.isFinite(plotLength) ? plotLength : null;
         trial.plantSpacingWidth = Number.isFinite(plantSpacingWidth)
@@ -3655,6 +3994,9 @@ async function saveTrial() {
         trialFactors: trialFactors,
         factorDefinitions: factorDefinitions,
         treatments: factorDefinitions.map((factor) => factor.name),
+        factorArrangement: factorArrangement,
+        splitPlotCodes: splitPlotCodes,
+        splitPlotLocationAsFactor: splitPlotLocationAsFactor,
         rowsPerPlot: Number.isFinite(rowsPerPlot) ? rowsPerPlot : null,
         plotLength: Number.isFinite(plotLength) ? plotLength : null,
         plantSpacingWidth: Number.isFinite(plantSpacingWidth)
@@ -3691,6 +4033,11 @@ async function saveTrial() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      // Newly created trial has no responses yet — mark as loaded
+      trial._responsesLoaded = true;
+      trial.responses = {};
+      trial.agronomyResponses = {};
+
       trialState.trials.push(trial);
       
       // Consume line quantities
@@ -4049,86 +4396,109 @@ function getTrialProgress(trial) {
  * Load observation responses for a single trial from Drive.
  * Sets trial._responsesLoaded = true when done.
  */
-async function loadTrialResponsesFromDrive(trialId) {
+async function loadTrialResponsesFromDrive(trialId, onProgress) {
   const trial = trialState.trials.find(t => t.id === trialId);
   if (!trial) return;
   if (trial._responsesLoaded) return; // Already loaded
 
+  const reportProgress = (loaded, total) => {
+    if (typeof onProgress === "function") {
+      const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
+      onProgress({ loaded, total, percentage: pct });
+    }
+  };
+
   try {
     const rootFolderId = await getTrialsFolderId();
     const trialFolder = await findFolder(trialId, rootFolderId);
-    if (!trialFolder) { trial._responsesLoaded = true; return; }
+    if (!trialFolder) { trial._responsesLoaded = true; reportProgress(1, 1); return; }
+
+    // Collect all files to load first, so we can track progress
+    let allFiles = [];
+    let loadedCount = 0;
 
     // Load responses from responses/ subfolder
     const responsesFolderObj = await findFolder("responses", trialFolder.id);
+    let respFilesList = [];
     if (responsesFolderObj) {
       const respFiles = await gapi.client.drive.files.list({
         q: `'${responsesFolderObj.id}' in parents and mimeType='application/json' and trashed=false`,
         fields: "files(id, name)",
         pageSize: 1000,
       });
-
-      const responses = {};
-      for (const respFile of (respFiles.result.files || [])) {
-        try {
-          const respData = await getFileContent(respFile.id);
-          const fileName = respFile.name.replace(".json", "");
-
-          if (fileName.includes("~")) {
-            const parts = fileName.split("~");
-            if (parts.length < 4) continue;
-            const areaIndex = parts[0];
-            const paramId = parts[1];
-            if (!responses[areaIndex]) responses[areaIndex] = {};
-            if (!responses[areaIndex][paramId]) responses[areaIndex][paramId] = {};
-            Object.assign(responses[areaIndex][paramId], respData);
-          } else {
-            const sepIdx = fileName.indexOf("_");
-            if (sepIdx === -1) continue;
-            const areaIndex = fileName.substring(0, sepIdx);
-            const paramId = fileName.substring(sepIdx + 1);
-            if (!responses[areaIndex]) responses[areaIndex] = {};
-            responses[areaIndex][paramId] = respData;
-          }
-        } catch (e) {
-          console.error(`Error loading response ${respFile.name}:`, e);
-        }
-      }
-      trial.responses = responses;
-    } else {
-      trial.responses = trial.responses || {};
+      respFilesList = respFiles.result.files || [];
+      allFiles.push(...respFilesList.map(f => ({ ...f, type: "response" })));
     }
 
-    // Load agronomy responses from agronomy/ subfolder
+    // Load agronomy files list
     const agronomyFolder = await findFolder("agronomy", trialFolder.id);
+    let agroFilesList = [];
     if (agronomyFolder) {
       const agroFiles = await gapi.client.drive.files.list({
         q: `'${agronomyFolder.id}' in parents and mimeType='application/json' and trashed=false`,
         fields: "files(id, name)",
         pageSize: 1000,
       });
-
-      const agronomyResponses = {};
-      for (const agroFile of (agroFiles.result.files || [])) {
-        try {
-          const agroData = await getFileContent(agroFile.id);
-          const fileName = agroFile.name.replace(".json", "");
-          const parts = fileName.split("~");
-          if (parts.length < 2) continue;
-          const areaIndex = parts[0];
-          const itemId = parts[1];
-          if (!agronomyResponses[areaIndex]) agronomyResponses[areaIndex] = {};
-          agronomyResponses[areaIndex][itemId] = agroData;
-        } catch (e) {
-          console.error(`Error loading agronomy response ${agroFile.name}:`, e);
-        }
-      }
-      trial.agronomyResponses = agronomyResponses;
-    } else {
-      trial.agronomyResponses = trial.agronomyResponses || {};
+      agroFilesList = agroFiles.result.files || [];
+      allFiles.push(...agroFilesList.map(f => ({ ...f, type: "agronomy" })));
     }
 
+    const totalFiles = allFiles.length;
+    reportProgress(0, totalFiles);
+
+    // Load response files
+    const responses = {};
+    for (const respFile of respFilesList) {
+      try {
+        const respData = await getFileContent(respFile.id);
+        const fileName = respFile.name.replace(".json", "");
+
+        if (fileName.includes("~")) {
+          const parts = fileName.split("~");
+          if (parts.length < 4) { loadedCount++; reportProgress(loadedCount, totalFiles); continue; }
+          const areaIndex = parts[0];
+          const paramId = parts[1];
+          if (!responses[areaIndex]) responses[areaIndex] = {};
+          if (!responses[areaIndex][paramId]) responses[areaIndex][paramId] = {};
+          Object.assign(responses[areaIndex][paramId], respData);
+        } else {
+          const sepIdx = fileName.indexOf("_");
+          if (sepIdx === -1) { loadedCount++; reportProgress(loadedCount, totalFiles); continue; }
+          const areaIndex = fileName.substring(0, sepIdx);
+          const paramId = fileName.substring(sepIdx + 1);
+          if (!responses[areaIndex]) responses[areaIndex] = {};
+          responses[areaIndex][paramId] = respData;
+        }
+      } catch (e) {
+        console.error(`Error loading response ${respFile.name}:`, e);
+      }
+      loadedCount++;
+      reportProgress(loadedCount, totalFiles);
+    }
+    trial.responses = responsesFolderObj ? responses : (trial.responses || {});
+
+    // Load agronomy files
+    const agronomyResponses = {};
+    for (const agroFile of agroFilesList) {
+      try {
+        const agroData = await getFileContent(agroFile.id);
+        const fileName = agroFile.name.replace(".json", "");
+        const parts = fileName.split("~");
+        if (parts.length < 2) { loadedCount++; reportProgress(loadedCount, totalFiles); continue; }
+        const areaIndex = parts[0];
+        const itemId = parts[1];
+        if (!agronomyResponses[areaIndex]) agronomyResponses[areaIndex] = {};
+        agronomyResponses[areaIndex][itemId] = agroData;
+      } catch (e) {
+        console.error(`Error loading agronomy response ${agroFile.name}:`, e);
+      }
+      loadedCount++;
+      reportProgress(loadedCount, totalFiles);
+    }
+    trial.agronomyResponses = agronomyFolder ? agronomyResponses : (trial.agronomyResponses || {});
+
     trial._responsesLoaded = true;
+    reportProgress(totalFiles, totalFiles);
 
     // Update local cache with newly loaded responses
     if (typeof saveLocalCache === "function") {
@@ -4169,8 +4539,7 @@ async function ensureTrialResponsesLoaded(trialId) {
         </div>
         <div class="confirm-modal-footer">
           <button class="btn btn-secondary" id="loadConfirmCancelBtn">Cancel</button>
-          <button class="btn btn-secondary" id="loadConfirmPanelBtn">Open Load Panel</button>
-          <button class="btn btn-primary" id="loadConfirmNowBtn">Load Now</button>
+          <button class="btn btn-primary" id="loadConfirmNowBtn"><span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Load Now</button>
         </div>
       </div>
     `;
@@ -4184,25 +4553,26 @@ async function ensureTrialResponsesLoaded(trialId) {
       resolve(false);
     });
 
-    modal.querySelector("#loadConfirmPanelBtn").addEventListener("click", () => {
-      cleanup();
-      if (typeof openLoadDataPanel === "function") openLoadDataPanel("trial");
-      resolve(false);
-    });
-
     modal.querySelector("#loadConfirmNowBtn").addEventListener("click", async () => {
-      const btn = modal.querySelector("#loadConfirmNowBtn");
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner-sm"></span> Loading...';
-      try {
-        await loadTrialResponsesFromDrive(trialId);
-        cleanup();
-        resolve(true);
-      } catch (err) {
-        cleanup();
-        showToast("Error loading trial data: " + err.message, "error");
-        resolve(false);
+      cleanup();
+      // Open load panel and auto-trigger load for this trial
+      if (typeof openLoadDataPanel === "function") openLoadDataPanel("trial");
+      // Wait a tick for panel to render, then trigger the load button
+      await new Promise(r => setTimeout(r, 100));
+      const trialItem = document.querySelector(`.load-data-trial-item[data-trial-id="${trialId}"]`);
+      const loadBtn = trialItem?.querySelector(".load-data-trial-btn:not(.load-data-unload-btn)");
+      if (loadBtn) {
+        loadBtn.click();
+      } else {
+        // Fallback: load directly
+        try {
+          await loadTrialResponsesFromDrive(trialId);
+          renderLoadDataTrialList();
+        } catch (err) {
+          showToast("Error loading trial data: " + err.message, "error");
+        }
       }
+      resolve(false);
     });
 
     // Close on backdrop click
@@ -4611,14 +4981,20 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   const selectedCropName =
     cropSelect.options[cropSelect.selectedIndex].dataset.name || "";
 
+  // Check if split-plot mode is active
+  const splitPlotActive = isSplitPlotMode();
+  const splitPlotCombinations = splitPlotActive ? buildSplitPlotCombinations() : [];
+
   // Check if any factor is marked as "Entries" — if so, entries come from the factor
   const entriesFactorLineIds = getEntriesFactorLineIds();
-  const hasEntriesFactor = entriesFactorLineIds !== null;
+  const hasEntriesFactor = !splitPlotActive && entriesFactorLineIds !== null;
 
-  // Filter lines by crop ID
-  const matchingLines = inventoryState.items.entries.filter((line) => {
-    return line.cropId === selectedCropId || line.cropType === selectedCropName;
-  });
+  // In split-plot mode, "matchingLines" are the split-plot combinations (as virtual entries)
+  const matchingLines = splitPlotActive
+    ? splitPlotCombinations.map((combo) => ({ id: combo.id, name: combo.name, quantity: undefined }))
+    : inventoryState.items.entries.filter((line) => {
+        return line.cropId === selectedCropId || line.cropType === selectedCropName;
+      });
 
   const areaDiv = document.createElement("div");
   areaDiv.className = "layouting-area-card";
@@ -4657,6 +5033,18 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     </div>
   ` : "";
 
+  // Build the split-plot notice
+  const splitPlotNoticeHTML = splitPlotActive ? `
+    <div class="layouting-entries-from-factor">
+      <div class="form-hint-block" style="display:flex;align-items:center;gap:6px;padding:0.75rem;background:var(--bg-secondary);border-radius:8px;margin-bottom:0.5rem;">
+        <span class="material-symbols-rounded" style="font-size:18px;color:var(--primary);">science</span>
+        <span>Split Plot mode — <b>${splitPlotCombinations.length}</b> treatment combinations generated from factor codes.</span>
+      </div>
+    </div>
+  ` : "";
+  
+  const hideEntries = hasEntriesFactor || splitPlotActive;
+
   areaDiv.innerHTML = `
         <div class="layouting-area-header">
             <div>
@@ -4671,7 +5059,8 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
         
         <div class="layouting-grid">
           ${entriesFactorNoticeHTML}
-          <div class="layouting-lines" ${hasEntriesFactor ? 'style="display:none;"' : ""}>
+          ${splitPlotNoticeHTML}
+          <div class="layouting-lines" ${hideEntries ? 'style="display:none;"' : ""}>
             <label class="layouting-label">
               Select Entries
               <span class="layouting-hint"> (matching ${escapeHtml(selectedCropName)})</span>
@@ -4814,6 +5203,9 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   );
 
   let selectedLineIds = (() => {
+    // If split-plot mode, use combination ids
+    if (splitPlotActive) return splitPlotCombinations.map((c) => c.id);
+
     // If entries come from a factor, use those
     if (hasEntriesFactor) return [...entriesFactorLineIds];
 
@@ -5733,7 +6125,7 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     !!(area.layout && Array.isArray(area.layout.result) && area.layout.result.length > 0);
 
   if (getCurrentLayoutType() === "template") {
-    if (hasEntriesFactor || !alreadyHasLayout) {
+    if (hasEntriesFactor || splitPlotActive || !alreadyHasLayout) {
       autoGenerateLayout();
     }
   } else {
@@ -5756,13 +6148,21 @@ function generateLayoutForArea(areaIndex, options = {}) {
   if (!areaDiv) return;
 
   // Get selected lines from picklist (ordered)
-  const selectedItems = areaDiv.querySelectorAll(
-    ".area-selected-lines .picklist-item",
-  );
-  const selectedLines = Array.from(selectedItems).map((item) => ({
-    id: item.dataset.id,
-    name: item.dataset.name || item.textContent.trim(),
-  }));
+  // In split-plot mode, entries come from combinations, not the picklist
+  const splitPlotActive = isSplitPlotMode();
+  let selectedLines;
+  if (splitPlotActive) {
+    const combos = buildSplitPlotCombinations();
+    selectedLines = combos.map((c) => ({ id: c.id, name: c.name }));
+  } else {
+    const selectedItems = areaDiv.querySelectorAll(
+      ".area-selected-lines .picklist-item",
+    );
+    selectedLines = Array.from(selectedItems).map((item) => ({
+      id: item.dataset.id,
+      name: item.dataset.name || item.textContent.trim(),
+    }));
+  }
 
   const layoutTypeSelect = areaDiv.querySelector(".area-layout-type");
   const layoutType = layoutTypeSelect?.value === "custom" ? "custom" : "template";
@@ -5850,13 +6250,19 @@ function generateLayoutForArea(areaIndex, options = {}) {
   }
 
   // Calculate layout
-  const layouts = calculateLayout(
-    selectedLines,
-    numRanges,
-    numReps,
-    direction,
-    randomization,
-  );
+  let layouts;
+  if (splitPlotActive) {
+    // Split-plot: use dedicated layout algorithm (ignores numRanges, it's defined by factor levels)
+    layouts = generateSplitPlotLayout(numReps, direction, randomization);
+  } else {
+    layouts = calculateLayout(
+      selectedLines,
+      numRanges,
+      numReps,
+      direction,
+      randomization,
+    );
+  }
 
   const plantingDateValue = areaDiv.querySelector(".area-planting-date")?.value || "";
 
@@ -10686,6 +11092,7 @@ function buildDatabaseDataset() {
 
   const headerColumns = [
     { key: "no", label: "No", source: "fixed", defaultVisible: true },
+    { key: "trialName", label: "Trial", source: "fixed", defaultVisible: true },
     { key: "season", label: "Season", source: "fixed", defaultVisible: true },
     { key: "pollination", label: "Type of Pollination", source: "fixed", defaultVisible: true },
     { key: "trialType", label: "Trial Type", source: "fixed", defaultVisible: true },
@@ -10702,7 +11109,6 @@ function buildDatabaseDataset() {
   ];
 
   const extraColumns = [
-    { key: "trialName", label: "Trial", source: "extra", defaultVisible: false },
     { key: "crop", label: "Crop", source: "extra", defaultVisible: false },
     { key: "plantingDate", label: "Planting Date", source: "extra", defaultVisible: false },
     { key: "line", label: "Entry", source: "extra", defaultVisible: false },
@@ -10711,8 +11117,6 @@ function buildDatabaseDataset() {
     { key: "lineStage", label: "Entry Stage", source: "extra", defaultVisible: false },
     { key: "lineQty", label: "Entry Qty", source: "extra", defaultVisible: false },
     { key: "area", label: "Area", source: "extra", defaultVisible: false },
-    { key: "range", label: "Range", source: "extra", defaultVisible: false },
-    { key: "row", label: "Row", source: "extra", defaultVisible: false },
     { key: "sample", label: "Sample", source: "extra", defaultVisible: false },
   ];
 

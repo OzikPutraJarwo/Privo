@@ -522,8 +522,12 @@
                     <div class="section-nav-number">2</div>
                     <div class="section-nav-text">Experiment</div>
                   </div>
-                  <div class="section-nav-item" data-section="plotspec">
+                  <div class="section-nav-item" data-section="splitplot" id="splitPlotNavItem" style="display:none;">
                     <div class="section-nav-number">3</div>
+                    <div class="section-nav-text">Split Plot</div>
+                  </div>
+                  <div class="section-nav-item" data-section="plotspec">
+                    <div class="section-nav-number">4</div>
                     <div class="section-nav-text">Plot Spec</div>
                   </div>
                   <div class="section-nav-item" data-section="observation">
@@ -612,11 +616,34 @@
                         <input type="number" id="trialFactors" min="1" step="1" value="1" placeholder="Enter number of factors">
                         <small class="form-hint">Minimum 1 factor</small>
                       </div>
+                      <div class="form-group" id="trialFactorArrangementGroup" style="display:none;">
+                        <label for="trialFactorArrangement">Factor Arrangement</label>
+                        <select id="trialFactorArrangement">
+                          <option value="factorial">Factorial</option>
+                          <option value="splitplot">Split Plot</option>
+                        </select>
+                        <small class="form-hint">Choose how factors interact in the experiment</small>
+                      </div>
                       <div class="form-group" id="trialTreatmentsGroup">
                         <label>Factors & Treatments</label>
                         <div id="trialTreatmentsContainer">
                           <!-- Dynamic factor configuration inputs -->
                         </div>
+                      </div>
+                    </div>
+
+                    <div class="trial-section" id="trialSectionSplitPlot">
+                      <h4 class="trial-form-section-title">Split Plot — Treatment Codes</h4>
+                      <p class="form-hint-block" style="margin-bottom:1rem;">Assign a short code (letter or number) to each treatment. These codes will be combined to create the layout plot labels (e.g., A1, B3).</p>
+                      <div id="splitPlotCodesContainer">
+                        <!-- Factor code groups will be rendered here -->
+                      </div>
+                      <div class="form-group" style="margin-top:1rem;">
+                        <label class="factor-entries-toggle">
+                          <input type="checkbox" id="splitPlotLocationAsFactor">
+                          <span>Use Location as Factor</span>
+                        </label>
+                        <small class="form-hint">If checked, each area/location becomes an additional factor level</small>
                       </div>
                     </div>
 

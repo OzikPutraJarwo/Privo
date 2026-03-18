@@ -114,7 +114,7 @@
 ### Update
 - [x] `MAIN` New logo
 - [x] `Trial` Factors using Entries
-- [ ] `Trial` Process Research with split plot design for factorial with custom layouting
+- [x] `Trial` Process Research with split plot design for factorial with custom layouting
 - [x] `Trial` Report with import/export system
 - [x] `Data Analysis` Custom dataset (independent)
 - [x] `Data Analysis` ANOVA with Coefficient of Variation (CV)
