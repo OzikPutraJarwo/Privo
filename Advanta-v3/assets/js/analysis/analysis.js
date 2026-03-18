@@ -23,6 +23,10 @@
     resultTabs: [],
     currentResultTabId: null,
     resultTabCounter: 0,
+    dataSource: "trial",        // "trial" or "custom"
+    customColumns: null,        // columns from custom upload
+    customRows: null,           // rows from custom upload
+    customFileName: null,       // name of uploaded file
   };
 
   AnalysisApp.fullscreenState = AnalysisApp.fullscreenState || {
@@ -262,28 +266,47 @@
   };
 
   AnalysisApp.init = function initAnalysis() {
-    const dataset = buildDatabaseDataset();
     const state = AnalysisApp.state;
 
-    state.columns = [
-      ...dataset.fixedColumns.map((column) => ({
-        key: column.key,
-        label: column.label,
-        source: column.source || "fixed",
-      })),
-      ...(dataset.extraColumns || []).map((column) => ({
-        key: column.key,
-        label: column.label,
-        source: column.source || "extra",
-      })),
-      ...dataset.parameterColumns.map((parameter) => ({
-        key: `param_${parameter.id}`,
-        label: parameter.name || "Parameter",
-        source: "param",
-      })),
-    ];
+    // Determine data source
+    if (state.dataSource === "custom" && state.customColumns && state.customRows) {
+      // Use custom uploaded dataset
+      state.columns = state.customColumns;
+      state.rows = state.customRows;
+    } else {
+      // Warn if any trials have unloaded responses
+      if (typeof trialState !== "undefined" && trialState.trials) {
+        const unloadedTrials = trialState.trials.filter(t => !t.archived && !t._responsesLoaded);
+        if (unloadedTrials.length > 0) {
+          const names = unloadedTrials.map(t => t.name).join(", ");
+          if (typeof showToast === "function") {
+            showToast(`Warning: ${unloadedTrials.length} trial(s) have unloaded data (${names}). Analysis results may be incomplete. Use "Load Latest Data" to fetch responses first.`, "warning", 6000);
+          }
+        }
+      }
 
-    state.rows = dataset.rows;
+      // Use trial/database dataset
+      const dataset = buildDatabaseDataset();
+      state.columns = [
+        ...dataset.fixedColumns.map((column) => ({
+          key: column.key,
+          label: column.label,
+          source: column.source || "fixed",
+        })),
+        ...(dataset.extraColumns || []).map((column) => ({
+          key: column.key,
+          label: column.label,
+          source: column.source || "extra",
+        })),
+        ...dataset.parameterColumns.map((parameter) => ({
+          key: `param_${parameter.id}`,
+          label: parameter.name || "Parameter",
+          source: "param",
+        })),
+      ];
+      state.rows = dataset.rows;
+    }
+
     state.filters = {};
     state.sort = null;
     state.freezeUntilColKey = null;
@@ -303,6 +326,11 @@
 
     if (typeof AnalysisApp.renderTable === "function") {
       AnalysisApp.renderTable();
+    }
+
+    // Sync UI for dataset source controls
+    if (typeof syncAnalysisDataSourceUI === "function") {
+      syncAnalysisDataSourceUI();
     }
   };
 

@@ -59,22 +59,31 @@ function buildObservationReminders() {
         }
 
         // Check completion: has any response data for this area+param?
-        const done = !!(trial.responses && trial.responses[areaIndex] && trial.responses[areaIndex][param.id] &&
-          Object.keys(trial.responses[areaIndex][param.id]).length > 0);
-
-        // Status: past, today, upcoming, no-date
+        // If trial responses haven't been loaded from Drive yet, mark as unknown
+        let done = false;
         let status = "no-date";
-        if (dateMin && dateMax) {
-          const endDay = new Date(dateMax);
-          endDay.setHours(23, 59, 59, 999);
-          if (done) {
-            status = "done";
-          } else if (today > endDay) {
-            status = "overdue";
-          } else if (today >= dateMin && today <= endDay) {
-            status = "today";
-          } else {
-            status = "upcoming";
+
+        if (!trial._responsesLoaded) {
+          // Responses not loaded — don't show "overdue", mark as not-loaded
+          done = false;
+          status = "not-loaded";
+        } else {
+          done = !!(trial.responses && trial.responses[areaIndex] && trial.responses[areaIndex][param.id] &&
+            Object.keys(trial.responses[areaIndex][param.id]).length > 0);
+
+          // Status: past, today, upcoming, no-date
+          if (dateMin && dateMax) {
+            const endDay = new Date(dateMax);
+            endDay.setHours(23, 59, 59, 999);
+            if (done) {
+              status = "done";
+            } else if (today > endDay) {
+              status = "overdue";
+            } else if (today >= dateMin && today <= endDay) {
+              status = "today";
+            } else {
+              status = "upcoming";
+            }
           }
         }
 
@@ -134,21 +143,29 @@ function buildAgronomyReminders() {
         }
 
         // Check completion
-        const resp = trial.agronomyResponses && trial.agronomyResponses[areaIndex] && trial.agronomyResponses[areaIndex][agItem.id];
-        const done = !!(resp && resp.applicationDate && resp.photos && resp.photos.length > 0);
-
+        // If trial responses haven't been loaded from Drive yet, mark as not-loaded
+        let done = false;
         let status = "no-date";
-        if (dateMin && dateMax) {
-          const endDay = new Date(dateMax);
-          endDay.setHours(23, 59, 59, 999);
-          if (done) {
-            status = "done";
-          } else if (today > endDay) {
-            status = "overdue";
-          } else if (today >= dateMin && today <= endDay) {
-            status = "today";
-          } else {
-            status = "upcoming";
+
+        if (!trial._responsesLoaded) {
+          done = false;
+          status = "not-loaded";
+        } else {
+          const resp = trial.agronomyResponses && trial.agronomyResponses[areaIndex] && trial.agronomyResponses[areaIndex][agItem.id];
+          done = !!(resp && resp.applicationDate && resp.photos && resp.photos.length > 0);
+
+          if (dateMin && dateMax) {
+            const endDay = new Date(dateMax);
+            endDay.setHours(23, 59, 59, 999);
+            if (done) {
+              status = "done";
+            } else if (today > endDay) {
+              status = "overdue";
+            } else if (today >= dateMin && today <= endDay) {
+              status = "today";
+            } else {
+              status = "upcoming";
+            }
           }
         }
 
@@ -193,6 +210,7 @@ function statusLabel(status) {
     today: '<span class="reminder-badge badge-today">Today</span>',
     upcoming: '<span class="reminder-badge badge-upcoming">Upcoming</span>',
     "no-date": '<span class="reminder-badge badge-nodate">No date</span>',
+    "not-loaded": '<span class="reminder-badge badge-nodate">Not loaded</span>',
   };
   return map[status] || "";
 }
@@ -204,6 +222,7 @@ function statusIcon(status) {
     today: "today",
     upcoming: "schedule",
     "no-date": "help_outline",
+    "not-loaded": "cloud_off",
   };
   return map[status] || "schedule";
 }
@@ -211,7 +230,7 @@ function statusIcon(status) {
 // ---- Sort helpers ----
 // Sort items: overdue first, then today, upcoming, done, no-date
 function statusPriority(s) {
-  return { overdue: 0, today: 1, upcoming: 2, "no-date": 3, done: 4 }[s] ?? 5;
+  return { overdue: 0, today: 1, upcoming: 2, "no-date": 3, done: 4, "not-loaded": 5 }[s] ?? 6;
 }
 
 function sortReminderItems(items) {
@@ -526,7 +545,7 @@ function _renderDashReminderSection(type) {
         </div>
         <div class="dash-reminder-body">
           <div class="dash-reminder-title">${escapeHtml(item.name)}</div>
-          <div class="dash-reminder-sub">${escapeHtml(item.trialName)} · ${escapeHtml(item.areaName)}${dateStr ? ' · ' + dateStr : ''}</div>
+          <div class="dash-reminder-sub">${escapeHtml(item.trialName)}</div>
         </div>
         <span class="dash-reminder-badge ${item.status}">${badge}</span>
       </div>`;

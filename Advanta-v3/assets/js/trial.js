@@ -25,6 +25,12 @@ async function initializeTrials(options = {}) {
 
     if (cached?.trials) {
       trialState.trials = cached.trials;
+      // Restore _responsesLoaded flag from cache (responses are in cache)
+      trialState.trials.forEach(t => {
+        if (t.responses || t.agronomyResponses) {
+          t._responsesLoaded = true;
+        }
+      });
       hasCache = true;
 
       renderTrials();
@@ -41,7 +47,19 @@ async function initializeTrials(options = {}) {
         enqueueSync({
           label: 'Load Trials',
           run: async () => {
-            trialState.trials = await loadTrialsFromGoogleDrive();
+            const freshTrials = await loadTrialsFromGoogleDrive();
+
+            // Merge: keep locally loaded responses for trials that already have them
+            for (const freshTrial of freshTrials) {
+              const cached = trialState.trials.find(t => t.id === freshTrial.id);
+              if (cached && cached._responsesLoaded) {
+                freshTrial.responses = cached.responses;
+                freshTrial.agronomyResponses = cached.agronomyResponses;
+                freshTrial._responsesLoaded = true;
+              }
+            }
+
+            trialState.trials = freshTrials;
             renderTrials();
 
             if (typeof saveLocalCache === "function") {
@@ -51,10 +69,26 @@ async function initializeTrials(options = {}) {
             if (onProgress) {
               onProgress(1, "Trials synced");
             }
+
+            // Run orphan cleanup in background (non-blocking)
+            cleanupOrphanTrialFolders().catch(e =>
+              console.error("[Cleanup] Background orphan cleanup failed:", e)
+            );
           }
         });
       } else {
-        trialState.trials = await loadTrialsFromGoogleDrive();
+        const freshTrials = await loadTrialsFromGoogleDrive();
+
+        for (const freshTrial of freshTrials) {
+          const cached = trialState.trials.find(t => t.id === freshTrial.id);
+          if (cached && cached._responsesLoaded) {
+            freshTrial.responses = cached.responses;
+            freshTrial.agronomyResponses = cached.agronomyResponses;
+            freshTrial._responsesLoaded = true;
+          }
+        }
+
+        trialState.trials = freshTrials;
         renderTrials();
 
         if (typeof saveLocalCache === "function") {
@@ -64,6 +98,11 @@ async function initializeTrials(options = {}) {
         if (onProgress) {
           onProgress(1, "Trials synced");
         }
+
+        // Run orphan cleanup in background
+        cleanupOrphanTrialFolders().catch(e =>
+          console.error("[Cleanup] Background orphan cleanup failed:", e)
+        );
       }
     }
   } catch (error) {
@@ -85,9 +124,16 @@ function renderTrials() {
   const archivedTrials = trialState.trials.filter(t => t.archived);
 
   const renderTrialCard = (trial) => {
-    const progress = calculateCombinedTrialProgress(trial);
-    const progressPercent = progress.percentage;
+    const progress = getTrialProgress(trial);
+    const isLoaded = !!trial._responsesLoaded;
+    const hasProgressSummary = !!trial.progressSummary;
+    const showProgress = isLoaded || hasProgressSummary;
+    const progressPercent = showProgress ? progress.percentage : 0;
     const canRun = canRunTrialActivities(trial);
+
+    const loadBadge = isLoaded
+      ? '<span class="trial-card-load-badge loaded"><span class="material-symbols-rounded">check_circle</span></span>'
+      : '<span class="trial-card-load-badge not-loaded"><span class="material-symbols-rounded">cloud_off</span> Not loaded</span>';
 
     return `
       <div class="run-trial-card" data-trial-id="${trial.id}" onclick="showTrialActionPopup(event, '${trial.id}')">
@@ -96,13 +142,13 @@ function renderTrials() {
             <svg class="progress-circle" width="64" height="64" viewBox="0 0 64 64">
               <circle cx="32" cy="32" r="28" class="progress-circle-bg"></circle>
               <circle cx="32" cy="32" r="28" class="progress-circle-fill"
-                      style="stroke-dasharray: ${progressPercent * 1.75} 175; stroke: ${getProgressGradientColor(progressPercent)}"></circle>
-              <text x="32" y="37" class="progress-circle-text" text-anchor="middle">${progressPercent}%</text>
+                      style="stroke-dasharray: ${progressPercent * 1.75} 175; stroke: ${showProgress ? getProgressGradientColor(progressPercent) : 'var(--border)'}"></circle>
+              <text x="32" y="37" class="progress-circle-text" text-anchor="middle">${showProgress ? progressPercent + '%' : '—'}</text>
             </svg>
           </div>
           <div class="run-trial-card-body">
             <div class="run-trial-card-title">${escapeHtml(trial.name)}</div>
-            <div class="run-trial-card-meta">${escapeHtml(trial.cropName || "")}${trial.trialType ? " · " + escapeHtml(trial.trialType) : ""}${!canRun ? ' · <span style="color:var(--text-tertiary);font-size:0.75rem;">Incomplete setup</span>' : ""}</div>
+            <div class="run-trial-card-meta">${escapeHtml(trial.cropName || "")}${trial.trialType ? " · " + escapeHtml(trial.trialType) : ""}${!canRun ? ' · <span style="color:var(--text-tertiary);font-size:0.75rem;">Incomplete setup</span>' : ""} · ${loadBadge}</div>
           </div>
         </div>
       </div>
@@ -110,8 +156,11 @@ function renderTrials() {
   };
 
   const renderArchivedTrialCard = (trial) => {
-    const progress = calculateCombinedTrialProgress(trial);
-    const progressPercent = progress.percentage;
+    const progress = getTrialProgress(trial);
+    const isLoaded = !!trial._responsesLoaded;
+    const hasProgressSummary = !!trial.progressSummary;
+    const showProgress = isLoaded || hasProgressSummary;
+    const progressPercent = showProgress ? progress.percentage : 0;
 
     return `
       <div class="run-trial-card trial-card-archived" data-trial-id="${trial.id}" onclick="showTrialActionPopup(event, '${trial.id}')">
@@ -120,8 +169,8 @@ function renderTrials() {
             <svg class="progress-circle" width="64" height="64" viewBox="0 0 64 64">
               <circle cx="32" cy="32" r="28" class="progress-circle-bg"></circle>
               <circle cx="32" cy="32" r="28" class="progress-circle-fill"
-                      style="stroke-dasharray: ${progressPercent * 1.75} 175; stroke: ${getProgressGradientColor(progressPercent)}"></circle>
-              <text x="32" y="37" class="progress-circle-text" text-anchor="middle">${progressPercent}%</text>
+                      style="stroke-dasharray: ${progressPercent * 1.75} 175; stroke: ${showProgress ? getProgressGradientColor(progressPercent) : 'var(--border)'}"></circle>
+              <text x="32" y="37" class="progress-circle-text" text-anchor="middle">${showProgress ? progressPercent + '%' : '—'}</text>
             </svg>
           </div>
           <div class="run-trial-card-body">
@@ -590,7 +639,7 @@ function enterTrialFullscreenMode({ title, onClose }) {
   const menuToggle = document.querySelector(".menu-toggle");
 
   const managedIds = [
-    "syncDownBtn",
+    "loadDataBtn",
     "syncStatusBtn",
     "runTrialNavBtn",
     "runTrialSaveBtn",
@@ -913,6 +962,18 @@ function setupTrialFactorsAndTreatments() {
     renderTrialTreatmentsInputs(count, current);
   };
   factorsInput.addEventListener("input", factorsInput._treatmentSyncHandler);
+
+  // Re-render entries picker when crop changes (entries are filtered by crop)
+  const cropSelect = document.getElementById("trialCrops");
+  if (cropSelect) {
+    cropSelect.removeEventListener("change", cropSelect._factorEntriesRefresh);
+    cropSelect._factorEntriesRefresh = () => {
+      const current = getTrialTreatmentsFromForm();
+      const count = normalizeTrialFactorsCount(factorsInput.value);
+      renderTrialTreatmentsInputs(count, current);
+    };
+    cropSelect.addEventListener("change", cropSelect._factorEntriesRefresh);
+  }
 }
 
 function normalizeTrialFactorDefinitions(trial) {
@@ -926,7 +987,9 @@ function normalizeTrialFactorDefinitions(trial) {
       const treatments = Array.isArray(item.treatments)
         ? item.treatments.map((value) => String(value || "").trim()).filter(Boolean)
         : [];
-      normalized.push({ name, treatments });
+      const isEntries = !!item.isEntries;
+      const entriesLineIds = Array.isArray(item.entriesLineIds) ? item.entriesLineIds : [];
+      normalized.push({ name, treatments, isEntries, entriesLineIds });
     }
     return normalized;
   }
@@ -936,6 +999,8 @@ function normalizeTrialFactorDefinitions(trial) {
     normalized.push({
       name: String(legacy[index] || "").trim(),
       treatments: [],
+      isEntries: false,
+      entriesLineIds: [],
     });
   }
   return normalized;
@@ -961,13 +1026,34 @@ function renderTrialTreatmentsInputs(factorCount, factorDefinitions = []) {
     const treatments = Array.isArray(source.treatments)
       ? source.treatments.map((item) => String(item || "").trim()).filter(Boolean)
       : [];
-    return { name: factorName, treatments };
+    const isEntries = !!source.isEntries;
+    const entriesLineIds = Array.isArray(source.entriesLineIds) ? source.entriesLineIds : [];
+    return { name: factorName, treatments, isEntries, entriesLineIds };
+  });
+
+  // Get crop-matching entries from inventory
+  const cropSelect = document.getElementById("trialCrops");
+  const selectedCropId = cropSelect?.value || "";
+  const selectedCropName = cropSelect?.options?.[cropSelect.selectedIndex]?.dataset?.name || "";
+  const matchingLines = (inventoryState?.items?.entries || []).filter((line) => {
+    return line.cropId === selectedCropId || line.cropType === selectedCropName;
   });
 
   container.innerHTML = values
     .map(
-      (value, index) => `
-        <div class="form-group" style="margin:0 0 1rem 0; padding:0.75rem; border:1px solid var(--border); border-radius:10px;">
+      (value, index) => {
+        const entriesListHTML = matchingLines.map((line) => {
+          const checked = value.entriesLineIds.includes(line.id) ? "checked" : "";
+          return `
+            <label class="factor-entry-item">
+              <input type="checkbox" class="factor-entry-checkbox" data-index="${index}" data-line-id="${line.id}" ${checked}>
+              <span>${escapeHtml(line.name)}</span>
+            </label>
+          `;
+        }).join("");
+
+        return `
+        <div class="form-group factor-card" style="margin:0 0 1rem 0; padding:0.75rem; border:1px solid var(--border); border-radius:10px;">
           <label for="trialFactorName_${index + 1}">Factor ${index + 1} Name</label>
           <input
             type="text"
@@ -977,31 +1063,129 @@ function renderTrialTreatmentsInputs(factorCount, factorDefinitions = []) {
             placeholder="e.g., Parental / Hybrid / Planting Space"
             value="${escapeHtml(value.name)}"
           >
-          <label for="trialFactorTreatments_${index + 1}" style="margin-top:0.5rem;">Treatments for Factor ${index + 1}</label>
-          <textarea
-            id="trialFactorTreatments_${index + 1}"
-            class="trial-factor-treatments-input"
-            data-index="${index}"
-            rows="3"
-            placeholder="One per line or separated by comma"
-          >${escapeHtml(value.treatments.join("\n"))}</textarea>
+          <label class="factor-entries-toggle">
+            <input type="checkbox" class="trial-factor-isEntries-input" data-index="${index}" ${value.isEntries ? "checked" : ""}>
+            <span>Use as Entries</span>
+          </label>
+          <div class="factor-treatments-section" ${value.isEntries ? 'style="display:none;"' : ""}>
+            <label for="trialFactorTreatments_${index + 1}" style="margin-top:0.5rem;">Treatments for Factor ${index + 1}</label>
+            <textarea
+              id="trialFactorTreatments_${index + 1}"
+              class="trial-factor-treatments-input"
+              data-index="${index}"
+              rows="3"
+              placeholder="One per line or separated by comma"
+            >${escapeHtml(value.treatments.join("\n"))}</textarea>
+          </div>
+          <div class="factor-entries-section" ${value.isEntries ? "" : 'style="display:none;"'}>
+            <label style="margin-top:0.5rem;">Select Entries for Factor ${index + 1}</label>
+            <div class="factor-entries-search-wrap">
+              <input type="text" class="factor-entries-search" data-index="${index}" placeholder="Search entries...">
+            </div>
+            <div class="factor-entries-list" data-index="${index}">
+              ${entriesListHTML || '<p class="layouting-empty">No entries available. Select a crop first.</p>'}
+            </div>
+            <small class="form-hint factor-entries-count" data-index="${index}">
+              ${value.entriesLineIds.length} entries selected
+            </small>
+          </div>
         </div>
-      `,
+      `;
+      },
     )
     .join("");
+
+  // Event listeners for isEntries toggle
+  container.querySelectorAll(".trial-factor-isEntries-input").forEach((checkbox) => {
+    checkbox.addEventListener("change", (e) => {
+      const factorCard = e.target.closest(".factor-card");
+      const treatmentsSection = factorCard.querySelector(".factor-treatments-section");
+      const entriesSection = factorCard.querySelector(".factor-entries-section");
+      if (e.target.checked) {
+        treatmentsSection.style.display = "none";
+        entriesSection.style.display = "";
+      } else {
+        treatmentsSection.style.display = "";
+        entriesSection.style.display = "none";
+      }
+    });
+  });
+
+  // Event listeners for entries search
+  container.querySelectorAll(".factor-entries-search").forEach((searchInput) => {
+    searchInput.addEventListener("input", (e) => {
+      const idx = e.target.dataset.index;
+      const list = container.querySelector(`.factor-entries-list[data-index="${idx}"]`);
+      if (!list) return;
+      const term = e.target.value.toLowerCase();
+      list.querySelectorAll(".factor-entry-item").forEach((item) => {
+        const name = item.textContent.toLowerCase();
+        item.style.display = name.includes(term) ? "" : "none";
+      });
+    });
+  });
+
+  // Event listeners for entry checkbox to update count
+  container.querySelectorAll(".factor-entry-checkbox").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const idx = cb.dataset.index;
+      const countEl = container.querySelector(`.factor-entries-count[data-index="${idx}"]`);
+      if (countEl) {
+        const checked = container.querySelectorAll(`.factor-entry-checkbox[data-index="${idx}"]:checked`).length;
+        countEl.textContent = `${checked} entries selected`;
+      }
+    });
+  });
 }
 
 function getTrialTreatmentsFromForm() {
-  const factorNames = Array.from(document.querySelectorAll("#trialTreatmentsContainer .trial-factor-name-input"));
-  const factorTreatments = Array.from(document.querySelectorAll("#trialTreatmentsContainer .trial-factor-treatments-input"));
+  const container = document.getElementById("trialTreatmentsContainer");
+  if (!container) return [];
+  const factorCards = Array.from(container.querySelectorAll(".factor-card"));
 
-  return factorNames.map((nameInput, index) => {
-    const treatmentsInput = factorTreatments[index];
+  return factorCards.map((card) => {
+    const nameInput = card.querySelector(".trial-factor-name-input");
+    const isEntriesCheckbox = card.querySelector(".trial-factor-isEntries-input");
+    const treatmentsInput = card.querySelector(".trial-factor-treatments-input");
+    const isEntries = isEntriesCheckbox?.checked || false;
+
+    if (isEntries) {
+      const checkedEntries = Array.from(card.querySelectorAll(".factor-entry-checkbox:checked"));
+      const entriesLineIds = checkedEntries.map((cb) => cb.dataset.lineId);
+      const treatments = checkedEntries.map((cb) => {
+        const label = cb.closest(".factor-entry-item");
+        return label ? label.textContent.trim() : "";
+      }).filter(Boolean);
+
+      return {
+        name: String(nameInput?.value || "").trim(),
+        treatments,
+        isEntries: true,
+        entriesLineIds,
+      };
+    }
+
     return {
       name: String(nameInput?.value || "").trim(),
       treatments: parseFactorTreatmentsText(treatmentsInput?.value || ""),
+      isEntries: false,
+      entriesLineIds: [],
     };
   });
+}
+
+/**
+ * Check if any factor in the Experiment section is marked as "Entries".
+ * Returns the array of line IDs from the first matching factor, or null.
+ */
+function getEntriesFactorLineIds() {
+  const factorDefs = getTrialTreatmentsFromForm();
+  for (const factor of factorDefs) {
+    if (factor.isEntries && Array.isArray(factor.entriesLineIds) && factor.entriesLineIds.length > 0) {
+      return factor.entriesLineIds;
+    }
+  }
+  return null;
 }
 
 // Validate location section
@@ -3811,6 +3995,388 @@ async function getTrialsFolderId() {
   return trialsFolderId;
 }
 
+// ===========================
+// PROGRESS SUMMARY (denormalized in meta.json)
+// ===========================
+
+/**
+ * Build a denormalized progress summary from full trial data.
+ * Stored in meta.json so progress can be displayed without loading responses.
+ */
+function buildProgressSummary(trial) {
+  const obs = calculateTrialProgress(trial);
+  const hasAgronomy = trial.agronomyMonitoring && trial.agronomyItems && trial.agronomyItems.length > 0;
+  const agro = hasAgronomy ? calculateAgronomyProgress(trial) : { completed: 0, total: 0, percentage: 0 };
+  const total = obs.total + agro.total;
+  const completed = obs.completed + agro.completed;
+  return {
+    obs: { completed: obs.completed, total: obs.total, percentage: obs.percentage },
+    agro: { completed: agro.completed, total: agro.total, percentage: agro.percentage },
+    combined: { completed, total, percentage: total > 0 ? Math.round((completed / total) * 100) : 0 },
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Get progress for a trial — uses denormalized summary if responses haven't been loaded,
+ * otherwise computes live from responses.
+ */
+function getTrialProgress(trial) {
+  // If responses have been loaded in memory, compute live
+  if (trial._responsesLoaded) {
+    return calculateCombinedTrialProgress(trial);
+  }
+  // Use denormalized summary from meta
+  if (trial.progressSummary) {
+    const s = trial.progressSummary;
+    return {
+      completed: s.combined.completed,
+      total: s.combined.total,
+      percentage: s.combined.percentage,
+      obs: s.obs,
+      agro: s.agro,
+    };
+  }
+  // Fallback: no data yet
+  return { completed: 0, total: 0, percentage: 0, obs: { completed: 0, total: 0, percentage: 0 }, agro: { completed: 0, total: 0, percentage: 0 } };
+}
+
+// ===========================
+// LAZY-LOAD RESPONSES FROM DRIVE
+// ===========================
+
+/**
+ * Load observation responses for a single trial from Drive.
+ * Sets trial._responsesLoaded = true when done.
+ */
+async function loadTrialResponsesFromDrive(trialId) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial) return;
+  if (trial._responsesLoaded) return; // Already loaded
+
+  try {
+    const rootFolderId = await getTrialsFolderId();
+    const trialFolder = await findFolder(trialId, rootFolderId);
+    if (!trialFolder) { trial._responsesLoaded = true; return; }
+
+    // Load responses from responses/ subfolder
+    const responsesFolderObj = await findFolder("responses", trialFolder.id);
+    if (responsesFolderObj) {
+      const respFiles = await gapi.client.drive.files.list({
+        q: `'${responsesFolderObj.id}' in parents and mimeType='application/json' and trashed=false`,
+        fields: "files(id, name)",
+        pageSize: 1000,
+      });
+
+      const responses = {};
+      for (const respFile of (respFiles.result.files || [])) {
+        try {
+          const respData = await getFileContent(respFile.id);
+          const fileName = respFile.name.replace(".json", "");
+
+          if (fileName.includes("~")) {
+            const parts = fileName.split("~");
+            if (parts.length < 4) continue;
+            const areaIndex = parts[0];
+            const paramId = parts[1];
+            if (!responses[areaIndex]) responses[areaIndex] = {};
+            if (!responses[areaIndex][paramId]) responses[areaIndex][paramId] = {};
+            Object.assign(responses[areaIndex][paramId], respData);
+          } else {
+            const sepIdx = fileName.indexOf("_");
+            if (sepIdx === -1) continue;
+            const areaIndex = fileName.substring(0, sepIdx);
+            const paramId = fileName.substring(sepIdx + 1);
+            if (!responses[areaIndex]) responses[areaIndex] = {};
+            responses[areaIndex][paramId] = respData;
+          }
+        } catch (e) {
+          console.error(`Error loading response ${respFile.name}:`, e);
+        }
+      }
+      trial.responses = responses;
+    } else {
+      trial.responses = trial.responses || {};
+    }
+
+    // Load agronomy responses from agronomy/ subfolder
+    const agronomyFolder = await findFolder("agronomy", trialFolder.id);
+    if (agronomyFolder) {
+      const agroFiles = await gapi.client.drive.files.list({
+        q: `'${agronomyFolder.id}' in parents and mimeType='application/json' and trashed=false`,
+        fields: "files(id, name)",
+        pageSize: 1000,
+      });
+
+      const agronomyResponses = {};
+      for (const agroFile of (agroFiles.result.files || [])) {
+        try {
+          const agroData = await getFileContent(agroFile.id);
+          const fileName = agroFile.name.replace(".json", "");
+          const parts = fileName.split("~");
+          if (parts.length < 2) continue;
+          const areaIndex = parts[0];
+          const itemId = parts[1];
+          if (!agronomyResponses[areaIndex]) agronomyResponses[areaIndex] = {};
+          agronomyResponses[areaIndex][itemId] = agroData;
+        } catch (e) {
+          console.error(`Error loading agronomy response ${agroFile.name}:`, e);
+        }
+      }
+      trial.agronomyResponses = agronomyResponses;
+    } else {
+      trial.agronomyResponses = trial.agronomyResponses || {};
+    }
+
+    trial._responsesLoaded = true;
+
+    // Update local cache with newly loaded responses
+    if (typeof saveLocalCache === "function") {
+      saveLocalCache("trials", { trials: trialState.trials });
+    }
+  } catch (error) {
+    console.error(`Error lazy-loading responses for trial ${trialId}:`, error);
+    // Mark as loaded anyway to avoid repeated failures
+    trial._responsesLoaded = true;
+  }
+}
+
+/**
+ * Ensure trial responses are loaded before running observation/agronomy/report.
+ * If not loaded, shows a confirmation popup. User can:
+ *   - "Load Now": loads data inline and resolves true
+ *   - "Open Load Panel": opens the Load Data panel and resolves false (caller should abort)
+ *   - "Cancel": resolves false
+ * Returns true if responses are loaded/ready, false if user declined.
+ */
+async function ensureTrialResponsesLoaded(trialId) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial) return false;
+  if (trial._responsesLoaded) return true;
+
+  return new Promise((resolve) => {
+    const modal = document.createElement("div");
+    modal.className = "confirm-modal active";
+    modal.id = "loadDataConfirmModal";
+
+    modal.innerHTML = `
+      <div class="confirm-modal-content">
+        <div class="confirm-modal-header">
+          <h3>Trial Data Not Loaded</h3>
+        </div>
+        <div class="confirm-modal-body">
+          <p>Response data for <b>${escapeHtml(trial.name)}</b> has not been loaded from Google Drive yet. You need to load the data before continuing.</p>
+        </div>
+        <div class="confirm-modal-footer">
+          <button class="btn btn-secondary" id="loadConfirmCancelBtn">Cancel</button>
+          <button class="btn btn-secondary" id="loadConfirmPanelBtn">Open Load Panel</button>
+          <button class="btn btn-primary" id="loadConfirmNowBtn">Load Now</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const cleanup = () => modal.remove();
+
+    modal.querySelector("#loadConfirmCancelBtn").addEventListener("click", () => {
+      cleanup();
+      resolve(false);
+    });
+
+    modal.querySelector("#loadConfirmPanelBtn").addEventListener("click", () => {
+      cleanup();
+      if (typeof openLoadDataPanel === "function") openLoadDataPanel("trial");
+      resolve(false);
+    });
+
+    modal.querySelector("#loadConfirmNowBtn").addEventListener("click", async () => {
+      const btn = modal.querySelector("#loadConfirmNowBtn");
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-sm"></span> Loading...';
+      try {
+        await loadTrialResponsesFromDrive(trialId);
+        cleanup();
+        resolve(true);
+      } catch (err) {
+        cleanup();
+        showToast("Error loading trial data: " + err.message, "error");
+        resolve(false);
+      }
+    });
+
+    // Close on backdrop click
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) {
+        cleanup();
+        resolve(false);
+      }
+    });
+  });
+}
+
+// ===========================
+// ORPHAN CLEANUP
+// ===========================
+
+/**
+ * Remove orphan trial folders on Drive — folders whose trialId
+ * no longer matches any trial in trialState.trials.
+ * Also cleans up orphan response files within valid trial folders.
+ */
+async function cleanupOrphanTrialFolders() {
+  try {
+    const rootFolderId = await getTrialsFolderId();
+    const foldersResp = await gapi.client.drive.files.list({
+      q: `'${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: "files(id, name)",
+      pageSize: 1000,
+    });
+
+    const driveTrialFolders = foldersResp.result.files || [];
+    const knownTrialIds = new Set(trialState.trials.map(t => t.id));
+    let orphanCount = 0;
+
+    for (const folder of driveTrialFolders) {
+      if (!knownTrialIds.has(folder.name)) {
+        // This folder belongs to a deleted trial — remove it
+        try {
+          await gapi.client.drive.files.delete({ fileId: folder.id });
+          orphanCount++;
+          console.log(`[Cleanup] Deleted orphan trial folder: ${folder.name}`);
+        } catch (e) {
+          console.error(`[Cleanup] Failed to delete orphan folder ${folder.name}:`, e);
+        }
+      }
+    }
+
+    if (orphanCount > 0) {
+      console.log(`[Cleanup] Removed ${orphanCount} orphan trial folder(s) from Drive.`);
+    }
+
+    // Now clean up orphan response files within valid trials
+    for (const trial of trialState.trials) {
+      await cleanupOrphanResponseFiles(trial);
+    }
+  } catch (error) {
+    console.error("[Cleanup] Error during orphan cleanup:", error);
+  }
+}
+
+/**
+ * For a given trial, remove response files on Drive that reference
+ * parameters or lines no longer in the trial.
+ */
+async function cleanupOrphanResponseFiles(trial) {
+  try {
+    const rootFolderId = await getTrialsFolderId();
+    const trialFolder = await findFolder(trial.id, rootFolderId);
+    if (!trialFolder) return;
+
+    // Build set of valid parameter IDs
+    const validParamIds = new Set(trial.parameters || []);
+
+    // Build set of valid line IDs from layout
+    const validLineIds = new Set();
+    (trial.areas || []).forEach(area => {
+      const layouts = Array.isArray(area?.layout?.result) ? area.layout.result : [];
+      layouts.forEach(rep => {
+        (rep || []).forEach(row => {
+          (row || []).forEach(cell => {
+            if (cell?.id) validLineIds.add(String(cell.id));
+          });
+        });
+      });
+    });
+
+    // Check responses/ subfolder
+    const responsesFolderObj = await findFolder("responses", trialFolder.id);
+    if (responsesFolderObj) {
+      const respFiles = await gapi.client.drive.files.list({
+        q: `'${responsesFolderObj.id}' in parents and mimeType='application/json' and trashed=false`,
+        fields: "files(id, name)",
+        pageSize: 1000,
+      });
+
+      for (const respFile of (respFiles.result.files || [])) {
+        const fileName = respFile.name.replace(".json", "");
+        let shouldDelete = false;
+
+        if (fileName.includes("~")) {
+          // Format: {areaIndex}~{paramId}~{repIndex}~{lineId}
+          const parts = fileName.split("~");
+          if (parts.length >= 4) {
+            const paramId = parts[1];
+            const lineId = parts[3];
+            if (!validParamIds.has(paramId) || !validLineIds.has(String(lineId))) {
+              shouldDelete = true;
+            }
+          }
+        } else {
+          // Legacy: {areaIndex}_{paramId}
+          const sepIdx = fileName.indexOf("_");
+          if (sepIdx > -1) {
+            const paramId = fileName.substring(sepIdx + 1);
+            if (!validParamIds.has(paramId)) {
+              shouldDelete = true;
+            }
+          }
+        }
+
+        if (shouldDelete) {
+          try {
+            await gapi.client.drive.files.delete({ fileId: respFile.id });
+            console.log(`[Cleanup] Deleted orphan response file: ${respFile.name} in trial ${trial.id}`);
+          } catch (e) {
+            console.error(`[Cleanup] Failed to delete orphan response ${respFile.name}:`, e);
+          }
+        }
+      }
+    }
+
+    // Check agronomy/ subfolder
+    const validAgroIds = new Set((trial.agronomyItems || []).map(id => String(id)));
+    const agronomyFolderObj = await findFolder("agronomy", trialFolder.id);
+    if (agronomyFolderObj && validAgroIds.size > 0) {
+      const agroFiles = await gapi.client.drive.files.list({
+        q: `'${agronomyFolderObj.id}' in parents and mimeType='application/json' and trashed=false`,
+        fields: "files(id, name)",
+        pageSize: 1000,
+      });
+
+      for (const agroFile of (agroFiles.result.files || [])) {
+        const fileName = agroFile.name.replace(".json", "");
+        const parts = fileName.split("~");
+        if (parts.length >= 2) {
+          const itemId = parts[1];
+          if (!validAgroIds.has(String(itemId))) {
+            try {
+              await gapi.client.drive.files.delete({ fileId: agroFile.id });
+              console.log(`[Cleanup] Deleted orphan agronomy file: ${agroFile.name} in trial ${trial.id}`);
+            } catch (e) {
+              console.error(`[Cleanup] Failed to delete orphan agronomy ${agroFile.name}:`, e);
+            }
+          }
+        }
+      }
+    } else if (agronomyFolderObj && validAgroIds.size === 0 && !trial.agronomyMonitoring) {
+      // Trial has no agronomy monitoring but agronomy folder exists — clean entire folder
+      try {
+        await gapi.client.drive.files.delete({ fileId: agronomyFolderObj.id });
+        console.log(`[Cleanup] Deleted entire orphan agronomy folder for trial ${trial.id}`);
+      } catch (e) {
+        console.error(`[Cleanup] Failed to delete agronomy folder for ${trial.id}:`, e);
+      }
+    }
+  } catch (error) {
+    console.error(`[Cleanup] Error cleaning response files for trial ${trial.id}:`, error);
+  }
+}
+
+// ===========================
+// LOAD TRIALS (META-ONLY — LAZY)
+// ===========================
+
 async function loadTrialsFromGoogleDrive() {
   try {
     const rootFolderId = await getTrialsFolderId();
@@ -3827,80 +4393,16 @@ async function loadTrialsFromGoogleDrive() {
 
     for (const folder of trialFolders) {
       try {
-        // Load meta.json
+        // Load meta.json ONLY (responses loaded lazily when needed)
         const metaFile = await findFile("meta.json", folder.id);
         if (!metaFile) continue;
 
         const trial = await getFileContent(metaFile.id);
-        trial.id = trial.id || folder.name; // Folder name = trialId
+        trial.id = trial.id || folder.name;
 
-        // Load responses from responses/ subfolder
-        const responsesFolderId = await findFolder("responses", folder.id);
-        if (responsesFolderId) {
-          const respFiles = await gapi.client.drive.files.list({
-            q: `'${responsesFolderId.id}' in parents and mimeType='application/json' and trashed=false`,
-            fields: "files(id, name)",
-            pageSize: 1000,
-          });
-
-          const responses = {};
-          for (const respFile of (respFiles.result.files || [])) {
-            try {
-              const respData = await getFileContent(respFile.id);
-              const fileName = respFile.name.replace(".json", "");
-
-              if (fileName.includes("~")) {
-                // New format: {areaIndex}~{paramId}~{repIndex}~{lineId}
-                const parts = fileName.split("~");
-                if (parts.length < 4) continue;
-                const areaIndex = parts[0];
-                const paramId = parts[1];
-                if (!responses[areaIndex]) responses[areaIndex] = {};
-                if (!responses[areaIndex][paramId]) responses[areaIndex][paramId] = {};
-                Object.assign(responses[areaIndex][paramId], respData);
-              } else {
-                // Legacy format: {areaIndex}_{paramId}
-                const sepIdx = fileName.indexOf("_");
-                if (sepIdx === -1) continue;
-                const areaIndex = fileName.substring(0, sepIdx);
-                const paramId = fileName.substring(sepIdx + 1);
-                if (!responses[areaIndex]) responses[areaIndex] = {};
-                responses[areaIndex][paramId] = respData;
-              }
-            } catch (e) {
-              console.error(`Error loading response ${respFile.name}:`, e);
-            }
-          }
-          trial.responses = responses;
-        }
-
-        // Load agronomy responses from agronomy/ subfolder
-        const agronomyFolder = await findFolder("agronomy", folder.id);
-        if (agronomyFolder) {
-          const agroFiles = await gapi.client.drive.files.list({
-            q: `'${agronomyFolder.id}' in parents and mimeType='application/json' and trashed=false`,
-            fields: "files(id, name)",
-            pageSize: 1000,
-          });
-
-          const agronomyResponses = {};
-          for (const agroFile of (agroFiles.result.files || [])) {
-            try {
-              const agroData = await getFileContent(agroFile.id);
-              const fileName = agroFile.name.replace(".json", "");
-              // Format: {areaIndex}~{itemId}
-              const parts = fileName.split("~");
-              if (parts.length < 2) continue;
-              const areaIndex = parts[0];
-              const itemId = parts[1];
-              if (!agronomyResponses[areaIndex]) agronomyResponses[areaIndex] = {};
-              agronomyResponses[areaIndex][itemId] = agroData;
-            } catch (e) {
-              console.error(`Error loading agronomy response ${agroFile.name}:`, e);
-            }
-          }
-          trial.agronomyResponses = agronomyResponses;
-        }
+        // Responses NOT loaded here — will be loaded on demand
+        // Mark as not-yet-loaded
+        trial._responsesLoaded = false;
 
         trials.push(trial);
       } catch (e) {
@@ -3924,6 +4426,13 @@ async function saveTrialToGoogleDrive(trial) {
   const meta = { ...trial };
   delete meta.responses; // Responses saved separately
   delete meta.agronomyResponses; // Agronomy responses saved separately
+  delete meta._responsesLoaded; // Internal tracking flag — don't persist
+
+  // Embed denormalized progress summary so the dashboard can show
+  // progress without loading all response files
+  if (trial._responsesLoaded || trial.responses || trial.agronomyResponses) {
+    meta.progressSummary = buildProgressSummary(trial);
+  }
 
   await uploadJsonFile("meta.json", trialFolderId, meta);
 }
@@ -4102,6 +4611,10 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   const selectedCropName =
     cropSelect.options[cropSelect.selectedIndex].dataset.name || "";
 
+  // Check if any factor is marked as "Entries" — if so, entries come from the factor
+  const entriesFactorLineIds = getEntriesFactorLineIds();
+  const hasEntriesFactor = entriesFactorLineIds !== null;
+
   // Filter lines by crop ID
   const matchingLines = inventoryState.items.entries.filter((line) => {
     return line.cropId === selectedCropId || line.cropType === selectedCropName;
@@ -4134,6 +4647,16 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     linesHTML = '<p class="layouting-empty">No entries available for this crop.</p>';
   }
 
+  // Build the entries-from-factor notice
+  const entriesFactorNoticeHTML = hasEntriesFactor ? `
+    <div class="layouting-entries-from-factor">
+      <div class="form-hint-block" style="display:flex;align-items:center;gap:6px;padding:0.75rem;background:var(--bg-secondary);border-radius:8px;margin-bottom:0.5rem;">
+        <span class="material-symbols-rounded" style="font-size:18px;color:var(--primary);">info</span>
+        <span>Entries are managed by a factor in the <b>Experiment</b> section. <b>${entriesFactorLineIds.length}</b> entries selected.</span>
+      </div>
+    </div>
+  ` : "";
+
   areaDiv.innerHTML = `
         <div class="layouting-area-header">
             <div>
@@ -4147,7 +4670,8 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
         </div>
         
         <div class="layouting-grid">
-          <div class="layouting-lines">
+          ${entriesFactorNoticeHTML}
+          <div class="layouting-lines" ${hasEntriesFactor ? 'style="display:none;"' : ""}>
             <label class="layouting-label">
               Select Entries
               <span class="layouting-hint"> (matching ${escapeHtml(selectedCropName)})</span>
@@ -4290,6 +4814,9 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   );
 
   let selectedLineIds = (() => {
+    // If entries come from a factor, use those
+    if (hasEntriesFactor) return [...entriesFactorLineIds];
+
     const ids = Array.isArray(area.layout?.lines)
       ? area.layout.lines.map((line) => line.id).filter(Boolean)
       : [];
@@ -5200,11 +5727,13 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   // overwrite the saved state with whatever the DOM happens to contain at
   // that moment (potentially empty if matchingLines has no match), which is
   // the root cause of the "selected entries disappear on edit" bug.
+  // Exception: when entries come from a factor, always re-generate because
+  // the factor entries may have changed since the layout was last saved.
   const alreadyHasLayout =
     !!(area.layout && Array.isArray(area.layout.result) && area.layout.result.length > 0);
 
   if (getCurrentLayoutType() === "template") {
-    if (!alreadyHasLayout) {
+    if (hasEntriesFactor || !alreadyHasLayout) {
       autoGenerateLayout();
     }
   } else {
@@ -5606,7 +6135,7 @@ function getDapExpectedDate(trial, areaIndex, dapMin) {
 }
 
 // Start Agronomy Monitoring
-function startAgronomyMonitoring(trialId) {
+async function startAgronomyMonitoring(trialId) {
   const trial = trialState.trials.find(t => t.id === trialId);
   if (!trial) return;
 
@@ -5614,6 +6143,10 @@ function startAgronomyMonitoring(trialId) {
     showToast("Trial setup is incomplete (Field + Layouting + Planting Date). Agronomy cannot be started.", "warning");
     return;
   }
+
+  // Lazy-load responses from Drive if not yet loaded
+  const loaded = await ensureTrialResponsesLoaded(trialId);
+  if (!loaded) return;
 
   agronomyMonitoringState.currentTrialId = trialId;
   agronomyMonitoringState.currentTrial = trial;
@@ -5632,7 +6165,7 @@ function startAgronomyMonitoring(trialId) {
   const topbar = document.querySelector(".topbar");
   const pageTitle = document.getElementById("pageTitle");
   const menuToggle = document.querySelector(".menu-toggle");
-  const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
+  const syncButtons = document.querySelectorAll("#loadDataBtn, #runTrialNavBtn, #userMenu");
 
   if (topbar) topbar.classList.add("run-trial-mode");
   if (pageTitle) pageTitle.textContent = `${trial.name}`;
@@ -5680,7 +6213,7 @@ function exitAgronomyMonitoring() {
   const topbar = document.querySelector(".topbar");
   const pageTitle = document.getElementById("pageTitle");
   const menuToggle = document.querySelector(".menu-toggle");
-  const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
+  const syncButtons = document.querySelectorAll("#loadDataBtn, #runTrialNavBtn, #userMenu");
 
   if (topbar) topbar.classList.remove("run-trial-mode");
   if (pageTitle) pageTitle.textContent = "Trial";
@@ -6082,6 +6615,13 @@ async function autoSaveAgronomyProgress() {
 
     renderAgronomyNavTree();
 
+    // Update denormalized progress summary in meta.json (debounced)
+    enqueueSync({
+      label: `Updating progress summary: ${trial.name}`,
+      fileKey: `${trial.id}~meta-progress`,
+      run: () => saveTrialToGoogleDrive(trial),
+    });
+
     // Keep dashboard in sync even during agronomy monitoring
     renderDashboardTrialProgress();
     if (typeof refreshReminderViewsRealtime === "function") {
@@ -6359,7 +6899,7 @@ function renderRunTrialList() {
       }, 0) || 0;
 
       // Calculate progress using the correct response format
-      const progress = calculateCombinedTrialProgress(trial);
+      const progress = getTrialProgress(trial);
       const progressPercent = progress.percentage;
       const statusText = progressPercent === 0 ? 'Not Started' : progressPercent === 100 ? 'Completed' : 'In Progress';
       const statusColor = progressPercent === 0 ? 'var(--text-secondary)' : progressPercent === 100 ? 'var(--success)' : 'var(--warning)';
@@ -6452,7 +6992,7 @@ function handleRunTrialKeyboard(e) {
 }
 
 // Start running a trial
-function startRunTrial(trialId) {
+async function startRunTrial(trialId) {
   const trial = trialState.trials.find((t) => t.id === trialId);
   if (!trial) return;
 
@@ -6465,6 +7005,10 @@ function startRunTrial(trialId) {
     showToast("This trial has no runnable observation parameters (formula parameters are excluded)", "warning");
     return;
   }
+
+  // Lazy-load responses from Drive if not yet loaded
+  const loaded = await ensureTrialResponsesLoaded(trialId);
+  if (!loaded) return;
 
   runTrialState.currentTrialId = trialId;
   runTrialState.currentTrial = trial;
@@ -6485,7 +7029,7 @@ function startRunTrial(trialId) {
   const topbar = document.querySelector(".topbar");
   const pageTitle = document.getElementById("pageTitle");
   const menuToggle = document.querySelector(".menu-toggle");
-  const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
+  const syncButtons = document.querySelectorAll("#loadDataBtn, #runTrialNavBtn, #userMenu");
   
   if (topbar) topbar.classList.add("run-trial-mode");
   if (pageTitle) pageTitle.textContent = trial.name;
@@ -6533,7 +7077,7 @@ function exitRunTrial() {
   const topbar = document.querySelector(".topbar");
   const pageTitle = document.getElementById("pageTitle");
   const menuToggle = document.querySelector(".menu-toggle");
-  const syncButtons = document.querySelectorAll("#syncDownBtn, #runTrialNavBtn, #userMenu");
+  const syncButtons = document.querySelectorAll("#loadDataBtn, #runTrialNavBtn, #userMenu");
   
   if (topbar) topbar.classList.remove("run-trial-mode");
   if (pageTitle) pageTitle.textContent = "Trial";
@@ -8035,6 +8579,13 @@ async function saveRunTrialProgress() {
   // Update nav and progress display
   renderRunTrialNavTree();
   updateRunTrialProgress();
+
+  // Update denormalized progress summary in meta.json
+  enqueueSync({
+    label: `Updating progress summary: ${trial.name}`,
+    fileKey: `${trial.id}~meta-progress`,
+    run: () => saveTrialToGoogleDrive(trial),
+  });
   
   // Show success feedback
   if (typeof showSuccessMessage === "function") {
@@ -8116,6 +8667,13 @@ async function autoSaveProgress() {
     // Update nav and progress display
     renderRunTrialNavTree();
     updateRunTrialProgress();
+
+    // Update denormalized progress summary in meta.json (debounced)
+    enqueueSync({
+      label: `Updating progress summary: ${trial.name}`,
+      fileKey: `${trial.id}~meta-progress`,
+      run: () => saveTrialToGoogleDrive(trial),
+    });
 
     // Keep dashboard in sync even during run trial
     renderDashboardTrialProgress();
@@ -8261,8 +8819,12 @@ function renderDashboardTrialSummary() {
   }
 
   container.innerHTML = activeTrials.map((trial) => {
-    // Observation progress
-    const obs = calculateTrialProgress(trial);
+    // Use smart progress (denormalized summary or live calculation)
+    const progress = getTrialProgress(trial);
+    const isLoaded = !!trial._responsesLoaded;
+    const hasProgressSummary = !!trial.progressSummary;
+    const showProgress = isLoaded || hasProgressSummary;
+    const obs = progress.obs;
     const obsColor = obs.percentage === 100 ? 'var(--success)'
       : obs.percentage > 50 ? 'var(--primary)'
       : obs.percentage > 0 ? 'var(--warning)'
@@ -8270,7 +8832,7 @@ function renderDashboardTrialSummary() {
 
     // Agronomy progress
     const hasAgronomy = trial.agronomyMonitoring && trial.agronomyItems && trial.agronomyItems.length > 0;
-    const agro = hasAgronomy ? calculateAgronomyProgress(trial) : null;
+    const agro = hasAgronomy ? progress.agro : null;
     const agroColor = agro
       ? (agro.percentage === 100 ? 'var(--success)'
         : agro.percentage > 50 ? 'var(--primary)'
@@ -8279,14 +8841,16 @@ function renderDashboardTrialSummary() {
       : 'var(--text-tertiary)';
 
     // Overall status badge
-    const overallPct = agro
-      ? Math.round(((obs.completed + agro.completed) / Math.max(obs.total + agro.total, 1)) * 100)
-      : obs.percentage;
-    const badgeClass = overallPct === 100 ? 'complete' : overallPct > 0 ? 'in-progress' : 'not-started';
-    const badgeText = overallPct === 100 ? 'Complete' : overallPct > 0 ? 'In Progress' : 'Not Started';
+    const overallPct = showProgress ? progress.percentage : 0;
+    const badgeClass = !showProgress ? 'not-started' : overallPct === 100 ? 'complete' : overallPct > 0 ? 'in-progress' : 'not-started';
+    const badgeText = !showProgress ? 'Not loaded' : overallPct === 100 ? 'Complete' : overallPct > 0 ? 'In Progress' : 'Not Started';
 
     const cropName = trial.cropName || 'Unknown Crop';
     const plantDate = getTrialPlantingDateSummary(trial);
+
+    const notLoadedNote = !showProgress
+      ? '<div style="font-size:0.72rem;color:var(--text-tertiary);margin-top:0.25rem;">Data not loaded — open <b>Load Latest Data</b> to fetch from Drive.</div>'
+      : '';
 
     return `
       <div class="dash-trial-card" data-trial-id="${trial.id}">
@@ -8303,9 +8867,9 @@ function renderDashboardTrialSummary() {
               <span class="material-symbols-rounded">visibility</span> Observation
             </span>
             <div class="dash-progress-bar">
-              <div class="dash-progress-bar-fill" style="width:${obs.percentage}%; background:${obsColor}"></div>
+              <div class="dash-progress-bar-fill" style="width:${showProgress ? obs.percentage : 0}%; background:${obsColor}"></div>
             </div>
-            <span class="dash-progress-text">${obs.completed}/${obs.total} (${obs.percentage}%)</span>
+            <span class="dash-progress-text">${showProgress ? `${obs.completed}/${obs.total} (${obs.percentage}%)` : '—'}</span>
           </div>
           ${hasAgronomy ? `
           <div class="dash-progress-row">
@@ -8313,11 +8877,12 @@ function renderDashboardTrialSummary() {
               <span class="material-symbols-rounded">local_florist</span> Agronomy
             </span>
             <div class="dash-progress-bar">
-              <div class="dash-progress-bar-fill" style="width:${agro.percentage}%; background:${agroColor}"></div>
+              <div class="dash-progress-bar-fill" style="width:${showProgress && agro ? agro.percentage : 0}%; background:${agroColor}"></div>
             </div>
-            <span class="dash-progress-text">${agro.completed}/${agro.total} (${agro.percentage}%)</span>
+            <span class="dash-progress-text">${showProgress && agro ? `${agro.completed}/${agro.total} (${agro.percentage}%)` : '—'}</span>
           </div>` : ''}
         </div>
+        ${notLoadedNote}
       </div>
     `;
   }).join('');
@@ -8425,12 +8990,16 @@ let trialReportState = {
   columnMenusBound: false,
 };
 
-function showTrialReport(trialId) {
+async function showTrialReport(trialId) {
   const trial = trialState.trials.find((t) => t.id === trialId);
   if (!trial) return;
 
   const reportInterface = document.getElementById("trialReportInterface");
   if (!reportInterface) return;
+
+  // Lazy-load responses from Drive if not yet loaded
+  const loaded = await ensureTrialResponsesLoaded(trialId);
+  if (!loaded) return;
 
   const reportData = buildTrialReportWorkbookData(trial);
   trialReportState.currentTrialId = trial.id;
@@ -8478,6 +9047,7 @@ function toggleTrialReportInterface(show, title) {
 function setTrialReportTopbarControls(show) {
   const sheetSelect = document.getElementById("trialReportSheetSelect");
   const downloadBtn = document.getElementById("trialReportTopbarDownloadBtn");
+  const importBtn = document.getElementById("trialReportTopbarImportBtn");
 
   if (show) {
     renderTrialReportSheetSelect();
@@ -8489,6 +9059,10 @@ function setTrialReportTopbarControls(show) {
       downloadBtn.classList.remove("hidden");
       downloadBtn.style.display = "flex";
     }
+    if (importBtn) {
+      importBtn.classList.remove("hidden");
+      importBtn.style.display = "flex";
+    }
   } else {
     if (sheetSelect) {
       sheetSelect.classList.add("hidden");
@@ -8497,6 +9071,10 @@ function setTrialReportTopbarControls(show) {
     if (downloadBtn) {
       downloadBtn.classList.add("hidden");
       downloadBtn.style.display = "none";
+    }
+    if (importBtn) {
+      importBtn.classList.add("hidden");
+      importBtn.style.display = "none";
     }
   }
 }
@@ -8869,6 +9447,319 @@ function downloadTrialReportExcel() {
 
   XLSX.writeFile(workbook, `${safeName}_Report.xlsx`);
   showToast("Report exported successfully", "success");
+}
+
+// ═══════════════════════════════════════════════
+// Trial Report IMPORT
+// ═══════════════════════════════════════════════
+
+function openTrialReportImport() {
+  const fileInput = document.getElementById("trialReportImportFileInput");
+  if (!fileInput) return;
+
+  // Reset so same file can be re-selected
+  fileInput.value = "";
+
+  // Remove previous listener by cloning
+  const newInput = fileInput.cloneNode(true);
+  fileInput.parentNode.replaceChild(newInput, fileInput);
+
+  newInput.addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    if (file) handleTrialReportImportFile(file);
+  });
+
+  newInput.click();
+}
+
+function handleTrialReportImportFile(file) {
+  if (typeof XLSX === "undefined") {
+    showToast("Excel library not loaded. Please try again.", "error");
+    return;
+  }
+
+  const trialId = trialReportState.currentTrialId;
+  const trial = trialState.trials.find((t) => t.id === trialId);
+  if (!trial) {
+    showToast("No active trial for import", "error");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+
+      let obsUpdated = 0;
+      let agroUpdated = 0;
+
+      const trialParameters = (trial.parameters || [])
+        .map((paramId) => inventoryState.items.parameters.find((p) => p.id === paramId))
+        .filter(Boolean);
+      const nonFormulaParams = trialParameters.filter((p) => (p.type || "").toLowerCase() !== "formula");
+      const agronomyItems = getTrialAgronomyItems(trial);
+
+      // Initialize responses if empty
+      if (!trial.responses) trial.responses = {};
+      if (!trial.agronomyResponses) trial.agronomyResponses = {};
+
+      workbook.SheetNames.forEach((sheetName) => {
+        const ws = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        if (rows.length < 2) return;
+
+        const header = rows[0].map((h) => String(h ?? "").trim());
+        const bodyRows = rows.slice(1);
+
+        const isObsSheet = _isObservationSheetHeader(header);
+        const isAgroSheet = _isAgronomySheetHeader(header);
+
+        if (isObsSheet) {
+          obsUpdated += _importObservationSheet(trial, header, bodyRows, nonFormulaParams);
+        } else if (isAgroSheet) {
+          agroUpdated += _importAgronomySheet(trial, header, bodyRows, agronomyItems);
+        }
+      });
+
+      if (obsUpdated === 0 && agroUpdated === 0) {
+        showToast("No matching data found in imported file. Make sure columns match the report format.", "warning");
+        return;
+      }
+
+      // Mark responses as loaded
+      trial._responsesLoaded = true;
+      trial.updatedAt = new Date().toISOString();
+
+      // Update in state
+      const idx = trialState.trials.findIndex((t) => t.id === trial.id);
+      if (idx !== -1) trialState.trials[idx] = trial;
+
+      // Save to local cache
+      if (typeof saveLocalCache === "function") {
+        saveLocalCache("trials", { trials: trialState.trials });
+      }
+
+      // Save to Google Drive
+      const isGuest = typeof getCurrentUser === "function" && getCurrentUser()?.isGuest;
+      if (!isGuest && typeof enqueueSync === "function") {
+        enqueueSync({
+          label: `Import responses: ${trial.name}`,
+          fileKey: `${trial.id}~import-responses`,
+          run: () => saveTrialResponsesToDrive(trial),
+        });
+        enqueueSync({
+          label: `Update trial meta: ${trial.name}`,
+          fileKey: `${trial.id}~meta-progress`,
+          run: () => saveTrialToGoogleDrive(trial),
+        });
+        if (agroUpdated > 0 && typeof saveAllAgronomyResponsesToDrive === "function") {
+          enqueueSync({
+            label: `Import agronomy: ${trial.name}`,
+            fileKey: `${trial.id}~import-agronomy`,
+            run: () => saveAllAgronomyResponsesToDrive(trial),
+          });
+        }
+      }
+
+      // Rebuild the report view with updated data
+      const reportData = buildTrialReportWorkbookData(trial);
+      trialReportState.sheets = reportData.sheets;
+      if (!reportData.sheets.find((s) => s.name === trialReportState.activeSheetName)) {
+        trialReportState.activeSheetName = reportData.sheets[0]?.name || "";
+      }
+      renderTrialReportSheetSelect();
+      renderTrialReportPreview();
+
+      // Refresh dashboard and reminders
+      if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
+      if (typeof refreshReminderViewsRealtime === "function") refreshReminderViewsRealtime();
+
+      const parts = [];
+      if (obsUpdated > 0) parts.push(`${obsUpdated} observation(s)`);
+      if (agroUpdated > 0) parts.push(`${agroUpdated} agronomy record(s)`);
+      showToast(`Imported ${parts.join(" and ")} successfully`, "success");
+    } catch (error) {
+      console.error("Trial report import error:", error);
+      showToast("Failed to import file: " + (error.message || "Unknown error"), "error");
+    }
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function _isObservationSheetHeader(header) {
+  // Observation sheets have: Nomor, Area, Replication, Entry, Sample, Parameter, Value, Unit, Timestamp
+  const lower = header.map((h) => h.toLowerCase());
+  return lower.includes("entry") && lower.includes("parameter") && lower.includes("value") && lower.includes("sample");
+}
+
+function _isAgronomySheetHeader(header) {
+  // Agronomy sheets have: Area, Activity, DAP Min, DAP Max, Chemical, Dose, Remark, Application Date, Timestamp
+  const lower = header.map((h) => h.toLowerCase());
+  return lower.includes("activity") && lower.includes("application date") && lower.includes("area");
+}
+
+function _importObservationSheet(trial, header, bodyRows, nonFormulaParams) {
+  const colIdx = {};
+  header.forEach((h, i) => {
+    const key = h.toLowerCase();
+    if (key === "area") colIdx.area = i;
+    else if (key === "replication") colIdx.rep = i;
+    else if (key === "entry") colIdx.entry = i;
+    else if (key === "sample") colIdx.sample = i;
+    else if (key === "parameter") colIdx.param = i;
+    else if (key === "value") colIdx.value = i;
+  });
+
+  if (colIdx.entry === undefined || colIdx.param === undefined || colIdx.value === undefined) return 0;
+
+  // Build lookup maps
+  const paramByName = new Map();
+  nonFormulaParams.forEach((p) => {
+    paramByName.set((p.name || "").toLowerCase().trim(), p);
+  });
+
+  const areaIndexByName = new Map();
+  (trial.areas || []).forEach((area, idx) => {
+    const name = (area.name || `Area ${idx + 1}`).toLowerCase().trim();
+    areaIndexByName.set(name, idx);
+  });
+
+  // Build line lookup: lineId by name, per area+rep
+  const lineLookup = _buildLineLookup(trial);
+
+  let updated = 0;
+
+  bodyRows.forEach((row) => {
+    const areaName = String(row[colIdx.area] ?? "").trim();
+    const repStr = String(row[colIdx.rep] ?? "").trim();
+    const entryName = String(row[colIdx.entry] ?? "").trim();
+    const sampleStr = String(row[colIdx.sample] ?? "").trim();
+    const paramName = String(row[colIdx.param] ?? "").trim();
+    const value = row[colIdx.value];
+
+    if (!entryName || !paramName) return;
+
+    const param = paramByName.get(paramName.toLowerCase());
+    if (!param) return;
+
+    const areaIndex = areaIndexByName.get(areaName.toLowerCase()) ?? 0;
+    const repIndex = Math.max(0, parseInt(repStr, 10) - 1) || 0;
+    const sampleIndex = Math.max(0, parseInt(sampleStr, 10) - 1) || 0;
+
+    // Find line ID
+    const lineId = lineLookup.get(_lineKey(areaIndex, repIndex, entryName.toLowerCase()));
+    if (!lineId) return;
+
+    // Write into trial.responses
+    if (!trial.responses[areaIndex]) trial.responses[areaIndex] = {};
+    if (!trial.responses[areaIndex][param.id]) trial.responses[areaIndex][param.id] = {};
+
+    const sampleKey = `${lineId}_${repIndex}_${sampleIndex}`;
+    const existing = trial.responses[areaIndex][param.id][sampleKey] || {};
+
+    trial.responses[areaIndex][param.id][sampleKey] = {
+      ...existing,
+      value: value !== "" && value !== null && value !== undefined ? value : existing.value ?? "",
+      timestamp: new Date().toISOString(),
+    };
+
+    updated++;
+  });
+
+  return updated;
+}
+
+function _importAgronomySheet(trial, header, bodyRows, agronomyItems) {
+  const colIdx = {};
+  header.forEach((h, i) => {
+    const key = h.toLowerCase();
+    if (key === "area") colIdx.area = i;
+    else if (key === "activity") colIdx.activity = i;
+    else if (key === "application date") colIdx.appDate = i;
+  });
+
+  if (colIdx.activity === undefined) return 0;
+
+  const areaIndexByName = new Map();
+  (trial.areas || []).forEach((area, idx) => {
+    const name = (area.name || `Area ${idx + 1}`).toLowerCase().trim();
+    areaIndexByName.set(name, idx);
+  });
+
+  const itemByActivity = new Map();
+  agronomyItems.forEach((item) => {
+    const act = (item.activity || item.name || "").toLowerCase().trim();
+    itemByActivity.set(act, item);
+  });
+
+  let updated = 0;
+
+  bodyRows.forEach((row) => {
+    const areaName = String(row[colIdx.area] ?? "").trim();
+    const activity = String(row[colIdx.activity] ?? "").trim();
+    const appDateRaw = colIdx.appDate !== undefined ? row[colIdx.appDate] : "";
+
+    if (!activity) return;
+
+    const item = itemByActivity.get(activity.toLowerCase());
+    if (!item) return;
+
+    const areaIndex = areaIndexByName.get(areaName.toLowerCase()) ?? 0;
+
+    if (!trial.agronomyResponses[areaIndex]) trial.agronomyResponses[areaIndex] = {};
+
+    const existing = trial.agronomyResponses[areaIndex][item.id] || {};
+
+    const parsedDate = _parseImportDate(appDateRaw);
+
+    trial.agronomyResponses[areaIndex][item.id] = {
+      ...existing,
+      applicationDate: parsedDate || existing.applicationDate || "",
+      timestamp: new Date().toISOString(),
+    };
+
+    updated++;
+  });
+
+  return updated;
+}
+
+function _buildLineLookup(trial) {
+  const lookup = new Map();
+  (trial.areas || []).forEach((area, areaIndex) => {
+    const result = area?.layout?.result;
+    if (!result) return;
+    result.forEach((rep, repIndex) => {
+      rep.forEach((row) => {
+        row.forEach((cell) => {
+          if (!cell) return;
+          const name = (cell.name || "").toLowerCase().trim();
+          lookup.set(_lineKey(areaIndex, repIndex, name), cell.id);
+        });
+      });
+    });
+  });
+  return lookup;
+}
+
+function _lineKey(areaIndex, repIndex, entryNameLower) {
+  return `${areaIndex}|${repIndex}|${entryNameLower}`;
+}
+
+function _parseImportDate(value) {
+  if (!value) return "";
+  // Handle Excel serial dates
+  if (typeof value === "number") {
+    const date = new Date((value - 25569) * 86400 * 1000);
+    if (!isNaN(date.getTime())) return date.toISOString();
+  }
+  const str = String(value).trim();
+  if (!str) return "";
+  const date = new Date(str);
+  if (!isNaN(date.getTime())) return date.toISOString();
+  return str;
 }
 
 function buildTrialReportWorkbookData(trial) {
@@ -10220,7 +11111,7 @@ function showTrialDetail(trialId) {
   const location = inventoryState.items.locations?.find(l => l.id === trial.locationId);
 
   // Progress (combined observation + agronomy)
-  const progress = calculateCombinedTrialProgress(trial);
+  const progress = getTrialProgress(trial);
   const progressColor = progress.percentage === 100 ? 'var(--success)' 
                       : progress.percentage > 50 ? 'var(--primary)' 
                       : progress.percentage > 0 ? 'var(--warning)' 

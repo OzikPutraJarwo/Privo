@@ -1131,7 +1131,7 @@
     const pageTitle = document.getElementById("pageTitle");
     const menuToggle = document.getElementById("menuToggle");
 
-    const managedIds = ["syncDownBtn", "syncStatusBtn", "userMenu"];
+    const managedIds = ["loadDataBtn", "syncStatusBtn", "userMenu"];
     app.fullscreenState.previousDisplays = {};
     managedIds.forEach((id) => {
       const element = document.getElementById(id);
@@ -1355,6 +1355,164 @@
   app.exitFullscreenMode = exitFullscreenMode;
   app.startResize = startResize;
 
+  // ═══════════════════════════════════════════════
+  // Custom Dataset Upload for Analysis
+  // ═══════════════════════════════════════════════
+
+  function syncDataSourceUI() {
+    const select = document.getElementById("analysisDataSourceSelect");
+    const reuploadBtn = document.getElementById("analysisCustomUploadBtn");
+    const state = app.state;
+
+    if (select) select.value = state.dataSource || "trial";
+
+    if (reuploadBtn) {
+      const showReupload = state.dataSource === "custom" && state.customRows;
+      reuploadBtn.style.display = showReupload ? "" : "none";
+    }
+
+    // Update dataset header label to show source info
+    const headerTitle = document.querySelector("#analysisDatasetSection .analysis-section-title-wrap h3");
+    if (headerTitle) {
+      if (state.dataSource === "custom" && state.customFileName) {
+        headerTitle.textContent = `Dataset (${state.customFileName})`;
+      } else {
+        headerTitle.textContent = "Dataset";
+      }
+    }
+  }
+
+  function handleDataSourceChange(value) {
+    const state = app.state;
+
+    if (value === "custom") {
+      // If we already have custom data, switch to it
+      if (state.customColumns && state.customRows) {
+        state.dataSource = "custom";
+        app.init();
+        return;
+      }
+      // Otherwise trigger upload
+      triggerCustomFileUpload();
+    } else {
+      // Switch back to trial data
+      state.dataSource = "trial";
+      app.init();
+    }
+  }
+
+  function triggerCustomFileUpload() {
+    const fileInput = document.getElementById("analysisCustomFileInput");
+    if (!fileInput) return;
+
+    // Reset value so same file re-triggers
+    fileInput.value = "";
+
+    // Remove previous listener by cloning
+    const newInput = fileInput.cloneNode(true);
+    fileInput.parentNode.replaceChild(newInput, fileInput);
+
+    newInput.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        processCustomDatasetFile(file);
+      } else {
+        // User cancelled - revert select to current state
+        const select = document.getElementById("analysisDataSourceSelect");
+        if (select) select.value = app.state.dataSource || "trial";
+      }
+    });
+
+    newInput.click();
+  }
+
+  function openCustomUpload() {
+    triggerCustomFileUpload();
+  }
+
+  function processCustomDatasetFile(file) {
+    if (typeof XLSX === "undefined") {
+      if (typeof showToast === "function") showToast("Excel library not loaded. Please try again.", "error");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+
+        if (workbook.SheetNames.length === 0) {
+          if (typeof showToast === "function") showToast("No sheets found in the file", "error");
+          return;
+        }
+
+        // Use first sheet by default
+        const sheetName = workbook.SheetNames[0];
+        const ws = workbook.Sheets[sheetName];
+        const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+        if (rawRows.length < 2) {
+          if (typeof showToast === "function") showToast("File must have at least a header row and one data row", "error");
+          // Revert select
+          const select = document.getElementById("analysisDataSourceSelect");
+          if (select) select.value = app.state.dataSource || "trial";
+          return;
+        }
+
+        const headerRow = rawRows[0];
+        const bodyRows = rawRows.slice(1);
+
+        // Build columns from header
+        const columns = headerRow.map((h, idx) => {
+          const label = String(h ?? "").trim() || `Column ${idx + 1}`;
+          const key = `custom_${idx}_${label.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase()}`;
+          return { key, label, source: "custom" };
+        });
+
+        // Build row objects
+        const rows = bodyRows.map((row, rowIdx) => {
+          const obj = { _rowIndex: rowIdx + 1 };
+          columns.forEach((col, colIdx) => {
+            const rawValue = row[colIdx];
+            // Try to preserve numeric values
+            if (rawValue !== "" && rawValue !== null && rawValue !== undefined) {
+              const num = Number(rawValue);
+              obj[col.key] = Number.isFinite(num) && String(rawValue).trim() !== "" ? num : rawValue;
+            } else {
+              obj[col.key] = "";
+            }
+          });
+          return obj;
+        });
+
+        // Store in state
+        const state = app.state;
+        state.customColumns = columns;
+        state.customRows = rows;
+        state.customFileName = file.name;
+        state.dataSource = "custom";
+
+        // Re-initialize with custom data
+        app.init();
+
+        if (typeof showToast === "function") {
+          showToast(`Loaded ${rows.length} rows from "${file.name}" (sheet: ${sheetName})`, "success");
+        }
+      } catch (error) {
+        console.error("Custom dataset parse error:", error);
+        if (typeof showToast === "function") {
+          showToast("Failed to parse file: " + (error.message || "Unknown error"), "error");
+        }
+        // Revert select
+        const select = document.getElementById("analysisDataSourceSelect");
+        if (select) select.value = app.state.dataSource || "trial";
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  }
+
   window.applyAnalysisUserSettings = applyAnalysisUserSettings;
   window.enterAnalysisFullscreenMode = enterFullscreenMode;
   window.exitAnalysisFullscreenMode = exitFullscreenMode;
@@ -1369,4 +1527,7 @@
   window.handleAnalysisDropzoneDragLeave = handleDropzoneDragLeave;
   window.handleAnalysisDropzoneDrop = handleDropzoneDrop;
   window.removeAnalysisDropzoneChip = removeDropzoneChip;
+  window.handleAnalysisDataSourceChange = handleDataSourceChange;
+  window.openAnalysisCustomUpload = openCustomUpload;
+  window.syncAnalysisDataSourceUI = syncDataSourceUI;
 })();

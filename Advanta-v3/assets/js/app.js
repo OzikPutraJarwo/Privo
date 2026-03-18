@@ -927,7 +927,7 @@ function enterDatabaseFullscreenMode() {
   const pageTitle = document.getElementById("pageTitle");
   const menuToggle = document.getElementById("menuToggle");
 
-  const managedIds = ["syncDownBtn", "syncStatusBtn", "userMenu"];
+  const managedIds = ["loadDataBtn", "syncStatusBtn", "userMenu"];
   databaseFullscreenState.previousDisplays = {};
   managedIds.forEach((id) => {
     const element = document.getElementById(id);
@@ -1055,6 +1055,10 @@ function switchPage(pageName, options = {}) {
   if (pageName === "analysis") {
     if (typeof enterAnalysisFullscreenMode === "function") enterAnalysisFullscreenMode();
     if (typeof initAnalysis === "function") initAnalysis();
+  }
+
+  if (pageName === "library") {
+    if (typeof lazyLoadLibraryFromDrive === "function") lazyLoadLibraryFromDrive();
   }
 }
 
@@ -1334,8 +1338,8 @@ async function initializeApp() {
     const syncBtn = document.getElementById("syncStatusBtn");
     if (syncBtn) syncBtn.classList.toggle("hidden", !!isGuest);
     
-    const syncDownBtn = document.getElementById("syncDownBtn");
-    if (syncDownBtn) syncDownBtn.classList.toggle("hidden", !!isGuest);
+    const loadDataBtn = document.getElementById("loadDataBtn");
+    if (loadDataBtn) loadDataBtn.classList.toggle("hidden", !!isGuest);
 
     setLoadingProgress(100, "Ready");
     showView("app");
@@ -1722,13 +1726,8 @@ function setupEventListeners() {
     });
   }
 
-  // Sync down button
-  const syncDownBtn = document.getElementById("syncDownBtn");
-  if (syncDownBtn) {
-    syncDownBtn.addEventListener("click", () => {
-      syncDownFromDrive();
-    });
-  }
+  // Load Data panel
+  setupLoadDataPanelEvents();
 
 
 
@@ -2259,271 +2258,376 @@ function setupDataTransferEvents() {
   }
 }
 // ===========================
-// SYNC DOWN FROM DRIVE
+// LOAD LATEST DATA PANEL
 // ===========================
-let currentConflict = null;
 
-async function syncDownFromDrive() {
+function openLoadDataPanel(activeTab = "trial") {
   const user = getCurrentUser();
   if (!user || user.isGuest) {
-    showAlert("Sync from Drive is only available for logged-in users.", "warning", "Not Available");
+    showAlert("Load data is only available for logged-in users.", "warning", "Not Available");
     return;
   }
 
-  if (!getAccessToken || !getAccessToken()) {
-    showAlert("Not authenticated with Google Drive.", "error", "Auth Error");
-    return;
-  }
+  const modal = document.getElementById("loadDataModal");
+  if (!modal) return;
 
-  showDataTransfer("Loading from Drive", "Fetching remote data...");
-  updateDataTransfer(null, 10);
+  modal.classList.remove("hidden");
+  modal.classList.add("active");
 
-  try {
-    await new Promise(r => setTimeout(r, 200));
+  // Switch to requested tab
+  switchLoadDataTab(activeTab);
 
-    // Get folder structure
-    const inventoryFolder = await getOrCreateFolder("Advanta_Inventory");
-    const trialFolder = await getOrCreateFolder("Advanta_Trials");
+  // Render initial content
+  renderLoadDataTrialList();
+  renderLoadDataCategorySummary("crops");
+  renderLoadDataCategorySummary("entries");
+  renderLoadDataCategorySummary("locations");
+  renderLoadDataCategorySummary("parameters");
+  renderLoadDataCategorySummary("agronomy");
+  renderLoadDataLibrarySummary();
+}
 
-    updateDataTransfer("Checking for new data...", 30);
-    await new Promise(r => setTimeout(r, 150));
+function closeLoadDataPanel() {
+  const modal = document.getElementById("loadDataModal");
+  if (!modal) return;
+  modal.classList.remove("active");
+  modal.classList.add("hidden");
+}
 
-    const categories = ["crops", "entries", "locations", "parameters", "agronomy"];
-    const newItems = { crops: [], entries: [], locations: [], parameters: [], agronomy: [] };
-    const conflicts = [];
+function switchLoadDataTab(tabKey) {
+  const navItems = document.querySelectorAll(".load-data-nav-item");
+  const tabs = document.querySelectorAll(".load-data-tab");
 
-    // Check each inventory category
-    for (const cat of categories) {
-      const catFolder = await getOrCreateFolder(cat, inventoryFolder);
-      
-      // List files in category folder
-      const response = await gapi.client.drive.files.list({
-        q: `'${catFolder}' in parents and mimeType='application/json' and trashed=false`,
-        spaces: "drive",
-        fields: "files(id, name, modifiedTime)",
-        pageSize: 1000,
-      });
-      
-      const files = response.result.files || [];
+  navItems.forEach(item => {
+    item.classList.toggle("active", item.dataset.loadTab === tabKey);
+  });
 
-      for (const file of files) {
-        const remoteItem = await getFileContent(file.id);
-        if (!remoteItem || !remoteItem.id) continue;
+  tabs.forEach(tab => {
+    const tabId = "loadDataTab" + tabKey.charAt(0).toUpperCase() + tabKey.slice(1);
+    tab.classList.toggle("active", tab.id === tabId);
+  });
+}
 
-        const localItems = inventoryState.items[cat] || [];
-        const localItem = localItems.find(item => item.id === remoteItem.id);
+function setupLoadDataPanelEvents() {
+  // Close button
+  const closeBtn = document.getElementById("loadDataCloseBtn");
+  if (closeBtn) closeBtn.addEventListener("click", closeLoadDataPanel);
 
-        if (!localItem) {
-          // New item - add it
-          newItems[cat].push(remoteItem);
-        } else {
-          // Check for conflict (local modified but not synced yet)
-          const localModified = localItem.modifiedAt || localItem.createdAt;
-          const remoteModified = file.modifiedTime;
-
-          if (localModified && remoteModified) {
-            const localDate = new Date(localModified);
-            const remoteDate = new Date(remoteModified);
-
-            // Check if local has pending changes
-            const hasPendingChanges = syncQueue.some(task => 
-              task.label && task.label.includes(remoteItem.id)
-            );
-
-            // Conflict ONLY if: we have pending local changes AND remote is newer
-            if (hasPendingChanges && remoteDate > localDate) {
-              // Conflict detected
-              conflicts.push({
-                category: cat,
-                localItem,
-                remoteItem,
-                fileId: file.id,
-                localModified: localDate.toLocaleString(),
-                remoteModified: remoteDate.toLocaleString(),
-              });
-            } else if (remoteDate > localDate) {
-              // Remote is newer and no pending changes - safe to update local
-              const idx = localItems.findIndex(item => item.id === remoteItem.id);
-              if (idx >= 0) localItems[idx] = remoteItem;
-            }
-          }
-        }
-      }
-    }
-
-    updateDataTransfer("Checking trials...", 60);
-    await new Promise(r => setTimeout(r, 150));
-
-    // Check trials
-    const trialFilesResponse = await gapi.client.drive.files.list({
-      q: `'${trialFolder}' in parents and mimeType='application/json' and trashed=false`,
-      spaces: "drive",
-      fields: "files(id, name, modifiedTime)",
-      pageSize: 1000,
+  // Backdrop click
+  const modal = document.getElementById("loadDataModal");
+  if (modal) {
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeLoadDataPanel();
     });
-    
-    const trialFiles = trialFilesResponse.result.files || [];
-    const newTrials = [];
+  }
 
-    for (const file of trialFiles) {
-      const remoteTrial = await getFileContent(file.id);
-      if (!remoteTrial || !remoteTrial.id) continue;
+  // Nav items
+  document.querySelectorAll(".load-data-nav-item").forEach(item => {
+    item.addEventListener("click", () => {
+      switchLoadDataTab(item.dataset.loadTab);
+    });
+  });
 
-      const localTrial = trialState.trials.find(t => t.id === remoteTrial.id);
+  // Load All Trials button
+  const loadAllTrialsBtn = document.getElementById("loadAllTrialsBtn");
+  if (loadAllTrialsBtn) {
+    loadAllTrialsBtn.addEventListener("click", loadAllTrialResponses);
+  }
 
-      if (!localTrial) {
-        newTrials.push(remoteTrial);
-      } else {
-        const localModified = localTrial.modifiedAt || localTrial.createdAt;
-        const remoteModified = file.modifiedTime;
-
-        if (localModified && remoteModified) {
-          const localDate = new Date(localModified);
-          const remoteDate = new Date(remoteModified);
-
-          const hasPendingChanges = syncQueue.some(task => 
-            task.label && task.label.includes(remoteTrial.id)
-          );
-
-          // Conflict ONLY if: remote is newer AND we have pending local changes
-          if (hasPendingChanges && remoteDate > localDate) {
-            conflicts.push({
-              category: "trials",
-              localItem: localTrial,
-              remoteItem: remoteTrial,
-              fileId: file.id,
-              localModified: localDate.toLocaleString(),
-              remoteModified: remoteDate.toLocaleString(),
-            });
-          } else if (remoteDate > localDate) {
-            // No pending changes, safe to overwrite with newer remote
-            const idx = trialState.trials.findIndex(t => t.id === remoteTrial.id);
-            if (idx >= 0) trialState.trials[idx] = remoteTrial;
-          }
-        }
-      }
+  // Category refresh buttons
+  const categories = ["Crops", "Entries", "Locations", "Parameters", "Agronomy"];
+  categories.forEach(cat => {
+    const btn = document.getElementById(`loadCategoryBtn${cat}`);
+    if (btn) {
+      btn.addEventListener("click", () => refreshCategoryFromDrive(cat.toLowerCase()));
     }
+  });
 
-    hideDataTransfer();
+  // Library refresh button
+  const libBtn = document.getElementById("loadCategoryBtnLibrary");
+  if (libBtn) {
+    libBtn.addEventListener("click", refreshLibraryFromDrive);
+  }
 
-    // Handle conflicts one by one
-    if (conflicts.length > 0) {
-      for (const conflict of conflicts) {
-        const resolved = await showConflictModal(conflict);
-        if (!resolved) break; // User cancelled
-      }
-    }
-
-    // Apply new items
-    let hasNewData = false;
-    for (const cat of categories) {
-      if (newItems[cat].length > 0) {
-        inventoryState.items[cat].push(...newItems[cat]);
-        hasNewData = true;
-      }
-    }
-    if (newTrials.length > 0) {
-      trialState.trials.push(...newTrials);
-      hasNewData = true;
-    }
-
-    if (hasNewData || conflicts.length > 0) {
-      // Save to local cache
-      saveLocalCache("inventory", { items: inventoryState.items });
-      saveLocalCache("trials", { trials: trialState.trials });
-
-      // Refresh UI
-      updateDashboardCounts();
-      switchCategory(inventoryState.currentCategory || "crops");
-      renderTrials();
-      renderDashboardTrialProgress();
-
-      // Load user settings last in sync flow
-      await loadUserSettingsForCurrentUser({ preferRemote: true, silent: true });
-
-      const totalNew = categories.reduce((sum, cat) => sum + newItems[cat].length, 0) + newTrials.length;
-      showAlert(`Loaded ${totalNew} new item(s) and resolved ${conflicts.length} conflict(s).`, "success", "Sync Complete");
-    } else {
-      // Load user settings last in sync flow
-      await loadUserSettingsForCurrentUser({ preferRemote: true, silent: true });
-      showAlert("No new data found on Drive.", "info", "Already Up to Date");
-    }
-
-  } catch (error) {
-    hideDataTransfer();
-    console.error("Sync down error:", error);
-    showAlert("Error loading data from Drive: " + error.message, "error", "Sync Failed");
+  // Open panel button in topbar
+  const loadDataBtn = document.getElementById("loadDataBtn");
+  if (loadDataBtn) {
+    loadDataBtn.addEventListener("click", () => openLoadDataPanel());
   }
 }
 
-function showConflictModal(conflict) {
-  return new Promise((resolve) => {
-    const modal = document.getElementById("syncConflictModal");
-    const details = document.getElementById("conflictDetails");
-    const keepLocalBtn = document.getElementById("conflictKeepLocalBtn");
-    const keepRemoteBtn = document.getElementById("conflictKeepRemoteBtn");
+// ---- Trial Tab ----
 
-    const catLabel = conflict.category.charAt(0).toUpperCase() + conflict.category.slice(1);
-    const itemName = conflict.localItem.name || conflict.localItem.id;
+function renderLoadDataTrialList() {
+  const container = document.getElementById("loadDataTrialList");
+  if (!container) return;
 
-    details.innerHTML = `
-      <div class="conflict-item-name">${escapeHtml(itemName)} (${catLabel})</div>
-      <div class="conflict-versions">
-        <div class="conflict-version">
-          <div class="conflict-version-label">Local Version</div>
-          <div class="conflict-version-data">Modified: ${conflict.localModified}</div>
-          <div class="conflict-version-data text-muted">Has unsaved changes</div>
+  const trials = (trialState.trials || []).filter(t => !t.archived);
+  if (trials.length === 0) {
+    container.innerHTML = '<div class="load-data-summary">No active trials found.</div>';
+    return;
+  }
+
+  container.innerHTML = trials.map(trial => {
+    const isLoaded = !!trial._responsesLoaded;
+    const statusClass = isLoaded ? "loaded" : "not-loaded";
+    const statusIcon = isLoaded ? "check_circle" : "cloud_off";
+    const statusLabel = isLoaded ? "Loaded" : "Not loaded";
+    const cropName = trial.cropName || "";
+    const meta = [cropName, trial.trialType].filter(Boolean).join(" · ");
+
+    return `
+      <div class="load-data-trial-item" data-trial-id="${trial.id}">
+        <div class="load-data-trial-info">
+          <div class="load-data-trial-name">${escapeHtml(trial.name)}</div>
+          <div class="load-data-trial-meta">${escapeHtml(meta)}</div>
         </div>
-        <div class="conflict-version">
-          <div class="conflict-version-label">Remote Version</div>
-          <div class="conflict-version-data">Modified: ${conflict.remoteModified}</div>
-          <div class="conflict-version-data text-muted">From Google Drive</div>
-        </div>
+        <span class="load-data-status ${statusClass}">
+          <span class="material-symbols-rounded">${statusIcon}</span>
+          ${statusLabel}
+        </span>
+        ${isLoaded
+          ? `<button class="load-data-trial-btn load-data-unload-btn" onclick="unloadSingleTrialFromPanel('${trial.id}', this)"><span class="material-symbols-rounded">cloud_off</span> Unload</button>`
+          : `<button class="load-data-trial-btn" onclick="loadSingleTrialFromPanel('${trial.id}', this)"><span class="material-symbols-rounded">cloud_download</span> Load</button>`
+        }
       </div>
     `;
+  }).join("");
+}
 
-    modal.classList.remove("hidden");
-    modal.classList.add("active");
+async function loadSingleTrialFromPanel(trialId, btnEl) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial || trial._responsesLoaded) return;
 
-    const handleKeepLocal = () => {
-      modal.classList.remove("active");
-      modal.classList.add("hidden");
-      cleanup();
-      resolve(true); // Continue to next conflict
-    };
+  // Update UI to show loading
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<span class="spinner-sm"></span> Loading...';
+  }
 
-    const handleKeepRemote = () => {
-      // Replace local with remote
-      if (conflict.category === "trials") {
-        const idx = trialState.trials.findIndex(t => t.id === conflict.remoteItem.id);
-        if (idx >= 0) trialState.trials[idx] = conflict.remoteItem;
-      } else {
-        const items = inventoryState.items[conflict.category];
-        const idx = items.findIndex(item => item.id === conflict.remoteItem.id);
-        if (idx >= 0) items[idx] = conflict.remoteItem;
-      }
-      
-      // Remove from sync queue
-      const queueIdx = syncQueue.findIndex(task => 
-        task.label && task.label.includes(conflict.remoteItem.id)
-      );
-      if (queueIdx >= 0) {
-        syncQueue.splice(queueIdx, 1);
-        updateSyncUI();
-      }
+  const statusEl = btnEl?.closest(".load-data-trial-item")?.querySelector(".load-data-status");
+  if (statusEl) {
+    statusEl.className = "load-data-status loading";
+    statusEl.innerHTML = '<span class="material-symbols-rounded">sync</span> Loading...';
+  }
 
-      modal.classList.remove("active");
-      modal.classList.add("hidden");
-      cleanup();
-      resolve(true);
-    };
+  try {
+    await loadTrialResponsesFromDrive(trialId);
 
-    function cleanup() {
-      keepLocalBtn.removeEventListener("click", handleKeepLocal);
-      keepRemoteBtn.removeEventListener("click", handleKeepRemote);
+    // Re-render the trial list to show Unload button
+    renderLoadDataTrialList();
+
+    // Refresh dashboard indicators
+    if (typeof updateDashboardCounts === "function") updateDashboardCounts();
+    if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
+    if (typeof renderTrials === "function") renderTrials();
+  } catch (err) {
+    console.error("Error loading trial:", err);
+    if (statusEl) {
+      statusEl.className = "load-data-status not-loaded";
+      statusEl.innerHTML = '<span class="material-symbols-rounded">error</span> Error';
+    }
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = '<span class="material-symbols-rounded">cloud_download</span> Retry';
+    }
+    showToast("Error loading trial data: " + err.message, "error");
+  }
+}
+
+async function unloadSingleTrialFromPanel(trialId, btnEl) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial || !trial._responsesLoaded) return;
+
+  // Clear in-memory responses
+  trial.responses = {};
+  trial.agronomyResponses = {};
+  trial._responsesLoaded = false;
+
+  // Update local cache (responses cleared, flag reset)
+  if (typeof saveLocalCache === "function") {
+    saveLocalCache("trials", { trials: trialState.trials });
+  }
+
+  // Re-render the trial list to show Load button
+  renderLoadDataTrialList();
+
+  // Refresh all dependent views
+  if (typeof updateDashboardCounts === "function") updateDashboardCounts();
+  if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
+  if (typeof renderTrials === "function") renderTrials();
+
+  showToast(`Trial "${trial.name}" data unloaded.`, "info");
+}
+
+async function loadAllTrialResponses() {
+  const trials = (trialState.trials || []).filter(t => !t.archived && !t._responsesLoaded);
+  if (trials.length === 0) {
+    showToast("All trials are already loaded.", "info");
+    return;
+  }
+
+  const btn = document.getElementById("loadAllTrialsBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-sm"></span> Loading...';
+  }
+
+  let loaded = 0;
+  for (const trial of trials) {
+    const itemEl = document.querySelector(`.load-data-trial-item[data-trial-id="${trial.id}"]`);
+    const statusEl = itemEl?.querySelector(".load-data-status");
+    const trialBtn = itemEl?.querySelector(".load-data-trial-btn");
+
+    if (statusEl) {
+      statusEl.className = "load-data-status loading";
+      statusEl.innerHTML = '<span class="material-symbols-rounded">sync</span> Loading...';
     }
 
-    keepLocalBtn.addEventListener("click", handleKeepLocal);
-    keepRemoteBtn.addEventListener("click", handleKeepRemote);
-  });
+    try {
+      await loadTrialResponsesFromDrive(trial.id);
+      loaded++;
+
+      if (statusEl) {
+        statusEl.className = "load-data-status loaded";
+        statusEl.innerHTML = '<span class="material-symbols-rounded">check_circle</span> Loaded';
+      }
+      if (trialBtn) {
+        trialBtn.disabled = true;
+        trialBtn.innerHTML = '<span class="material-symbols-rounded">check</span> Loaded';
+      }
+    } catch (err) {
+      console.error(`Error loading trial ${trial.id}:`, err);
+      if (statusEl) {
+        statusEl.className = "load-data-status not-loaded";
+        statusEl.innerHTML = '<span class="material-symbols-rounded">error</span> Error';
+      }
+    }
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Load All';
+  }
+
+  // Re-render trial list to show Unload buttons for newly loaded trials
+  renderLoadDataTrialList();
+
+  if (typeof updateDashboardCounts === "function") updateDashboardCounts();
+  if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
+  if (typeof renderTrials === "function") renderTrials();
+
+  showToast(`Loaded ${loaded} of ${trials.length} trial(s).`, loaded === trials.length ? "success" : "warning");
+}
+
+// ---- Category Tabs ----
+
+function renderLoadDataCategorySummary(category) {
+  const container = document.getElementById(`loadData${category.charAt(0).toUpperCase() + category.slice(1)}Summary`);
+  if (!container) return;
+
+  const items = inventoryState.items[category] || [];
+  container.innerHTML = `<span class="load-data-summary-count">${items.length}</span> ${category} item${items.length !== 1 ? "s" : ""} currently loaded.`;
+}
+
+async function refreshCategoryFromDrive(category) {
+  const catDisplay = category.charAt(0).toUpperCase() + category.slice(1);
+  const btn = document.getElementById(`loadCategoryBtn${catDisplay}`);
+  const summaryEl = document.getElementById(`loadData${catDisplay}Summary`);
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-sm"></span> Refreshing...';
+  }
+  if (summaryEl) {
+    summaryEl.className = "load-data-summary refreshing";
+    summaryEl.innerHTML = '<span class="spinner-sm"></span> Refreshing from Google Drive...';
+  }
+
+  try {
+    const items = await loadItemsFromGoogleDrive(catDisplay);
+    inventoryState.items[category] = items;
+
+    if (typeof saveLocalCache === "function") {
+      saveLocalCache("inventory", { items: inventoryState.items });
+    }
+
+    // Refresh UI
+    if (typeof updateDashboardCounts === "function") updateDashboardCounts();
+    if (typeof switchCategory === "function" && inventoryState.currentCategory === category) {
+      switchCategory(category);
+    }
+    if (typeof updateCropTypeSuggestions === "function") updateCropTypeSuggestions();
+
+    if (summaryEl) {
+      summaryEl.className = "load-data-summary";
+      summaryEl.innerHTML = `<span class="load-data-summary-count">${items.length}</span> ${category} item${items.length !== 1 ? "s" : ""} loaded from Drive.`;
+    }
+
+    showToast(`${catDisplay} refreshed (${items.length} items).`, "success");
+  } catch (err) {
+    console.error(`Error refreshing ${category}:`, err);
+    if (summaryEl) {
+      summaryEl.className = "load-data-summary";
+      summaryEl.innerHTML = `<span style="color:var(--danger)">Error refreshing ${category}: ${escapeHtml(err.message)}</span>`;
+    }
+    showToast(`Error refreshing ${catDisplay}.`, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Refresh';
+    }
+  }
+}
+
+// ---- Library Tab ----
+
+function renderLoadDataLibrarySummary() {
+  const container = document.getElementById("loadDataLibrarySummary");
+  if (!container) return;
+
+  const count = (typeof libraryState !== "undefined" && libraryState.items) ? libraryState.items.length : 0;
+  const driveLoaded = (typeof libraryState !== "undefined") && libraryState._driveLoaded;
+  const source = driveLoaded ? "loaded from Drive" : "cached locally";
+  container.innerHTML = `<span class="load-data-summary-count">${count}</span> library file${count !== 1 ? "s" : ""} ${source}.`;
+}
+
+async function refreshLibraryFromDrive() {
+  const btn = document.getElementById("loadCategoryBtnLibrary");
+  const summaryEl = document.getElementById("loadDataLibrarySummary");
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-sm"></span> Refreshing...';
+  }
+  if (summaryEl) {
+    summaryEl.className = "load-data-summary refreshing";
+    summaryEl.innerHTML = '<span class="spinner-sm"></span> Refreshing from Google Drive...';
+  }
+
+  try {
+    if (typeof incrementalRefreshLibrary === "function") {
+      await incrementalRefreshLibrary();
+    } else if (typeof loadLibraryItems === "function") {
+      await loadLibraryItems();
+    }
+
+    const count = libraryState.items ? libraryState.items.length : 0;
+    if (summaryEl) {
+      summaryEl.className = "load-data-summary";
+      summaryEl.innerHTML = `<span class="load-data-summary-count">${count}</span> library file${count !== 1 ? "s" : ""} loaded from Drive.`;
+    }
+  } catch (err) {
+    console.error("Error refreshing library:", err);
+    if (summaryEl) {
+      summaryEl.className = "load-data-summary";
+      summaryEl.innerHTML = `<span style="color:var(--danger)">Error refreshing library: ${escapeHtml(err.message)}</span>`;
+    }
+    showToast("Error refreshing library.", "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Refresh';
+    }
+  }
 }

@@ -9,13 +9,14 @@ let libraryState = {
   sortBy: "modifiedTime",
   sortDir: "desc",
   uploading: {}, // Track upload progress by file name: { filename: { progress: 0-100 } }
+  _driveLoaded: false, // Whether items have been loaded from Drive this session
 };
 
 async function initializeLibrary(options = {}) {
   const onProgress = options.onProgress;
-  let hasCache = false;
 
   try {
+    // Load from local cache only (no Drive fetch at startup)
     const cached = typeof loadLocalCache === "function"
       ? loadLocalCache("library")
       : null;
@@ -23,9 +24,8 @@ async function initializeLibrary(options = {}) {
     if (cached?.items) {
       libraryState.items = cached.items;
       renderLibraryList();
-      hasCache = true;
       if (onProgress) {
-        onProgress(0.2, "Loaded library from device");
+        onProgress(0.5, "Loaded library from device");
       }
     }
 
@@ -34,35 +34,13 @@ async function initializeLibrary(options = {}) {
       driveState.advantaFolderId,
     );
     setupLibraryEvents();
-    
-    // Load library items in background via sync queue
-    if (typeof enqueueSync === 'function') {
-      enqueueSync({
-        label: 'Load Library',
-        run: async () => {
-          await loadLibraryItems();
-          if (typeof saveLocalCache === "function") {
-            saveLocalCache("library", { items: libraryState.items });
-          }
-          if (onProgress) {
-            onProgress(1, "Library synced");
-          }
-        }
-      });
-    } else {
-      await loadLibraryItems();
-      if (typeof saveLocalCache === "function") {
-        saveLocalCache("library", { items: libraryState.items });
-      }
-      if (onProgress) {
-        onProgress(1, "Library synced");
-      }
+
+    // Do NOT load from Drive here — will be lazy-loaded on first Library page visit
+    if (onProgress) {
+      onProgress(1, "Library initialized");
     }
   } catch (error) {
     console.error("Error initializing library:", error);
-    if (!hasCache) {
-      showToast("Error loading library data. Please refresh the page.", "error");
-    }
   }
 }
 
@@ -87,6 +65,21 @@ function setupLibraryEvents() {
       if (files.length === 0) return;
       await uploadLibraryFiles(files);
       uploadInput.value = "";
+    });
+  }
+
+  // Refresh button (incremental — only fetches new files)
+  const refreshBtn = document.getElementById("refreshLibraryBtn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", async () => {
+      refreshBtn.disabled = true;
+      refreshBtn.querySelector("span:last-child").textContent = "Refreshing...";
+      try {
+        await incrementalRefreshLibrary();
+      } finally {
+        refreshBtn.disabled = false;
+        refreshBtn.querySelector("span:last-child").textContent = "Refresh";
+      }
     });
   }
 
@@ -176,6 +169,136 @@ async function loadLibraryItems() {
 
   if (typeof saveLocalCache === "function") {
     saveLocalCache("library", { items: libraryState.items });
+  }
+}
+
+/**
+ * Lazy-load library items from Drive on first visit to the Library page.
+ * Shows a loading popup with file-count progress. Skips if already loaded this session.
+ */
+async function lazyLoadLibraryFromDrive() {
+  if (libraryState._driveLoaded) return;
+  if (!libraryState.folderId) return;
+
+  // Show loading popup overlay
+  showLibraryLoadingPopup("Loading library files...", 0);
+
+  try {
+    const response = await gapi.client.drive.files.list({
+      q: `'${libraryState.folderId}' in parents and trashed=false`,
+      fields: "files(id, name, mimeType, modifiedTime, size)",
+      orderBy: "modifiedTime desc",
+      pageSize: 1000,
+    });
+
+    const files = response.result.files || [];
+    const total = files.length;
+
+    // Update progress as we process each file
+    for (let i = 0; i < files.length; i++) {
+      updateLibraryLoadingProgress(Math.round(((i + 1) / total) * 100), `Loaded ${i + 1} of ${total} files`);
+    }
+
+    libraryState.items = files;
+    libraryState._driveLoaded = true;
+    renderLibraryList();
+
+    if (typeof saveLocalCache === "function") {
+      saveLocalCache("library", { items: libraryState.items });
+    }
+
+    hideLibraryLoadingPopup();
+    showToast(`Library loaded (${files.length} files).`, "success");
+  } catch (error) {
+    console.error("Error lazy-loading library:", error);
+    hideLibraryLoadingPopup();
+    showToast("Error loading library from Drive.", "error");
+  }
+}
+
+/**
+ * Incremental refresh: only fetches new files from Drive that aren't already in the local list.
+ * Existing files are kept as-is for fast refresh.
+ */
+async function incrementalRefreshLibrary() {
+  if (!libraryState.folderId) return;
+
+  try {
+    const response = await gapi.client.drive.files.list({
+      q: `'${libraryState.folderId}' in parents and trashed=false`,
+      fields: "files(id, name, mimeType, modifiedTime, size)",
+      orderBy: "modifiedTime desc",
+      pageSize: 1000,
+    });
+
+    const driveFiles = response.result.files || [];
+    const existingIds = new Set(libraryState.items.map(f => f.id));
+    const driveIds = new Set(driveFiles.map(f => f.id));
+
+    // Find new files (in Drive but not in local)
+    const newFiles = driveFiles.filter(f => !existingIds.has(f.id));
+    // Find removed files (in local but no longer in Drive)
+    const remainingItems = libraryState.items.filter(f => driveIds.has(f.id));
+
+    // Merge: keep existing + add new
+    libraryState.items = [...newFiles, ...remainingItems];
+    // Re-sort by modifiedTime desc (default)
+    libraryState.items.sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
+
+    renderLibraryList();
+
+    if (typeof saveLocalCache === "function") {
+      saveLocalCache("library", { items: libraryState.items });
+    }
+
+    if (newFiles.length > 0) {
+      showToast(`${newFiles.length} new file(s) added to library.`, "success");
+    } else {
+      showToast("Library is up to date.", "info");
+    }
+  } catch (error) {
+    console.error("Error refreshing library:", error);
+    showToast("Error refreshing library.", "error");
+  }
+}
+
+// ---- Library Loading Popup ----
+
+function showLibraryLoadingPopup(message, percent) {
+  let popup = document.getElementById("libraryLoadingPopup");
+  if (!popup) {
+    popup = document.createElement("div");
+    popup.id = "libraryLoadingPopup";
+    popup.className = "library-loading-popup-overlay";
+    popup.innerHTML = `
+      <div class="library-loading-popup">
+        <span class="spinner-sm"></span>
+        <p id="libraryLoadingMsg">${message || "Loading..."}</p>
+        <div class="library-loading-bar-track">
+          <div class="library-loading-bar-fill" id="libraryLoadingBar" style="width:${percent || 0}%"></div>
+        </div>
+        <span class="library-loading-percent" id="libraryLoadingPercent">${percent || 0}%</span>
+      </div>
+    `;
+    document.body.appendChild(popup);
+  }
+  popup.classList.add("active");
+}
+
+function updateLibraryLoadingProgress(percent, message) {
+  const bar = document.getElementById("libraryLoadingBar");
+  const pct = document.getElementById("libraryLoadingPercent");
+  const msg = document.getElementById("libraryLoadingMsg");
+  if (bar) bar.style.width = percent + "%";
+  if (pct) pct.textContent = percent + "%";
+  if (msg && message) msg.textContent = message;
+}
+
+function hideLibraryLoadingPopup() {
+  const popup = document.getElementById("libraryLoadingPopup");
+  if (popup) {
+    popup.classList.remove("active");
+    popup.remove();
   }
 }
 

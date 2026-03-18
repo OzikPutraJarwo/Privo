@@ -104,8 +104,8 @@
 - [x] New drive format (SPECTRA)
 - [x] Change `Hybrid Name` to `Hybrid Code` for Parental and Hybrid crop entries
 - [x] `Database` big updates
-- [x] Sync Queue with time
-- [ ] `Sync Queue` Smart syncing by syncing trials only the meta, response following
+- [x] `Sync Queue` with time
+- [x] `Sync Queue` Smart syncing by syncing trials only the meta, response following
 - [x] `Data Analysis` JS restructured
 - [x] `Data Analisis` redesign with dynamic split, filter bug, etc
 
@@ -113,9 +113,10 @@
 
 ### Update
 - [x] `MAIN` New logo
+- [x] `Trial` Factors using Entries
 - [ ] `Trial` Process Research with split plot design for factorial with custom layouting
-- [ ] `Trial` Report with import/export system
-- [ ] `Data Analysis` Custom dataset taken from `Library` (independent)
+- [x] `Trial` Report with import/export system
+- [x] `Data Analysis` Custom dataset (independent)
 - [x] `Data Analysis` ANOVA with Coefficient of Variation (CV)
 ### Bug Fixes and Redesigns
 - [x] `MAIN` Remove CropID

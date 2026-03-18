@@ -142,7 +142,7 @@
             <h2 id="pageTitle">Dashboard</h2>
           </div>
           <div class="topbar-right">
-            <button id="syncDownBtn" class="sync-status" aria-label="Load new data from Drive" title="Load from Drive">
+            <button id="loadDataBtn" class="sync-status" aria-label="Load latest data" title="Load Latest Data">
               <span class="material-symbols-rounded">cloud_download</span>
             </button>
             <button id="syncStatusBtn" class="sync-status" aria-label="Sync status" title="Synced">
@@ -156,9 +156,13 @@
               <span class="material-symbols-rounded">save</span>
             </button>
             <select id="trialReportSheetSelect" class="trial-report-topbar-select hidden" style="display: none;" onchange="handleTrialReportSheetSelect(this.value)"></select>
+            <button id="trialReportTopbarImportBtn" class="btn btn-secondary hidden" onclick="openTrialReportImport()" style="display: none;" title="Import report">
+              <span class="material-symbols-rounded">upload</span>
+            </button>
             <button id="trialReportTopbarDownloadBtn" class="btn btn-secondary hidden" onclick="downloadTrialReportExcel()" style="display: none;" title="Download report">
               <span class="material-symbols-rounded">download</span>
             </button>
+            <input type="file" id="trialReportImportFileInput" accept=".xlsx,.xls,.csv" hidden>
             <select id="databaseSeasonFilter" class="trial-report-topbar-select database-topbar-control hidden" style="display: none;">
               <option value="all">All Season</option>
             </select>
@@ -1017,6 +1021,15 @@
                     <span class="material-symbols-rounded">table_chart</span>
                     <h3>Dataset</h3>
                   </div>
+                  <select id="analysisDataSourceSelect" class="analysis-datasource-select" onchange="handleAnalysisDataSourceChange(this.value)" title="Dataset source">
+                    <option value="trial" selected>Trial Data</option>
+                    <option value="custom">Custom Upload</option>
+                  </select>
+                  <button type="button" id="analysisCustomUploadBtn" class="analysis-columns-trigger" onclick="openAnalysisCustomUpload()" style="display:none;" title="Re-upload custom dataset">
+                    <span class="material-symbols-rounded">upload_file</span>
+                    <span>Re-upload</span>
+                  </button>
+                  <input type="file" id="analysisCustomFileInput" accept=".xlsx,.xls,.csv" hidden>
                   <button type="button" id="analysisColumnsTrigger" class="analysis-columns-trigger" onclick="toggleAnalysisColumnVisibilityMenu(event)" aria-haspopup="true" aria-expanded="false">
                     <span class="material-symbols-rounded">view_column</span>
                     <span id="analysisColumnsTriggerLabel">Columns</span>
@@ -1163,6 +1176,10 @@
                     </select>
                   </div>
                   <input type="file" id="libraryUploadInput" multiple>
+                  <button id="refreshLibraryBtn" class="btn btn-secondary" title="Refresh library (load new files only)">
+                    <span class="material-symbols-rounded">refresh</span>
+                    <span>Refresh</span>
+                  </button>
                   <button id="uploadLibraryBtn" class="btn btn-primary">
                     <span class="material-symbols-rounded">upload</span>
                     <span>Upload</span>
@@ -1669,21 +1686,132 @@
     <!-- Hidden file input for import -->
     <input type="file" id="importFileInput" accept=".adv" class="hidden">
 
-    <!-- Sync Conflict Modal -->
-    <div id="syncConflictModal" class="modal-overlay hidden">
-      <div class="modal-container modal-medium">
-        <div class="modal-header">
-          <span class="material-symbols-rounded modal-icon error-icon">warning</span>
-          <h3>Sync Conflict Detected</h3>
+    <!-- Load Latest Data Panel -->
+    <div id="loadDataModal" class="modal-overlay hidden">
+      <div class="load-data-modal" role="dialog" aria-modal="true" aria-labelledby="loadDataTitle">
+        <div class="load-data-header">
+          <h3 id="loadDataTitle">Load Latest Data</h3>
+          <button type="button" class="btn btn-secondary btn-icon-only" id="loadDataCloseBtn" aria-label="Close">
+            <span class="material-symbols-rounded">close</span>
+          </button>
         </div>
-        <div class="modal-body">
-          <p id="conflictMessage">The following item has been modified both locally and on Google Drive:</p>
-          <div id="conflictDetails" class="conflict-details"></div>
-          <p class="text-muted">Choose which version to keep:</p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="conflictKeepLocalBtn">Keep Local (Cancel Sync)</button>
-          <button class="btn btn-primary" id="conflictKeepRemoteBtn">Use Remote (Replace Local)</button>
+        <div class="load-data-body">
+          <aside class="load-data-nav">
+            <button type="button" class="load-data-nav-item active" data-load-tab="trial">
+              <span class="material-symbols-rounded">science</span>
+              <span>Trial</span>
+            </button>
+            <button type="button" class="load-data-nav-item" data-load-tab="crops">
+              <span class="material-symbols-rounded">eco</span>
+              <span>Crops</span>
+            </button>
+            <button type="button" class="load-data-nav-item" data-load-tab="entries">
+              <span class="material-symbols-rounded">format_list_numbered</span>
+              <span>Entries</span>
+            </button>
+            <button type="button" class="load-data-nav-item" data-load-tab="locations">
+              <span class="material-symbols-rounded">location_on</span>
+              <span>Locations</span>
+            </button>
+            <button type="button" class="load-data-nav-item" data-load-tab="parameters">
+              <span class="material-symbols-rounded">tune</span>
+              <span>Parameters</span>
+            </button>
+            <button type="button" class="load-data-nav-item" data-load-tab="agronomy">
+              <span class="material-symbols-rounded">agriculture</span>
+              <span>Agronomy</span>
+            </button>
+            <button type="button" class="load-data-nav-item" data-load-tab="library">
+              <span class="material-symbols-rounded">folder_open</span>
+              <span>Library</span>
+            </button>
+          </aside>
+          <section class="load-data-content">
+            <div class="load-data-tab active" id="loadDataTabTrial">
+              <div class="load-data-tab-header">
+                <div>
+                  <h4>Trial Data</h4>
+                  <p class="load-data-hint">Load trial observation &amp; agronomy responses from Google Drive.</p>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="loadAllTrialsBtn">
+                  <span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Load All
+                </button>
+              </div>
+              <div id="loadDataTrialList" class="load-data-list"></div>
+            </div>
+            <div class="load-data-tab" id="loadDataTabCrops">
+              <div class="load-data-tab-header">
+                <div>
+                  <h4>Crops</h4>
+                  <p class="load-data-hint">Refresh crops data from Google Drive.</p>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="loadCategoryBtnCrops">
+                  <span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Refresh
+                </button>
+              </div>
+              <div id="loadDataCropsSummary" class="load-data-summary"></div>
+            </div>
+            <div class="load-data-tab" id="loadDataTabEntries">
+              <div class="load-data-tab-header">
+                <div>
+                  <h4>Entries</h4>
+                  <p class="load-data-hint">Refresh entries/lines data from Google Drive.</p>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="loadCategoryBtnEntries">
+                  <span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Refresh
+                </button>
+              </div>
+              <div id="loadDataEntriesSummary" class="load-data-summary"></div>
+            </div>
+            <div class="load-data-tab" id="loadDataTabLocations">
+              <div class="load-data-tab-header">
+                <div>
+                  <h4>Locations</h4>
+                  <p class="load-data-hint">Refresh locations data from Google Drive.</p>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="loadCategoryBtnLocations">
+                  <span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Refresh
+                </button>
+              </div>
+              <div id="loadDataLocationsSummary" class="load-data-summary"></div>
+            </div>
+            <div class="load-data-tab" id="loadDataTabParameters">
+              <div class="load-data-tab-header">
+                <div>
+                  <h4>Parameters</h4>
+                  <p class="load-data-hint">Refresh parameters data from Google Drive.</p>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="loadCategoryBtnParameters">
+                  <span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Refresh
+                </button>
+              </div>
+              <div id="loadDataParametersSummary" class="load-data-summary"></div>
+            </div>
+            <div class="load-data-tab" id="loadDataTabAgronomy">
+              <div class="load-data-tab-header">
+                <div>
+                  <h4>Agronomy</h4>
+                  <p class="load-data-hint">Refresh agronomy items from Google Drive.</p>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="loadCategoryBtnAgronomy">
+                  <span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Refresh
+                </button>
+              </div>
+              <div id="loadDataAgronomySummary" class="load-data-summary"></div>
+            </div>
+            <div class="load-data-tab" id="loadDataTabLibrary">
+              <div class="load-data-tab-header">
+                <div>
+                  <h4>Library</h4>
+                  <p class="load-data-hint">Refresh library files from Google Drive.</p>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="loadCategoryBtnLibrary">
+                  <span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Refresh
+                </button>
+              </div>
+              <div id="loadDataLibrarySummary" class="load-data-summary"></div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
