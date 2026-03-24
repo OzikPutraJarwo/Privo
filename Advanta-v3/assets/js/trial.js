@@ -449,6 +449,7 @@ function openAddTrialModal() {
 
   // Reset areas list
   document.getElementById("areasList").classList.add("hidden");
+  document.getElementById("areasEmptyState").classList.remove("hidden");
   document.getElementById("areasListContainer").innerHTML = "";
 
   // Setup section nav click handlers
@@ -580,6 +581,11 @@ function openEditTrialModal(trialId) {
 
 // Close trial modal
 function closeTrialModal() {
+  // Close field map popup if open
+  const fieldPopup = document.getElementById("fieldMapPopup");
+  if (fieldPopup && !fieldPopup.classList.contains("hidden")) {
+    fieldPopup.classList.add("hidden");
+  }
   toggleTrialEditor(false);
   trialState.editingTrialId = null;
   trialState.currentAreas = [];
@@ -692,6 +698,14 @@ function enterTrialFullscreenMode({ title, onClose }) {
   }
 
   document.body.classList.add("trial-fullscreen-active", "sidebar-collapsed");
+
+  // Move section nav to topbar-right
+  const sectionNav = document.querySelector(".trial-section-nav");
+  const topbarRight = document.querySelector(".topbar-right");
+  if (sectionNav && topbarRight) {
+    topbarRight.appendChild(sectionNav);
+  }
+
   trialFullscreenState.active = true;
 }
 
@@ -716,6 +730,15 @@ function exitTrialFullscreenMode() {
   });
 
   document.body.classList.remove("trial-fullscreen-active", "sidebar-collapsed");
+
+  // Move section nav back to trial editor
+  const sectionNav = document.querySelector(".trial-section-nav");
+  const editorContent = document.querySelector(".trial-editor-content");
+  const modalBody = editorContent?.querySelector(".modal-body-scrollable");
+  if (sectionNav && editorContent && modalBody) {
+    editorContent.insertBefore(sectionNav, modalBody);
+  }
+
   trialFullscreenState.active = false;
 }
 
@@ -728,7 +751,7 @@ function switchTrialTab(tabName) {
 
 function getTrialEditorSections() {
   const base = ["basic", "experiment"];
-  if (isSplitPlotMode()) {
+  if (isMultiFactorMode()) {
     base.push("splitplot");
   }
   base.push("plotspec", "observation", "field", "layouting");
@@ -736,14 +759,30 @@ function getTrialEditorSections() {
 }
 
 /**
- * Returns true when the current trial form is set to Process Research
- * with more than 1 factor AND factor arrangement is "splitplot".
+ * Returns true when the current trial form has more than 1 factor
+ * AND factor arrangement is "splitplot".
  */
 function isSplitPlotMode() {
-  const trialType = document.getElementById("trialType")?.value || "";
   const factorCount = normalizeTrialFactorsCount(document.getElementById("trialFactors")?.value);
   const arrangement = document.getElementById("trialFactorArrangement")?.value || "factorial";
-  return trialType === "Process Research" && factorCount > 1 && arrangement === "splitplot";
+  return factorCount > 1 && arrangement === "splitplot";
+}
+
+/**
+ * Returns true when the current trial form has more than 1 factor
+ * AND factor arrangement is "factorial".
+ */
+function isFactorialMode() {
+  const factorCount = normalizeTrialFactorsCount(document.getElementById("trialFactors")?.value);
+  const arrangement = document.getElementById("trialFactorArrangement")?.value || "factorial";
+  return factorCount > 1 && arrangement === "factorial";
+}
+
+/**
+ * Returns true when multi-factor mode is active (either factorial or splitplot).
+ */
+function isMultiFactorMode() {
+  return isFactorialMode() || isSplitPlotMode();
 }
 
 function canAccessPlotSpecSection() {
@@ -821,44 +860,8 @@ function showTrialSection(sectionName) {
   }
 
   if (sectionName === "field") {
-    const trial = trialState.editingTrialId
-      ? trialState.trials.find((t) => t.id === trialState.editingTrialId)
-      : null;
-
-    // Ensure map exists for location section
-    if (!trialMapInstance) {
-      initializeTrialMap(trial?.locationCoordinates);
-    }
-
-    // Re-sync area layers every time entering location section
-    if (trialMapInstance) {
-      trialDrawnLayers.forEach((entry) => {
-        if (entry?.layer && trialMapInstance.hasLayer(entry.layer)) {
-          trialMapInstance.removeLayer(entry.layer);
-        }
-      });
-      trialDrawnLayers = [];
-
-      if (trialState.currentPolygon?.polygon && trialMapInstance.hasLayer(trialState.currentPolygon.polygon)) {
-        trialMapInstance.removeLayer(trialState.currentPolygon.polygon);
-      }
-      trialState.currentPolygon = null;
-
-      if (trialState.currentAreas.length > 0) {
-        trialState.currentAreas.forEach((area, index) => {
-          drawSavedArea(area, index);
-        });
-      }
-    }
-
-    // Always rebuild area list + preview maps when entering location section
+    // Render areas list (no inline map anymore — map is in the popup)
     renderAreasList();
-
-    // Ensure both main map and preview maps layout correctly after section becomes visible
-    setTimeout(() => {
-      if (trialMapInstance) trialMapInstance.invalidateSize();
-      invalidateAllPreviewMaps();
-    }, 100);
   } else if (sectionName === "layouting") {
     initializeLayoutingSection();
   } else if (sectionName === "splitplot") {
@@ -1033,16 +1036,14 @@ function setupTrialFactorsAndTreatments() {
 }
 
 /**
- * Show/hide the Factor Arrangement dropdown based on:
- * - Trial type === "Process Research"
- * - Factor count > 1
+ * Show/hide the Factor Arrangement dropdown based on factor count > 1.
+ * Applies to all trial types.
  */
 function syncFactorArrangementVisibility() {
   const group = document.getElementById("trialFactorArrangementGroup");
   if (!group) return;
-  const trialType = document.getElementById("trialType")?.value || "";
   const factorCount = normalizeTrialFactorsCount(document.getElementById("trialFactors")?.value);
-  const show = trialType === "Process Research" && factorCount > 1;
+  const show = factorCount > 1;
   group.style.display = show ? "" : "none";
   if (!show) {
     // Reset to factorial if hidden
@@ -1053,13 +1054,21 @@ function syncFactorArrangementVisibility() {
 }
 
 /**
- * Show/hide the Split Plot nav item and renumber all nav items.
+ * Show/hide the factor codes nav item and renumber all nav items.
+ * Updates label to "Factorial" or "Split Plot" based on arrangement.
  */
 function syncSplitPlotNavVisibility() {
   const navItem = document.getElementById("splitPlotNavItem");
   if (!navItem) return;
-  const show = isSplitPlotMode();
+  const show = isMultiFactorMode();
   navItem.style.display = show ? "" : "none";
+
+  // Update nav label based on arrangement
+  const navText = navItem.querySelector(".section-nav-text");
+  if (navText) {
+    const arrangement = document.getElementById("trialFactorArrangement")?.value || "factorial";
+    navText.textContent = arrangement === "splitplot" ? "Split Plot" : "Factorial";
+  }
 
   // Renumber visible nav items
   const allNavItems = document.querySelectorAll(".trial-section-nav .section-nav-item");
@@ -1138,15 +1147,28 @@ function renderTrialTreatmentsInputs(factorCount, factorDefinitions = []) {
   container.innerHTML = values
     .map(
       (value, index) => {
-        const entriesListHTML = matchingLines.map((line) => {
-          const checked = value.entriesLineIds.includes(line.id) ? "checked" : "";
-          return `
-            <label class="factor-entry-item">
-              <input type="checkbox" class="factor-entry-checkbox" data-index="${index}" data-line-id="${line.id}" ${checked}>
-              <span>${escapeHtml(line.name)}</span>
-            </label>
-          `;
-        }).join("");
+        // Build available & selected sets
+        const selectedIds = new Set(value.entriesLineIds);
+        const availableLines = matchingLines.filter((line) => !selectedIds.has(line.id));
+        const selectedLines = value.entriesLineIds
+          .map((id) => matchingLines.find((l) => l.id === id))
+          .filter(Boolean);
+
+        const availableHTML = availableLines.length
+          ? availableLines.map((line) => `
+              <div class="picklist-item" data-id="${line.id}" data-name="${escapeHtml(line.name)}">
+                <input type="checkbox" class="picklist-item-checkbox" data-id="${line.id}">
+                <div class="picklist-item-content"><span class="picklist-item-title">${escapeHtml(line.name)}</span></div>
+              </div>
+            `).join("")
+          : '<p class="layouting-empty">No entries available. Select a crop first.</p>';
+
+        const selectedHTML = selectedLines.map((line) => `
+          <div class="picklist-item" data-id="${line.id}" data-name="${escapeHtml(line.name)}">
+            <input type="checkbox" class="picklist-item-checkbox" data-id="${line.id}">
+            <div class="picklist-item-content"><span class="picklist-item-title">${escapeHtml(line.name)}</span></div>
+          </div>
+        `).join("");
 
         return `
         <div class="form-group factor-card" style="margin:0 0 1rem 0; padding:0.75rem; border:1px solid var(--border); border-radius:10px;">
@@ -1175,11 +1197,37 @@ function renderTrialTreatmentsInputs(factorCount, factorDefinitions = []) {
           </div>
           <div class="factor-entries-section" ${value.isEntries ? "" : 'style="display:none;"'}>
             <label style="margin-top:0.5rem;">Select Entries for Factor ${index + 1}</label>
-            <div class="factor-entries-search-wrap">
-              <input type="text" class="factor-entries-search" data-index="${index}" placeholder="Search entries...">
-            </div>
-            <div class="factor-entries-list" data-index="${index}">
-              ${entriesListHTML || '<p class="layouting-empty">No entries available. Select a crop first.</p>'}
+            <div class="factor-entries-dual-picklist dual-picklist" data-index="${index}" data-saved-ids="${value.entriesLineIds.map(id => encodeURIComponent(id)).join(',')}">
+              <div class="picklist-column">
+                <div class="picklist-header form-hint">Available Entries</div>
+                <div class="picklist-search">
+                  <span class="material-symbols-rounded">search</span>
+                  <input type="text" class="factor-entries-search" data-index="${index}" placeholder="Search entries...">
+                </div>
+                <div class="factor-entries-available picklist-list" data-index="${index}" data-list="available">
+                  ${availableHTML}
+                </div>
+              </div>
+              <div class="picklist-controls">
+                <button type="button" class="picklist-control-btn factor-picklist-btn" data-action="select-all" data-index="${index}" title="Select all">
+                  <span class="material-symbols-rounded">select_all</span>
+                </button>
+                <button type="button" class="picklist-control-btn factor-picklist-btn" data-action="deselect-all" data-index="${index}" title="Deselect all">
+                  <span class="material-symbols-rounded">check_box_outline_blank</span>
+                </button>
+                <button type="button" class="picklist-control-btn factor-picklist-btn" data-action="add" data-index="${index}" title="Add to selected">
+                  <span class="material-symbols-rounded">arrow_forward</span>
+                </button>
+                <button type="button" class="picklist-control-btn factor-picklist-btn danger" data-action="remove" data-index="${index}" title="Remove from selected">
+                  <span class="material-symbols-rounded">delete</span>
+                </button>
+              </div>
+              <div class="picklist-column">
+                <div class="picklist-header form-hint">Selected Entries</div>
+                <div class="factor-entries-selected picklist-list" data-index="${index}" data-list="selected">
+                  ${selectedHTML}
+                </div>
+              </div>
             </div>
             <small class="form-hint factor-entries-count" data-index="${index}">
               ${value.entriesLineIds.length} entries selected
@@ -1207,30 +1255,155 @@ function renderTrialTreatmentsInputs(factorCount, factorDefinitions = []) {
     });
   });
 
-  // Event listeners for entries search
-  container.querySelectorAll(".factor-entries-search").forEach((searchInput) => {
-    searchInput.addEventListener("input", (e) => {
-      const idx = e.target.dataset.index;
-      const list = container.querySelector(`.factor-entries-list[data-index="${idx}"]`);
-      if (!list) return;
-      const term = e.target.value.toLowerCase();
-      list.querySelectorAll(".factor-entry-item").forEach((item) => {
-        const name = item.textContent.toLowerCase();
-        item.style.display = name.includes(term) ? "" : "none";
+  // --- Dual picklist interaction for each factor ---
+  const updateFactorEntriesCount = (idx) => {
+    const selectedList = container.querySelector(`.factor-entries-selected[data-index="${idx}"]`);
+    const countEl = container.querySelector(`.factor-entries-count[data-index="${idx}"]`);
+    if (countEl && selectedList) {
+      countEl.textContent = `${selectedList.querySelectorAll(".picklist-item").length} entries selected`;
+    }
+  };
+
+  container.querySelectorAll(".factor-entries-dual-picklist").forEach((picklist) => {
+    const idx = picklist.dataset.index;
+    const availableList = picklist.querySelector(`.factor-entries-available[data-index="${idx}"]`);
+    const selectedList = picklist.querySelector(`.factor-entries-selected[data-index="${idx}"]`);
+    if (!availableList || !selectedList) return;
+
+    // Clicking a picklist item toggles its checkbox
+    const attachItemClickHandlers = (listEl) => {
+      listEl.querySelectorAll(".picklist-item").forEach((item) => {
+        item.addEventListener("click", (e) => {
+          if (e.target.tagName === "INPUT") return; // let checkboxes handle themselves
+          const cb = item.querySelector(".picklist-item-checkbox");
+          if (cb) cb.checked = !cb.checked;
+        });
+      });
+    };
+    attachItemClickHandlers(availableList);
+    attachItemClickHandlers(selectedList);
+
+    // Control buttons
+    picklist.querySelectorAll(".factor-picklist-btn").forEach((btn) => {
+      const action = btn.dataset.action;
+
+      btn.addEventListener("click", () => {
+        if (action === "select-all") {
+          // Select all checkboxes in the available list
+          availableList.querySelectorAll(".picklist-item-checkbox").forEach((cb) => { cb.checked = true; });
+        }
+
+        if (action === "deselect-all") {
+          availableList.querySelectorAll(".picklist-item-checkbox").forEach((cb) => { cb.checked = false; });
+          selectedList.querySelectorAll(".picklist-item-checkbox").forEach((cb) => { cb.checked = false; });
+        }
+
+        if (action === "add") {
+          const checked = availableList.querySelectorAll(".picklist-item-checkbox:checked");
+          checked.forEach((cb) => {
+            const item = cb.closest(".picklist-item");
+            if (item) {
+              cb.checked = false;
+              selectedList.appendChild(item);
+            }
+          });
+          // Re-attach click handlers on moved items
+          attachItemClickHandlers(selectedList);
+          updateFactorEntriesCount(idx);
+        }
+
+        if (action === "remove") {
+          const checked = selectedList.querySelectorAll(".picklist-item-checkbox:checked");
+          checked.forEach((cb) => {
+            const item = cb.closest(".picklist-item");
+            if (item) {
+              cb.checked = false;
+              availableList.appendChild(item);
+            }
+          });
+          attachItemClickHandlers(availableList);
+          updateFactorEntriesCount(idx);
+        }
       });
     });
   });
 
-  // Event listeners for entry checkbox to update count
-  container.querySelectorAll(".factor-entry-checkbox").forEach((cb) => {
-    cb.addEventListener("change", () => {
-      const idx = cb.dataset.index;
-      const countEl = container.querySelector(`.factor-entries-count[data-index="${idx}"]`);
-      if (countEl) {
-        const checked = container.querySelectorAll(`.factor-entry-checkbox[data-index="${idx}"]:checked`).length;
-        countEl.textContent = `${checked} entries selected`;
-      }
+  // Event listeners for entries search (filters available list)
+  container.querySelectorAll(".factor-entries-search").forEach((searchInput) => {
+    searchInput.addEventListener("input", (e) => {
+      const idx = e.target.dataset.index;
+      const list = container.querySelector(`.factor-entries-available[data-index="${idx}"]`);
+      if (!list) return;
+      const term = e.target.value.toLowerCase();
+      list.querySelectorAll(".picklist-item").forEach((item) => {
+        const name = (item.dataset.name || item.textContent || "").toLowerCase();
+        item.style.display = name.includes(term) ? "" : "none";
+      });
     });
+  });
+}
+
+/**
+ * Refresh entries lists inside the trial editor when inventory data becomes
+ * available (solves the "empty entries on first page load" issue).
+ * Works with the dual-picklist layout.
+ */
+function refreshFactorEntriesLists() {
+  if (!isTrialEditorActive()) return;
+  const container = document.getElementById("trialTreatmentsContainer");
+  if (!container) return;
+
+  const cropSelect = document.getElementById("trialCrops");
+  const selectedCropId = cropSelect?.value || "";
+  const selectedCropName = cropSelect?.options?.[cropSelect.selectedIndex]?.dataset?.name || "";
+  const allEntries = (inventoryState?.items?.entries || []).filter((line) => {
+    return line.cropId === selectedCropId || line.cropType === selectedCropName;
+  });
+  if (!allEntries.length) return;
+
+  container.querySelectorAll(".factor-entries-dual-picklist").forEach((picklist) => {
+    const idx = picklist.dataset.index;
+    const availableList = picklist.querySelector(`.factor-entries-available[data-index="${idx}"]`);
+    const selectedList = picklist.querySelector(`.factor-entries-selected[data-index="${idx}"]`);
+    if (!availableList || !selectedList) return;
+
+    // Only refresh if both lists are empty (data wasn't available at render time)
+    if (availableList.querySelectorAll(".picklist-item").length > 0 || selectedList.querySelectorAll(".picklist-item").length > 0) return;
+
+    // Restore saved IDs for the selected list
+    const savedIds = new Set((picklist.dataset.savedIds || "").split(",").filter(Boolean).map(decodeURIComponent));
+
+    const availableLines = allEntries.filter((l) => !savedIds.has(l.id));
+    const selectedLines = allEntries.filter((l) => savedIds.has(l.id));
+
+    const buildItemHTML = (line) => `
+      <div class="picklist-item" data-id="${line.id}" data-name="${escapeHtml(line.name)}">
+        <input type="checkbox" class="picklist-item-checkbox" data-id="${line.id}">
+        <div class="picklist-item-content"><span class="picklist-item-title">${escapeHtml(line.name)}</span></div>
+      </div>
+    `;
+
+    availableList.innerHTML = availableLines.map(buildItemHTML).join("") || '<p class="layouting-empty">No entries available.</p>';
+    selectedList.innerHTML = selectedLines.map(buildItemHTML).join("");
+
+    // Re-attach item click handlers
+    const attachItemClickHandlers = (listEl) => {
+      listEl.querySelectorAll(".picklist-item").forEach((item) => {
+        item.addEventListener("click", (e) => {
+          if (e.target.tagName === "INPUT") return;
+          const cb = item.querySelector(".picklist-item-checkbox");
+          if (cb) cb.checked = !cb.checked;
+        });
+      });
+    };
+    attachItemClickHandlers(availableList);
+    attachItemClickHandlers(selectedList);
+
+    // Update count
+    const countEl = container.querySelector(`.factor-entries-count[data-index="${idx}"]`);
+    if (countEl) {
+      countEl.textContent = `${selectedLines.length} entries selected`;
+    }
   });
 }
 
@@ -1246,12 +1419,11 @@ function getTrialTreatmentsFromForm() {
     const isEntries = isEntriesCheckbox?.checked || false;
 
     if (isEntries) {
-      const checkedEntries = Array.from(card.querySelectorAll(".factor-entry-checkbox:checked"));
-      const entriesLineIds = checkedEntries.map((cb) => cb.dataset.lineId);
-      const treatments = checkedEntries.map((cb) => {
-        const label = cb.closest(".factor-entry-item");
-        return label ? label.textContent.trim() : "";
-      }).filter(Boolean);
+      // Read from dual picklist selected list
+      const selectedList = card.querySelector('.factor-entries-selected');
+      const selectedItems = selectedList ? Array.from(selectedList.querySelectorAll('.picklist-item')) : [];
+      const entriesLineIds = selectedItems.map((item) => item.dataset.id).filter(Boolean);
+      const treatments = selectedItems.map((item) => (item.dataset.name || item.textContent || "").trim()).filter(Boolean);
 
       return {
         name: String(nameInput?.value || "").trim(),
@@ -1285,16 +1457,25 @@ function getEntriesFactorLineIds() {
 }
 
 // ===========================
-// SPLIT PLOT — Treatment Codes Section
+// FACTOR CODES — Treatment Codes Section (Factorial / Split Plot)
 // ===========================
 
 /**
- * Render the Split Plot codes section.
+ * Render the factor codes section (used for both Factorial and Split Plot).
  * Each factor gets a list of its treatments with an input field for a short code.
  */
 function renderSplitPlotCodesSection() {
   const container = document.getElementById("splitPlotCodesContainer");
   if (!container) return;
+
+  // Update section title dynamically
+  const titleEl = document.getElementById("factorCodesSectionTitle");
+  if (titleEl) {
+    const arrangement = document.getElementById("trialFactorArrangement")?.value || "factorial";
+    titleEl.textContent = arrangement === "splitplot"
+      ? "Split Plot \u2014 Treatment Codes"
+      : "Factorial \u2014 Treatment Codes";
+  }
 
   const factorDefs = getTrialTreatmentsFromForm();
   const savedCodes = trialState._splitPlotCodes || {};
@@ -1430,21 +1611,19 @@ function buildSplitPlotCombinations() {
 }
 
 /**
- * Generate split-plot layout for given combinations and parameters.
+ * Generate factorial layout for given combinations and parameters.
  *
- * Split-plot design:
- * - 1st factor = main plot (columns) — randomly assigned per rep
- * - 2nd factor = sub-plot (rows within each main plot) — randomized within each main plot per rep
- * - Additional factors would extend via sub-sub-plot, but for now we handle 2 factors.
- *
- * Each cell in result is { id, name } where name is the combined code (e.g., "A1").
+ * Factorial design:
+ * - All treatment combinations are generated as entries
+ * - Each cell shows the combined code (e.g., "A1", "B3")
+ * - Standard layout grid with randomization
  *
  * @param {number} numReps - Number of replications
  * @param {string} direction - "serpentine" or "straight"
  * @param {string} randomization - "normal" or "random"
  * @returns {Array} Array of reps, each rep is array of rows, each row is array of cells.
  */
-function generateSplitPlotLayout(numReps, direction, randomization) {
+function generateFactorialLayout(numReps, direction, randomization) {
   const factorDefs = getTrialTreatmentsFromForm();
   const codes = getSplitPlotCodes();
 
@@ -1517,6 +1696,105 @@ function generateSplitPlotLayout(numReps, direction, randomization) {
   }
 
   return replicationLayouts;
+}
+
+/**
+ * Generate split-plot layout with column headers.
+ *
+ * Split-plot design:
+ * - 1st factor = main plot (columns with headers)
+ * - 2nd factor = sub-plot (rows within each main plot, values shown in cells)
+ * - Column headers show 1st factor codes; cells show 2nd factor codes only
+ *
+ * Returns { layouts, headers } where:
+ * - layouts[i] = grid for rep i (array of rows, each row = array of cells { id, name })
+ *   (name = combined code for internal tracking, e.g., "A1")
+ * - headers[i] = array of 1st factor codes for each column in rep i
+ *
+ * @param {number} numReps
+ * @param {string} direction
+ * @param {string} randomization
+ * @returns {{ layouts: Array, headers: Array<string[]> }}
+ */
+function generateSplitPlotLayout(numReps, direction, randomization) {
+  const factorDefs = getTrialTreatmentsFromForm();
+  const codes = getSplitPlotCodes();
+
+  if (factorDefs.length < 2) return { layouts: [], headers: [] };
+
+  const factor1 = factorDefs[0]; // Main plot
+  const factor2 = factorDefs[1]; // Sub-plot
+  const codes1 = codes["factor_0"] || {};
+  const codes2 = codes["factor_1"] || {};
+
+  const shuffle = (arr) => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+
+  const replicationLayouts = [];
+  const replicationHeaders = [];
+
+  for (let rep = 0; rep < numReps; rep++) {
+    // Main plot order: columns = 1st factor treatments
+    let mainPlotOrder = factor1.treatments.map((t) => ({
+      treatment: t,
+      code: codes1[t] || t,
+    }));
+
+    // Randomize main plots
+    if (randomization === "random" || (randomization === "normal" && rep > 0)) {
+      mainPlotOrder = shuffle(mainPlotOrder);
+    }
+
+    // Store column headers for this rep
+    replicationHeaders.push(mainPlotOrder.map((mp) => mp.code));
+
+    const numRows = factor2.treatments.length;
+    const numCols = mainPlotOrder.length;
+
+    const grid = Array.from({ length: numRows }, () =>
+      Array.from({ length: numCols }, () => null),
+    );
+
+    mainPlotOrder.forEach((mainPlot, colIdx) => {
+      let subPlotOrder = factor2.treatments.map((t) => ({
+        treatment: t,
+        code: codes2[t] || t,
+      }));
+
+      // Randomize sub-plots within each main plot
+      if (randomization === "random" || (randomization === "normal" && rep > 0)) {
+        subPlotOrder = shuffle(subPlotOrder);
+      }
+
+      subPlotOrder.forEach((subPlot, rowIdx) => {
+        const comboName = mainPlot.code + subPlot.code;
+        const comboId = `splitplot_${mainPlot.code}_${subPlot.code}`;
+        // name = combined code for tracking; displayName = sub-plot code for display
+        grid[rowIdx][colIdx] = { id: comboId, name: comboName, displayName: subPlot.code };
+      });
+    });
+
+    // Apply direction (serpentine)
+    if (direction === "serpentine") {
+      for (let rowIdx = 0; rowIdx < grid.length; rowIdx++) {
+        if (rowIdx % 2 === 1) {
+          grid[rowIdx].reverse();
+        }
+      }
+      // Also reverse headers for serpentine consistency tracking
+      // (No — headers stay in original order; serpentine only affects row direction)
+    }
+
+    replicationLayouts.push(grid);
+  }
+
+  return { layouts: replicationLayouts, headers: replicationHeaders };
 }
 
 // Validate location section
@@ -2843,6 +3121,62 @@ function updateTrialGeneralCalculations() {
     : "";
 }
 
+// ---- Field Map Popup ----
+
+function openFieldMapPopup() {
+  const popup = document.getElementById("fieldMapPopup");
+  if (!popup) return;
+  popup.classList.remove("hidden");
+
+  // Populate location select
+  populateTrialLocations();
+
+  const trial = trialState.editingTrialId
+    ? trialState.trials.find((t) => t.id === trialState.editingTrialId)
+    : null;
+
+  initializeTrialMap(trial?.locationCoordinates);
+
+  // Re-draw existing areas on the map
+  if (trialMapInstance && trialState.currentAreas.length > 0) {
+    trialDrawnLayers = [];
+    trialState.currentAreas.forEach((area, index) => {
+      drawSavedArea(area, index);
+    });
+  }
+
+  // Bind close button
+  const closeBtn = document.getElementById("closeFieldMapPopupBtn");
+  if (closeBtn) {
+    closeBtn.onclick = () => closeFieldMapPopup();
+  }
+
+  setTimeout(() => {
+    if (trialMapInstance) trialMapInstance.invalidateSize();
+  }, 150);
+}
+
+function closeFieldMapPopup() {
+  // Stop any active drawing
+  if (trialState.isDrawing) {
+    stopDrawing();
+  }
+
+  // Clear current polygon if not saved
+  if (trialState.currentPolygon && trialMapInstance) {
+    trialMapInstance.removeLayer(trialState.currentPolygon.polygon);
+    trialState.currentPolygon = null;
+  }
+
+  destroyTrialMap();
+
+  const popup = document.getElementById("fieldMapPopup");
+  if (popup) popup.classList.add("hidden");
+
+  // Refresh areas list in the field section
+  renderAreasList();
+}
+
 // Initialize trial map
 function initializeTrialMap(centerCoords = null) {
   // Destroy existing map
@@ -2962,8 +3296,9 @@ function startDrawing() {
   // Update button
   const startBtn = document.getElementById("startDrawingBtn");
   startBtn.innerHTML =
-    '<span class="material-symbols-rounded">stop</span><span>Stop Drawing</span>';
+    '<span class="material-symbols-rounded">stop</span>';
   startBtn.classList.add("btn-drawing");
+  startBtn.title = "Stop Drawing";
 
   // Show zone info panel
   const zonePanel = document.getElementById("zoneInfoPanel");
@@ -2990,7 +3325,8 @@ function stopDrawing() {
   // Update button
   const startBtn = document.getElementById("startDrawingBtn");
   startBtn.innerHTML =
-    '<span class="material-symbols-rounded">draw</span><span>Start Drawing Area</span>';
+    '<span class="material-symbols-rounded">draw</span>';
+  startBtn.title = "Start Drawing Area";
   startBtn.classList.remove("btn-drawing");
 
   // Remove click listener
@@ -3188,15 +3524,6 @@ function saveCurrentArea() {
       address: "Fetching address...",
     });
 
-    // Remove from map (will be redrawn with proper styling)
-    trialMapInstance.removeLayer(trialState.currentPolygon.polygon);
-
-    // Redraw with saved styling
-    drawSavedArea(
-      trialState.currentAreas[trialState.currentAreas.length - 1],
-      trialState.currentAreas.length - 1,
-    );
-
     // Clear current polygon
     trialState.currentPolygon = null;
 
@@ -3207,8 +3534,8 @@ function saveCurrentArea() {
     dialog.classList.add("hidden");
     input.value = "";
 
-    // Update areas list
-    renderAreasList();
+    // Close the map popup and refresh areas list
+    closeFieldMapPopup();
 
     // Resolve address in background
     const areaIndex = trialState.currentAreas.length - 1;
@@ -3480,13 +3807,16 @@ function drawSavedArea(area, index) {
 function renderAreasList() {
   const container = document.getElementById("areasListContainer");
   const listDiv = document.getElementById("areasList");
+  const emptyState = document.getElementById("areasEmptyState");
 
   if (trialState.currentAreas.length === 0) {
-    listDiv.classList.add("hidden");
+    if (listDiv) listDiv.classList.add("hidden");
+    if (emptyState) emptyState.classList.remove("hidden");
     return;
   }
 
-  listDiv.classList.remove("hidden");
+  if (listDiv) listDiv.classList.remove("hidden");
+  if (emptyState) emptyState.classList.add("hidden");
 
   container.innerHTML = trialState.currentAreas
     .map((area, index) => {
@@ -3632,17 +3962,21 @@ function removeArea(index) {
   // Remove from array
   trialState.currentAreas.splice(index, 1);
 
-  // Remove from map
-  const layerToRemove = trialDrawnLayers.find((l) => l.index === index);
-  if (layerToRemove) {
-    trialMapInstance.removeLayer(layerToRemove.layer);
-  }
+  // Remove from map (if map popup is open)
+  if (trialMapInstance) {
+    const layerToRemove = trialDrawnLayers.find((l) => l.index === index);
+    if (layerToRemove) {
+      trialMapInstance.removeLayer(layerToRemove.layer);
+    }
 
-  // Redraw all areas with updated indices
-  trialDrawnLayers = [];
-  trialState.currentAreas.forEach((area, idx) => {
-    drawSavedArea(area, idx);
-  });
+    // Redraw all areas with updated indices
+    trialDrawnLayers = [];
+    trialState.currentAreas.forEach((area, idx) => {
+      drawSavedArea(area, idx);
+    });
+  } else {
+    trialDrawnLayers = [];
+  }
 
   // Update list
   renderAreasList();
@@ -3652,12 +3986,14 @@ function removeArea(index) {
 function clearAllAreas() {
   trialState.currentAreas = [];
 
-  // Remove all layers from map
-  trialDrawnLayers.forEach((l) => trialMapInstance.removeLayer(l.layer));
+  // Remove all layers from map (if map is open)
+  if (trialMapInstance) {
+    trialDrawnLayers.forEach((l) => trialMapInstance.removeLayer(l.layer));
+  }
   trialDrawnLayers = [];
 
   // Clear current polygon if exists
-  if (trialState.currentPolygon) {
+  if (trialState.currentPolygon && trialMapInstance) {
     trialMapInstance.removeLayer(trialState.currentPolygon.polygon);
     trialState.currentPolygon = null;
   }
@@ -4952,6 +5288,7 @@ function initializeLayoutingSection() {
     if (trialState.dummyLayoutArea?.layout?.result && trialState.dummyLayoutArea?.layout?.layoutType !== "custom") {
       renderLayoutResult(0, trialState.dummyLayoutArea.layout.result, {
         isDummy: true,
+        splitPlotHeaders: trialState.dummyLayoutArea?.layout?.splitPlotHeaders || null,
       });
     }
     return;
@@ -4968,6 +5305,7 @@ function initializeLayoutingSection() {
     if (area.layout && area.layout.result && area.layout.layoutType !== "custom") {
       renderLayoutResult(areaIndex, area.layout.result, {
         isDummy: false,
+        splitPlotHeaders: area.layout?.splitPlotHeaders || null,
       });
     }
   });
@@ -4981,20 +5319,25 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   const selectedCropName =
     cropSelect.options[cropSelect.selectedIndex].dataset.name || "";
 
-  // Check if split-plot mode is active
+  // Check if multi-factor mode is active (factorial or split plot)
+  const multiFactorActive = isMultiFactorMode();
   const splitPlotActive = isSplitPlotMode();
-  const splitPlotCombinations = splitPlotActive ? buildSplitPlotCombinations() : [];
+  const factorialActive = isFactorialMode();
+  const multiFactorCombinations = multiFactorActive ? buildSplitPlotCombinations() : [];
 
   // Check if any factor is marked as "Entries" — if so, entries come from the factor
   const entriesFactorLineIds = getEntriesFactorLineIds();
-  const hasEntriesFactor = !splitPlotActive && entriesFactorLineIds !== null;
+  const hasEntriesFactor = !multiFactorActive && entriesFactorLineIds !== null;
 
-  // In split-plot mode, "matchingLines" are the split-plot combinations (as virtual entries)
-  const matchingLines = splitPlotActive
-    ? splitPlotCombinations.map((combo) => ({ id: combo.id, name: combo.name, quantity: undefined }))
-    : inventoryState.items.entries.filter((line) => {
-        return line.cropId === selectedCropId || line.cropType === selectedCropName;
-      });
+  // In multi-factor mode, "matchingLines" are the combinations (as virtual entries)
+  // When entries factor is active, filter to only entries selected in the factor
+  const matchingLines = multiFactorActive
+    ? multiFactorCombinations.map((combo) => ({ id: combo.id, name: combo.name, quantity: undefined }))
+    : hasEntriesFactor
+      ? inventoryState.items.entries.filter((line) => entriesFactorLineIds.includes(line.id))
+      : inventoryState.items.entries.filter((line) => {
+          return line.cropId === selectedCropId || line.cropType === selectedCropName;
+        });
 
   const areaDiv = document.createElement("div");
   areaDiv.className = "layouting-area-card";
@@ -5023,27 +5366,50 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     linesHTML = '<p class="layouting-empty">No entries available for this crop.</p>';
   }
 
-  // Build the entries-from-factor notice
+  // Build the entries-from-factor notice + "copy from" dropdown
+  const otherAreas = hasEntriesFactor && !isDummy && areaIndex > 0
+    ? trialState.currentAreas
+        .map((a, i) => i !== areaIndex ? `<option value="${i}">${escapeHtml(a.name || "Area " + (i + 1))}</option>` : "")
+        .filter(Boolean)
+        .join("")
+    : "";
+
+  const copyEntriesHTML = otherAreas ? `
+    <div class="layouting-copy-entries" style="display:flex;align-items:center;gap:8px;margin-bottom:0.5rem;">
+      <label style="white-space:nowrap;font-size:0.85rem;color:var(--text-secondary);">Entries same as</label>
+      <select class="copy-entries-from-select" data-area-index="${areaIndex}" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-primary);font-size:0.85rem;">
+        <option value="">— Select area —</option>
+        ${otherAreas}
+      </select>
+      <button type="button" class="btn btn-sm copy-entries-btn" data-area-index="${areaIndex}" style="white-space:nowrap;">
+        <span class="material-symbols-rounded" style="font-size:16px;">content_copy</span>
+        <span>Copy</span>
+      </button>
+    </div>
+  ` : "";
+
   const entriesFactorNoticeHTML = hasEntriesFactor ? `
     <div class="layouting-entries-from-factor">
       <div class="form-hint-block" style="display:flex;align-items:center;gap:6px;padding:0.75rem;background:var(--bg-secondary);border-radius:8px;margin-bottom:0.5rem;">
         <span class="material-symbols-rounded" style="font-size:18px;color:var(--primary);">info</span>
-        <span>Entries are managed by a factor in the <b>Experiment</b> section. <b>${entriesFactorLineIds.length}</b> entries selected.</span>
+        <span>Entries are filtered from factor selection (<b>${entriesFactorLineIds.length}</b> available). Select entries for this area below.</span>
       </div>
+      ${copyEntriesHTML}
     </div>
   ` : "";
 
-  // Build the split-plot notice
-  const splitPlotNoticeHTML = splitPlotActive ? `
+  // Build the multi-factor notice
+  const arrangementLabel = splitPlotActive ? "Split Plot" : "Factorial";
+  const multiFactorNoticeHTML = multiFactorActive ? `
     <div class="layouting-entries-from-factor">
       <div class="form-hint-block" style="display:flex;align-items:center;gap:6px;padding:0.75rem;background:var(--bg-secondary);border-radius:8px;margin-bottom:0.5rem;">
         <span class="material-symbols-rounded" style="font-size:18px;color:var(--primary);">science</span>
-        <span>Split Plot mode — <b>${splitPlotCombinations.length}</b> treatment combinations generated from factor codes.</span>
+        <span>${arrangementLabel} mode — <b>${multiFactorCombinations.length}</b> treatment combinations generated from factor codes.</span>
       </div>
     </div>
   ` : "";
   
-  const hideEntries = hasEntriesFactor || splitPlotActive;
+  const hideEntries = multiFactorActive;
 
   areaDiv.innerHTML = `
         <div class="layouting-area-header">
@@ -5059,7 +5425,7 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
         
         <div class="layouting-grid">
           ${entriesFactorNoticeHTML}
-          ${splitPlotNoticeHTML}
+          ${multiFactorNoticeHTML}
           <div class="layouting-lines" ${hideEntries ? 'style="display:none;"' : ""}>
             <label class="layouting-label">
               Select Entries
@@ -5203,11 +5569,16 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   );
 
   let selectedLineIds = (() => {
-    // If split-plot mode, use combination ids
-    if (splitPlotActive) return splitPlotCombinations.map((c) => c.id);
+    // If multi-factor mode, use combination ids
+    if (multiFactorActive) return multiFactorCombinations.map((c) => c.id);
 
-    // If entries come from a factor, use those
-    if (hasEntriesFactor) return [...entriesFactorLineIds];
+    // If entries come from a factor, load from saved layout (per-area selection)
+    if (hasEntriesFactor) {
+      const ids = Array.isArray(area.layout?.lines)
+        ? area.layout.lines.map((line) => line.id).filter(id => entriesFactorLineIds.includes(id))
+        : [];
+      return ids;
+    }
 
     const ids = Array.isArray(area.layout?.lines)
       ? area.layout.lines.map((line) => line.id).filter(Boolean)
@@ -5491,6 +5862,9 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
                 <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn" data-action="add-rep-duplicate" data-rep-index="${repIndex}" title="Duplicate Replication">
                   <span class="material-symbols-rounded">content_copy</span>
                 </button>
+                <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn btn-danger" data-action="delete-rep" data-rep-index="${repIndex}" title="Delete Replication">
+                  <span class="material-symbols-rounded">delete</span>
+                </button>
               </div>
             </div>
             <div class="layouting-custom-entry-list" data-rep-index="${repIndex}">
@@ -5544,6 +5918,11 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
 
         if (action === "add-rep-duplicate") {
           customReplications.push(cloneGrid(grid));
+        }
+
+        if (action === "delete-rep") {
+          if (customReplications.length <= 1) return; // keep at least one
+          customReplications.splice(repIndex, 1);
         }
 
         persistCustomLayoutToState();
@@ -6021,6 +6400,40 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
   updateCheckedIndicators();
   updateActiveListUI();
 
+  // "Copy entries from" button handler
+  const copyBtn = areaDiv.querySelector(".copy-entries-btn");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", () => {
+      const selectEl = areaDiv.querySelector(".copy-entries-from-select");
+      const sourceIdx = parseInt(selectEl?.value);
+      if (isNaN(sourceIdx)) {
+        showToast("Please select an area to copy from", "error");
+        return;
+      }
+      // Read selected lines from the source area's picklist DOM
+      const sourceCard = document.querySelector(
+        `.layouting-area-card[data-area-index="${sourceIdx}"][data-is-dummy="false"]`
+      );
+      if (!sourceCard) {
+        showToast("Source area not found", "error");
+        return;
+      }
+      const sourceItems = sourceCard.querySelectorAll(".area-selected-lines .picklist-item");
+      const sourceIds = Array.from(sourceItems).map((el) => el.dataset.id).filter(Boolean);
+      if (sourceIds.length === 0) {
+        showToast("Source area has no entries selected", "error");
+        return;
+      }
+      // Apply to current area
+      selectedLineIds = [...sourceIds];
+      clearCheckedState();
+      renderSelected();
+      renderAvailable(searchInput?.value || "");
+      autoGenerateLayout();
+      showToast(`Copied ${sourceIds.length} entries from ${trialState.currentAreas[sourceIdx]?.name || "Area " + (sourceIdx + 1)}`, "success");
+    });
+  }
+
   // Auto-generate layout on input change with debounce
   let layoutDebounceTimer;
   const autoGenerateLayout = () => {
@@ -6110,7 +6523,10 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
 
     // Render existing layout result
     if (area.layout.result && area.layout.layoutType !== "custom") {
-      renderLayoutResult(areaIndex, area.layout.result, { isDummy });
+      renderLayoutResult(areaIndex, area.layout.result, {
+        isDummy,
+        splitPlotHeaders: area.layout.splitPlotHeaders || null,
+      });
     }
   }
 
@@ -6125,7 +6541,7 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
     !!(area.layout && Array.isArray(area.layout.result) && area.layout.result.length > 0);
 
   if (getCurrentLayoutType() === "template") {
-    if (hasEntriesFactor || splitPlotActive || !alreadyHasLayout) {
+    if (hasEntriesFactor || multiFactorActive || !alreadyHasLayout) {
       autoGenerateLayout();
     }
   } else {
@@ -6148,10 +6564,12 @@ function generateLayoutForArea(areaIndex, options = {}) {
   if (!areaDiv) return;
 
   // Get selected lines from picklist (ordered)
-  // In split-plot mode, entries come from combinations, not the picklist
+  // In multi-factor mode, entries come from combinations, not the picklist
+  const multiFactorActive = isMultiFactorMode();
   const splitPlotActive = isSplitPlotMode();
+  const factorialActive = isFactorialMode();
   let selectedLines;
-  if (splitPlotActive) {
+  if (multiFactorActive) {
     const combos = buildSplitPlotCombinations();
     selectedLines = combos.map((c) => ({ id: c.id, name: c.name }));
   } else {
@@ -6251,9 +6669,16 @@ function generateLayoutForArea(areaIndex, options = {}) {
 
   // Calculate layout
   let layouts;
+  let splitPlotHeaders = null;
+
   if (splitPlotActive) {
-    // Split-plot: use dedicated layout algorithm (ignores numRanges, it's defined by factor levels)
-    layouts = generateSplitPlotLayout(numReps, direction, randomization);
+    // Split-plot: column-header layout (1st factor as headers, 2nd factor as cells)
+    const result = generateSplitPlotLayout(numReps, direction, randomization);
+    layouts = result.layouts;
+    splitPlotHeaders = result.headers;
+  } else if (factorialActive) {
+    // Factorial: combined codes layout (ignores numRanges, defined by factor levels)
+    layouts = generateFactorialLayout(numReps, direction, randomization);
   } else {
     layouts = calculateLayout(
       selectedLines,
@@ -6267,41 +6692,34 @@ function generateLayoutForArea(areaIndex, options = {}) {
   const plantingDateValue = areaDiv.querySelector(".area-planting-date")?.value || "";
 
   // Store layout in trial state
+  const layoutData = {
+    layoutType: "template",
+    lines: selectedLines,
+    numRanges: numRanges,
+    numReps: numReps,
+    direction: direction,
+    randomization: randomization,
+    plantingDate: plantingDateValue,
+    result: layouts,
+  };
+  if (splitPlotHeaders) {
+    layoutData.splitPlotHeaders = splitPlotHeaders;
+  }
+
   if (isDummy) {
     trialState.dummyLayoutArea = {
       ...getDummyLayoutArea(),
       plantingDate: plantingDateValue,
-      layout: {
-        layoutType: "template",
-        lines: selectedLines,
-        numRanges: numRanges,
-        numReps: numReps,
-        direction: direction,
-        randomization: randomization,
-        plantingDate: plantingDateValue,
-        result: layouts,
-      },
+      layout: layoutData,
     };
   } else {
     if (!trialState.currentAreas[areaIndex]) return;
-    if (!trialState.currentAreas[areaIndex].layout) {
-      trialState.currentAreas[areaIndex].layout = {};
-    }
-    trialState.currentAreas[areaIndex].layout = {
-      layoutType: "template",
-      lines: selectedLines,
-      numRanges: numRanges,
-      numReps: numReps,
-      direction: direction,
-      randomization: randomization,
-      plantingDate: plantingDateValue,
-      result: layouts,
-    };
+    trialState.currentAreas[areaIndex].layout = layoutData;
     trialState.currentAreas[areaIndex].plantingDate = plantingDateValue;
   }
 
   // Render layout
-  renderLayoutResult(areaIndex, layouts, { isDummy });
+  renderLayoutResult(areaIndex, layouts, { isDummy, splitPlotHeaders });
 }
 
 // Calculate layout based on parameters
@@ -6385,6 +6803,7 @@ function calculateLayout(
 // Render layout result as tables
 function renderLayoutResult(areaIndex, layouts, options = {}) {
   const isDummy = options.isDummy === true;
+  const splitPlotHeaders = options.splitPlotHeaders || null;
   const areaDiv = document.querySelector(
     `.layouting-area-card[data-area-index="${areaIndex}"][data-is-dummy="${isDummy ? "true" : "false"}"]`,
   );
@@ -6398,11 +6817,24 @@ function renderLayoutResult(areaIndex, layouts, options = {}) {
   let html = "";
 
   layouts.forEach((grid, repIndex) => {
+    const hasSplitHeaders = splitPlotHeaders && splitPlotHeaders[repIndex];
+
+    // Build header row for split-plot (1st factor codes as column headers)
+    const headerRowHtml = hasSplitHeaders ? `
+      <tr>
+        <td class="layouting-row-header"></td>
+        ${splitPlotHeaders[repIndex].map((code) => `
+          <td class="layouting-col-header">${escapeHtml(code)}</td>
+        `).join("")}
+      </tr>
+    ` : "";
+
     html += `
             <div class="layouting-table-wrap">
                 <div class="layouting-table-title">Replication ${repIndex + 1}</div>
                 <table class="layouting-table">
                     <tbody>
+                        ${headerRowHtml}
                         ${grid
                           .map(
                             (row, rowIdx) => `
@@ -6412,7 +6844,7 @@ function renderLayoutResult(areaIndex, layouts, options = {}) {
                                   .map(
                                     (cell) => `
                                     <td class="layouting-td">
-                                        ${cell ? escapeHtml(cell.name) : "-"}
+                                        ${cell ? escapeHtml(cell.displayName || cell.name) : "-"}
                                     </td>
                                 `,
                                   )

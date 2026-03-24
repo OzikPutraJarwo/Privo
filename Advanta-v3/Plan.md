@@ -116,10 +116,13 @@
 - [x] `Trial` Factors using Entries
 - [x] `Trial` Process Research with split plot design for factorial with custom layouting
 - [x] `Trial` Report with import/export system
+- [x] `Trial` Parent Test with selected entries
+- [x] `Trial` Copy entries
 - [x] `Data Analysis` Custom dataset (independent)
 - [x] `Data Analysis` ANOVA with Coefficient of Variation (CV)
 ### Bug Fixes and Redesigns
 - [x] `MAIN` Remove CropID
+- [x] `Trial` Bug in inaccurate first point of map
 
 ## UPCOMING PLANS
 - [ ] Resize/reformat uploaded image dashboard

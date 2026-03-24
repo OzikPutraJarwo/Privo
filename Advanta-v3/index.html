@@ -524,7 +524,7 @@
                   </div>
                   <div class="section-nav-item" data-section="splitplot" id="splitPlotNavItem" style="display:none;">
                     <div class="section-nav-number">3</div>
-                    <div class="section-nav-text">Split Plot</div>
+                    <div class="section-nav-text">Factorial</div>
                   </div>
                   <div class="section-nav-item" data-section="plotspec">
                     <div class="section-nav-number">4</div>
@@ -633,7 +633,7 @@
                     </div>
 
                     <div class="trial-section" id="trialSectionSplitPlot">
-                      <h4 class="trial-form-section-title">Split Plot — Treatment Codes</h4>
+                      <h4 class="trial-form-section-title" id="factorCodesSectionTitle">Factorial — Treatment Codes</h4>
                       <p class="form-hint-block" style="margin-bottom:1rem;">Assign a short code (letter or number) to each treatment. These codes will be combined to create the layout plot labels (e.g., A1, B3).</p>
                       <div id="splitPlotCodesContainer">
                         <!-- Factor code groups will be rendered here -->
@@ -876,34 +876,48 @@
         
                     <div class="trial-section" id="trialSectionField">
                       <h4 class="trial-form-section-title">Field Mapping</h4>
-                      <div class="form-group">
-                        <label for="trialLocation">Location (from Inventory)</label>
-                        <select id="trialLocation">
-                          <option value="">Select location to focus map</option>
-                        </select>
-                        <small class="form-hint">Optional, used to zoom the map quickly.</small>
+                      <div id="areasList">
+                        <div id="areasListContainer">
+                          <!-- Saved areas will be listed here -->
+                        </div>
                       </div>
-                      <div class="form-group">
-                        <label>Draw Trial Areas</label>
-                        <div id="trialMap">
+                      <div id="areasEmptyState" class="field-areas-empty">
+                        <span class="material-symbols-rounded">landscape</span>
+                        <p>No areas drawn yet. Add a new area to define your trial field.</p>
+                      </div>
+                      <button type="button" class="btn btn-primary" id="addNewAreaBtn" onclick="openFieldMapPopup()">
+                        <span class="material-symbols-rounded">add</span>
+                        <span>Add New Area</span>
+                      </button>
+                    </div>
+
+                    <!-- Field Map Popup (full-screen overlay for drawing areas) -->
+                    <div id="fieldMapPopup" class="field-map-popup hidden">
+                      <div class="field-map-popup-header">
+                        <h4>Draw Trial Area</h4>
+                        <div class="field-map-popup-header-right">
+                          <select id="trialLocation">
+                            <option value="">Select location to focus map</option>
+                          </select>
+                          <button type="button" class="btn btn-secondary btn-icon" id="closeFieldMapPopupBtn" title="Close">
+                            <span class="material-symbols-rounded">close</span>
+                          </button>
                         </div>
-                        <div class="drawing-btn-group">
-                          <button type="button" class="btn btn-secondary" id="startDrawingBtn">
+                      </div>
+                      <div class="field-map-popup-body">
+                        <div id="trialMap"></div>
+                        <div class="field-map-floating-btns">
+                          <button type="button" class="btn btn-secondary btn-icon" id="startDrawingBtn" title="Start Drawing Area">
                             <span class="material-symbols-rounded">draw</span>
-                            <span>Start Drawing Area</span>
                           </button>
-                          <button type="button" class="btn btn-secondary" id="saveAreaBtn" disabled>
+                          <button type="button" class="btn btn-primary btn-icon" id="saveAreaBtn" disabled title="Save Area">
                             <span class="material-symbols-rounded">save</span>
-                            <span>Save Area</span>
                           </button>
-                          <button type="button" class="btn btn-secondary" id="clearDrawingBtn">
+                          <button type="button" class="btn btn-secondary btn-icon" id="clearDrawingBtn" title="Clear Points">
                             <span class="material-symbols-rounded">delete</span>
-                            <span>Clear Points</span>
                           </button>
                         </div>
-        
-                        <!-- Zone Information Panel -->
-                        <div id="zoneInfoPanel" class="hidden">
+                        <div id="zoneInfoPanel" class="field-map-zone-panel hidden">
                           <div class="zone-stats">
                             <div>
                               <span class="zone-stat-label">Points:</span>
@@ -916,11 +930,9 @@
                           </div>
                           <button type="button" class="btn btn-sm btn-secondary" id="undoPointBtn">
                             <span class="material-symbols-rounded">undo</span>
-                            <span>Undo</span>
                           </button>
                         </div>
-        
-                        <div id="areaNameDialog" class="hidden">
+                        <div id="areaNameDialog" class="field-map-name-dialog hidden">
                           <label for="areaNameInput" class="area-name-label">Enter Area Name:</label>
                           <div class="area-name-actions">
                             <input type="text" id="areaNameInput" placeholder="e.g., Area 1" class="area-name-input">
@@ -928,16 +940,6 @@
                             <button type="button" class="btn btn-secondary" id="cancelAreaNameBtn">Cancel</button>
                           </div>
                         </div>
-        
-                        <div id="areasList" class="hidden">
-                          <strong class="areas-title">Saved Areas:</strong>
-                          <div id="areasListContainer">
-                            <!-- Saved areas will be listed here -->
-                          </div>
-                        </div>
-                        <small class="form-hint-block">
-                          Click on map to draw polygon (minimum 3 points).
-                        </small>
                       </div>
                     </div>
 

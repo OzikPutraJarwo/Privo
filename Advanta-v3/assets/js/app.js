@@ -2287,7 +2287,7 @@ function _updateTrialLoadUI(trialId, info) {
 
   if (info.status === "loading") {
     if (statusEl) {
-      statusEl.className = "load-data-status loading";
+      statusEl.className = "load-data-status loading hidden";
       statusEl.innerHTML = '<span class="material-symbols-rounded">sync</span> Loading...';
     }
     if (progressEl) progressEl.style.display = "";

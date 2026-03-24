@@ -879,6 +879,11 @@ async function initializeInventory(options = {}) {
                 switchCategory(inventoryState.currentCategory);
               }
               updateCropTypeSuggestions();
+
+              // Refresh trial editor entries lists when entries/crops load
+              if ((key === 'entries' || key === 'crops') && typeof refreshFactorEntriesLists === 'function') {
+                refreshFactorEntriesLists();
+              }
               
               if (typeof saveLocalCache === 'function') {
                 saveLocalCache('inventory', { items: inventoryState.items });
