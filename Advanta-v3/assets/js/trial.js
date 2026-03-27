@@ -3211,7 +3211,7 @@ function initializeTrialMap(centerCoords = null) {
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     {
       attribution: "",
-      maxNativeZoom: 19,
+      maxNativeZoom: 17,
       maxZoom: 25,
     },
   ).addTo(trialMapInstance);
@@ -3221,7 +3221,7 @@ function initializeTrialMap(centerCoords = null) {
     "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png",
     {
       attribution: "&copy; OpenStreetMap contributors, &copy; CartoDB",
-      maxNativeZoom: 19,
+      maxNativeZoom: 17,
       maxZoom: 25,
     },
   ).addTo(trialMapInstance);
@@ -3889,14 +3889,14 @@ function renderAreaPreviewMap(area, index) {
   // Add satellite layer
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: '',
-    maxNativeZoom: 19,
+    maxNativeZoom: 17,
     maxZoom: 25
   }).addTo(map);
 
   // Add labels layer
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png', {
     attribution: '',
-    maxNativeZoom: 19,
+    maxNativeZoom: 17,
     maxZoom: 25,
     pane: 'shadowPane'
   }).addTo(map);
@@ -12766,13 +12766,13 @@ function renderDetailAreaMap(area, index) {
 
   // Add satellite layer
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxNativeZoom: 19,
+    maxNativeZoom: 17,
     maxZoom: 25
   }).addTo(map);
 
   // Add labels layer
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png', {
-    maxNativeZoom: 19,
+    maxNativeZoom: 17,
     maxZoom: 25,
     pane: 'shadowPane'
   }).addTo(map);

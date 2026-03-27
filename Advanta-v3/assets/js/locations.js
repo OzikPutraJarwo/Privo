@@ -33,14 +33,14 @@ function initializeLocationMap(coordString = null) {
   // Add satellite tile layer
   L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
     attribution: "",
-    maxNativeZoom: 19,
+    maxNativeZoom: 17,
     maxZoom: 25,
   }).addTo(locationMapInstance);
 
   // Add labels layer on top
   L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png", {
     attribution: "",
-    maxNativeZoom: 19,
+    maxNativeZoom: 17,
     maxZoom: 25,
     pane: "shadowPane",
   }).addTo(locationMapInstance);
