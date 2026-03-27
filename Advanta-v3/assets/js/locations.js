@@ -31,16 +31,16 @@ function initializeLocationMap(coordString = null) {
   locationMapInstance = L.map(mapContainer).setView(center, zoom);
 
   // Add satellite tile layer
-  L.tileLayer("https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg", {
-    attribution: "© Stadia Maps",
-    maxNativeZoom: 20,
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    attribution: "",
+    maxNativeZoom: 19,
     maxZoom: 25,
   }).addTo(locationMapInstance);
 
   // Add labels layer on top
   L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap contributors, © CartoDB",
-    maxNativeZoom: 20,
+    attribution: "",
+    maxNativeZoom: 19,
     maxZoom: 25,
     pane: "shadowPane",
   }).addTo(locationMapInstance);

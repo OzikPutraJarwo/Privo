@@ -3208,11 +3208,10 @@ function initializeTrialMap(centerCoords = null) {
 
   // Add satellite tile layer
   L.tileLayer(
-    "https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg",
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     {
-      attribution:
-        "© Stadia Maps",
-      maxNativeZoom: 20,
+      attribution: "",
+      maxNativeZoom: 19,
       maxZoom: 25,
     },
   ).addTo(trialMapInstance);
@@ -3222,7 +3221,7 @@ function initializeTrialMap(centerCoords = null) {
     "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png",
     {
       attribution: "&copy; OpenStreetMap contributors, &copy; CartoDB",
-      maxNativeZoom: 20,
+      maxNativeZoom: 19,
       maxZoom: 25,
     },
   ).addTo(trialMapInstance);
@@ -3888,16 +3887,16 @@ function renderAreaPreviewMap(area, index) {
   }).setView([-6.2, 106.8], 12);
   
   // Add satellite layer
-  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg', {
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: '',
-    maxNativeZoom: 20,
+    maxNativeZoom: 19,
     maxZoom: 25
   }).addTo(map);
 
   // Add labels layer
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png', {
     attribution: '',
-    maxNativeZoom: 20,
+    maxNativeZoom: 19,
     maxZoom: 25,
     pane: 'shadowPane'
   }).addTo(map);
@@ -12766,14 +12765,14 @@ function renderDetailAreaMap(area, index) {
   }).setView(initCenter, initZoom);
 
   // Add satellite layer
-  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg', {
-    maxNativeZoom: 20,
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxNativeZoom: 19,
     maxZoom: 25
   }).addTo(map);
 
   // Add labels layer
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png', {
-    maxNativeZoom: 20,
+    maxNativeZoom: 19,
     maxZoom: 25,
     pane: 'shadowPane'
   }).addTo(map);

@@ -123,6 +123,7 @@
 ### Bug Fixes and Redesigns
 - [x] `MAIN` Remove CropID
 - [x] `Trial` Bug in inaccurate first point of map
+- [x] `Etc` Changes the map from Stadia Maps to Esri World Imagery
 
 ## UPCOMING PLANS
 - [ ] Resize/reformat uploaded image dashboard

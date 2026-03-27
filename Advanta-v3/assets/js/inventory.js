@@ -2376,9 +2376,9 @@ function renderLocationPreviewMap(location) {
   }).setView(center, 13);
 
   // Add satellite layer
-  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg', {
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: '',
-    maxNativeZoom: 20,
+    maxNativeZoom: 19,
     maxZoom: 25
   }).addTo(map);
 
