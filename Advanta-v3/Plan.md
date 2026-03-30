@@ -125,5 +125,26 @@
 - [x] `Trial` Bug in inaccurate first point of map
 - [x] `Etc` Changes the map from Stadia Maps to Esri World Imagery
 
+## Mar 29, 2026
+
+### Update
+- [ ] `Inventory` Find for every items
+- [ ] `Inventory` Folders for every items
+- [ ] `Inventory > Parameter` Formula type use DoO too
+- [ ] `Trial` Load data per area/location
+- [ ] `Trial` Remark for every answer
+- [ ] `Trial` Report format as database/dataset (params on the right side per column)
+- [ ] `Database` Removed
+- [ ] `User` User authority (Field User, SuperUser)
+### Bug Fixes
+- [ ] `Trial > Run` Units for every answer
+- [ ] `Trial > Run` .run-nav-area overflow bug on phone
+- [ ] `Trial > Report` Right toolbar bug
+- [ ] `Inventory > Parameters` Delete button for DoO
+- [ ] `Inventory > Parameters` Better UI/UX for formula list (find etc, on the left wing)
+- [ ] `Dataset` Load gradually with load more
+
 ## UPCOMING PLANS
 - [ ] Resize/reformat uploaded image dashboard
+- [ ] Reminder > checkbox > run only shows the checked
+- [ ] Notification on phone
