@@ -90,14 +90,23 @@
             <span class="material-symbols-rounded">science</span>
             <span>Trial</span>
           </a>
-          <a href="#" class="nav-item" data-view="database">
-            <span class="material-symbols-rounded">database</span>
-            <span>Database</span>
-          </a>
-          <a href="#" class="nav-item" data-view="library">
-            <span class="material-symbols-rounded">folder_open</span>
-            <span>Library</span>
-          </a>
+          <div class="nav-group" data-view="library">
+            <a href="#" class="nav-item nav-parent" data-view="library">
+              <span class="material-symbols-rounded">folder_open</span>
+              <span>Library</span>
+              <span class="material-symbols-rounded nav-caret">expand_more</span>
+            </a>
+            <div class="nav-submenu">
+              <a href="#" class="nav-subitem" data-parent="library" data-library-section="files">
+                <span class="material-symbols-rounded">folder</span>
+                <span>Uploaded Files</span>
+              </a>
+              <a href="#" class="nav-subitem" data-parent="library" data-library-section="trial-photos">
+                <span class="material-symbols-rounded">photo_library</span>
+                <span>Trial Photos</span>
+              </a>
+            </div>
+          </div>
           <div class="nav-group" data-view="reminder">
             <a href="#" class="nav-item nav-parent" data-view="reminder">
               <span class="material-symbols-rounded">notifications</span>
@@ -163,18 +172,6 @@
               <span class="material-symbols-rounded">download</span>
             </button>
             <input type="file" id="trialReportImportFileInput" accept=".xlsx,.xls,.csv" hidden>
-            <select id="databaseSeasonFilter" class="trial-report-topbar-select database-topbar-control hidden" style="display: none;">
-              <option value="all">All Season</option>
-            </select>
-            <select id="databaseYearFilter" class="trial-report-topbar-select database-topbar-control hidden" style="display: none;">
-              <option value="all">All Year</option>
-            </select>
-            <select id="databaseLocationFilter" class="trial-report-topbar-select database-topbar-control hidden" style="display: none;">
-              <option value="all">All Location</option>
-            </select>
-            <button id="databaseExportBtn" class="btn btn-secondary database-topbar-control hidden" onclick="downloadDatabaseExcel()" style="display: none;" title="Download database">
-              <span class="material-symbols-rounded">download</span>
-            </button>
             <select id="analysisSectionLayoutTopbar" class="trial-report-topbar-select analysis-topbar-control hidden" style="display: none;" title="Section layout">
               <option value="vertical">Vertical Split</option>
               <option value="horizontal">Horizontal Split</option>
@@ -325,8 +322,18 @@
             <!-- Inventory Content -->
             <div class="inventory-container">
               <div class="inventory-header">
-                <h3 id="categoryTitle">Crops</h3>
+                <div class="inventory-header-left">
+                  <button id="folderBackBtn" class="folder-back-btn hidden" title="Back to folders">
+                    <span class="material-symbols-rounded">arrow_back</span>
+                  </button>
+                  <h3 id="categoryTitle">Crops</h3>
+                  <span id="folderBreadcrumb" class="folder-breadcrumb hidden"></span>
+                </div>
                 <div class="inventory-toolbar">
+                  <div class="inventory-search-container">
+                    <span class="material-symbols-rounded inventory-search-icon">search</span>
+                    <input type="text" id="inventorySearchInput" class="inventory-search-input" placeholder="Search..." autocomplete="off">
+                  </div>
                   <div class="inventory-filter-container" id="inventoryFilterContainer" style="display:none;">
                     <select id="inventoryFilterCrop" class="inventory-filter-select">
                       <option value="">All Crops</option>
@@ -346,13 +353,16 @@
                       <span>Import</span>
                     </button>
                   </div>
+                  <button id="addFolderBtn" class="btn btn-secondary btn-icon" title="New Folder">
+                    <span class="material-symbols-rounded">create_new_folder</span>
+                  </button>
                   <button id="addItemBtn" class="btn btn-primary">
                     <span class="material-symbols-rounded">add</span>
                     <span>Add New Item</span>
                   </button>
                 </div>
               </div>
-        
+
               <div class="inventory-list" id="inventoryList">
                 <!-- Items will be populated here -->
               </div>
@@ -432,8 +442,99 @@
                 </div>
               </div>
             </div>
+
+            <!-- Folder Modal -->
+            <div id="folderModal" class="folder-modal-overlay hidden">
+              <div class="folder-modal">
+                <div class="folder-modal-header">
+                  <h3 id="folderModalTitle">New Folder</h3>
+                  <button class="btn-icon-close" id="folderModalCloseBtn">
+                    <span class="material-symbols-rounded">close</span>
+                  </button>
+                </div>
+                <div class="folder-modal-body">
+                  <div class="form-group">
+                    <label for="folderNameInput">Folder Name</label>
+                    <input type="text" id="folderNameInput" class="form-control" placeholder="Enter folder name" maxlength="50">
+                  </div>
+                  <div class="form-group">
+                    <label>Color</label>
+                    <div class="folder-color-picker" id="folderColorPicker">
+                      <button class="folder-color-swatch active" data-color="" title="Default (no color)">
+                        <span class="material-symbols-rounded" style="font-size:18px;">format_color_reset</span>
+                      </button>
+                      <button class="folder-color-swatch" data-color="#ef4444" style="background:#ef4444;" title="Red"></button>
+                      <button class="folder-color-swatch" data-color="#f97316" style="background:#f97316;" title="Orange"></button>
+                      <button class="folder-color-swatch" data-color="#eab308" style="background:#eab308;" title="Yellow"></button>
+                      <button class="folder-color-swatch" data-color="#22c55e" style="background:#22c55e;" title="Green"></button>
+                      <button class="folder-color-swatch" data-color="#14b8a6" style="background:#14b8a6;" title="Teal"></button>
+                      <button class="folder-color-swatch" data-color="#3b82f6" style="background:#3b82f6;" title="Blue"></button>
+                      <button class="folder-color-swatch" data-color="#8b5cf6" style="background:#8b5cf6;" title="Purple"></button>
+                      <button class="folder-color-swatch" data-color="#ec4899" style="background:#ec4899;" title="Pink"></button>
+                      <button class="folder-color-swatch" data-color="#78716c" style="background:#78716c;" title="Gray"></button>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Icon <span class="form-hint">(optional, from Material Symbols Rounded)</span></label>
+                    <div class="folder-icon-input-row">
+                      <span class="material-symbols-rounded folder-icon-preview" id="folderIconPreview">folder</span>
+                      <input type="text" id="folderIconInput" class="form-control" placeholder="e.g. science, eco, genetics...">
+                    </div>
+                    <div class="folder-icon-suggestions" id="folderIconSuggestions">
+                      <button type="button" data-icon="folder">folder</button>
+                      <button type="button" data-icon="science">science</button>
+                      <button type="button" data-icon="eco">eco</button>
+                      <button type="button" data-icon="spa">spa</button>
+                      <button type="button" data-icon="grass">grass</button>
+                      <button type="button" data-icon="agriculture">agriculture</button>
+                      <button type="button" data-icon="park">park</button>
+                      <button type="button" data-icon="water_drop">water_drop</button>
+                      <button type="button" data-icon="sunny">sunny</button>
+                      <button type="button" data-icon="terrain">terrain</button>
+                      <button type="button" data-icon="bug_report">bug_report</button>
+                      <button type="button" data-icon="biotech">biotech</button>
+                      <button type="button" data-icon="lab_research">lab_research</button>
+                      <button type="button" data-icon="genetics">genetics</button>
+                      <button type="button" data-icon="experiment">experiment</button>
+                      <button type="button" data-icon="potted_plant">potted_plant</button>
+                      <button type="button" data-icon="psychiatry">psychiatry</button>
+                      <button type="button" data-icon="local_florist">local_florist</button>
+                      <button type="button" data-icon="landscape">landscape</button>
+                      <button type="button" data-icon="star">star</button>
+                      <button type="button" data-icon="bookmark">bookmark</button>
+                      <button type="button" data-icon="label">label</button>
+                      <button type="button" data-icon="category">category</button>
+                      <button type="button" data-icon="inventory_2">inventory_2</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="folder-modal-footer">
+                  <button class="btn btn-secondary" id="folderModalCancelBtn">Cancel</button>
+                  <button class="btn btn-danger" id="folderModalDeleteBtn" style="display:none;">Delete</button>
+                  <button class="btn btn-primary" id="folderModalSaveBtn">Create</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Move to Folder Modal -->
+            <div id="moveToFolderModal" class="folder-modal-overlay hidden">
+              <div class="folder-modal folder-modal-sm">
+                <div class="folder-modal-header">
+                  <h3>Move to Folder</h3>
+                  <button class="btn-icon-close" id="moveToFolderCloseBtn">
+                    <span class="material-symbols-rounded">close</span>
+                  </button>
+                </div>
+                <div class="folder-modal-body">
+                  <div class="move-folder-list" id="moveFolderList">
+                    <!-- Folder options rendered by JS -->
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
-        
+
           <div id="trialContent" class="page-content">
             <div class="inventory-container" id="trialManagementPanel">
                 <div class="inventory-header">
@@ -1029,18 +1130,6 @@
 
           </div>
 
-          <div id="databaseContent" class="page-content">
-            <div class="inventory-container trial-report-content">
-              <div class="trial-report-body">
-                <div class="trial-report-preview">
-                  <div class="trial-report-table-wrap">
-                    <table class="trial-report-table" id="databaseTable"></table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        
           <div id="analysisContent" class="page-content">
             <div class="analysis-container" id="analysisContainer" data-layout="horizontal">
               <!-- Section 1: Dataset -->
@@ -1215,6 +1304,8 @@
                   </button>
                 </div>
               </div>
+
+              <div id="libraryStatusBanner" class="library-status-banner hidden" aria-live="polite"></div>
         
               <div class="inventory-list" id="libraryList">
                 <!-- Library items will be populated here -->
@@ -1269,6 +1360,28 @@
 
     <!-- Modal for Add/Edit Item -->
     <div id="itemModal" class="modal">
+      <!-- Formula side panel (parameters formula type, left wing) -->
+      <div class="modal-formula-panel hidden" id="modalFormulaPanel">
+        <h4 class="modal-formula-title">Formula Builder</h4>
+        <div class="formula-editor-area">
+          <label class="formula-editor-label">Expression</label>
+          <div class="formula-editor-wrapper">
+            <div id="formulaEditorDisplay" class="formula-editor-display" contenteditable="true" spellcheck="false" data-placeholder="e.g., (100-13)*SHW"></div>
+          </div>
+          <small class="form-hint">Numbers, + - * / ( ) and parameter initials.</small>
+          <small class="form-hint hidden" id="formulaPanelError" style="color: var(--danger);"></small>
+        </div>
+        <div class="formula-param-picker">
+          <label class="formula-editor-label">Parameters</label>
+          <div class="formula-param-search-wrap">
+            <span class="material-symbols-rounded" style="font-size:15px;color:var(--text-tertiary)">search</span>
+            <input type="text" id="formulaParamSearch" class="formula-param-search" placeholder="Search parameters...">
+          </div>
+          <div id="formulaParamPickerList" class="formula-param-picker-list">
+            <!-- parameter list items inserted by JS -->
+          </div>
+        </div>
+      </div>
       <div class="modal-content">
         <div class="modal-header">
           <h3 id="modalTitle">Add New Item</h3>
@@ -1620,27 +1733,17 @@
         </div>
         <div class="user-settings-body">
           <aside class="user-settings-nav">
-            <button type="button" class="user-settings-nav-item active" data-settings-tab="database">
-              <span class="material-symbols-rounded">database</span>
-              <span>Database</span>
-            </button>
-            <button type="button" class="user-settings-nav-item" data-settings-tab="analysis">
+            <button type="button" class="user-settings-nav-item active" data-settings-tab="analysis">
               <span class="material-symbols-rounded">analytics</span>
               <span>Analysis</span>
             </button>
+            <button type="button" class="user-settings-nav-item" data-settings-tab="optimization">
+              <span class="material-symbols-rounded">bolt</span>
+              <span>Optimization</span>
+            </button>
           </aside>
           <section class="user-settings-content">
-            <div class="user-settings-tab active" id="userSettingsTabDatabase">
-              <h4>Database Columns</h4>
-              <p class="user-settings-hint">Choose which columns are shown when opening Database.</p>
-              <div class="user-settings-actions">
-                <button type="button" class="btn btn-secondary" id="dbSettingsSelectAllBtn">Select All</button>
-                <button type="button" class="btn btn-secondary" id="dbSettingsClearAllBtn">Clear All</button>
-              </div>
-              <div id="dbSettingsColumnsList" class="user-settings-columns-list"></div>
-            </div>
-
-            <div class="user-settings-tab" id="userSettingsTabAnalysis">
+            <div class="user-settings-tab active" id="userSettingsTabAnalysis">
               <h4>Analysis Dataset Columns</h4>
               <p class="user-settings-hint">Choose which columns are shown inside the Analysis dataset table.</p>
               <div class="user-settings-actions">
@@ -1657,12 +1760,12 @@
                   <div class="user-settings-choice-grid user-settings-choice-grid-2">
                     <label class="user-settings-choice-card">
                       <input type="radio" name="userSettingsAnalysisLayout" value="horizontal" checked>
-                      <span class="material-symbols-rounded">splitscreen_horizontal</span>
+                      <span class="material-symbols-rounded">splitscreen_left</span>
                       <span>Horizontal</span>
                     </label>
                     <label class="user-settings-choice-card">
                       <input type="radio" name="userSettingsAnalysisLayout" value="vertical">
-                      <span class="material-symbols-rounded">splitscreen_vertical</span>
+                      <span class="material-symbols-rounded">splitscreen_top</span>
                       <span>Vertical</span>
                     </label>
                   </div>
@@ -1702,6 +1805,19 @@
               <h4 class="user-settings-subtitle">GGE Biplot Defaults</h4>
               <p class="user-settings-hint">All GGE Biplot preview customizations are stored here and reused automatically.</p>
               <div id="userSettingsGgeBiplotDefaultsUi" class="user-settings-path-diagram-ui"></div>
+            </div>
+            <div class="user-settings-tab" id="userSettingsTabOptimization">
+              <h4>Storage Health</h4>
+              <p class="user-settings-hint">Monitor local storage usage and persistent storage status for long-term offline data.</p>
+              <div id="storageHealthContainer" class="optimization-categories-list"></div>
+
+              <h4>File Optimization</h4>
+              <p class="user-settings-hint">Consolidate individual inventory files into a single file per category to reduce the number of Google Drive API calls during loading.</p>
+              <div id="optimizationCategoriesList" class="optimization-categories-list"></div>
+
+              <h4 style="margin-top: 1.5rem;">Trial Optimization</h4>
+              <p class="user-settings-hint">Optimize trial data storage: extract inline photos to compressed WebP files and consolidate per-sample files to per-rep.</p>
+              <div id="optimizationTrialList" class="optimization-categories-list"></div>
             </div>
           </section>
         </div>

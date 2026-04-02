@@ -10,9 +10,17 @@ let inventoryState = {
     parameters: [],
     agronomy: [],
   },
+  folders: {
+    crops: [],
+    locations: [],
+    parameters: [],
+    agronomy: [],
+  },
   editingItemId: null,
   filterCrop: "",
   sortBy: "name",
+  searchQuery: "",
+  currentFolderId: null,
   parametersSortInitialized: false,
 };
 
@@ -147,6 +155,7 @@ function toggleParameterFields(show) {
 
   // Show/hide DoO side panel
   const dooPanel = document.getElementById('modalDooPanel');
+  const formulaPanel = document.getElementById('modalFormulaPanel');
   const modal = document.getElementById('itemModal');
   if (dooPanel && modal) {
     if (show) {
@@ -156,6 +165,10 @@ function toggleParameterFields(show) {
       dooPanel.classList.add('hidden');
       modal.classList.remove('has-doo-panel');
     }
+  }
+  if (formulaPanel) {
+    formulaPanel.classList.add('hidden');
+    if (modal) modal.classList.remove('has-formula-panel');
   }
 
   // Hide conditional fields initially
@@ -195,20 +208,21 @@ function handleParameterTypeChange() {
   } else if (type === "checkbox") {
     document.getElementById("paramCheckboxGroup")?.classList.remove("hidden");
   } else if (type === "formula") {
-    document.getElementById("paramFormulaGroup")?.classList.remove("hidden");
-    populateFormulaParameterList();
+    // paramFormulaGroup stays hidden; the formula panel replaces it visually.
+    // The hidden #paramFormula input is synced from the formula editor.
+    initFormulaPanel();
   }
 
   const quantityGroup = document.getElementById("paramQuantityGroup");
   const photoGroup = document.getElementById("paramPhotoGroup");
-  const dooPanel = document.getElementById("modalDooPanel");
+  const formulaPanel = document.getElementById("modalFormulaPanel");
   const modal = document.getElementById("itemModal");
   const isFormula = type === "formula";
 
   if (quantityGroup) quantityGroup.classList.toggle("hidden", isFormula);
   if (photoGroup) photoGroup.classList.toggle("hidden", isFormula);
-  if (dooPanel) dooPanel.classList.toggle("hidden", isFormula);
-  if (modal) modal.classList.toggle("has-doo-panel", !isFormula);
+  if (formulaPanel) formulaPanel.classList.toggle("hidden", !isFormula);
+  if (modal) modal.classList.toggle("has-formula-panel", isFormula);
 
   if (isFormula) {
     const qtyInput = document.getElementById("paramQuantity");
@@ -252,31 +266,242 @@ function populateFormulaParameterList() {
 
   list.querySelectorAll(".formula-param-chip").forEach((button) => {
     button.addEventListener("click", () => {
-      insertTokenIntoFormula(button.dataset.token || "");
+      insertFormulaToken(button.dataset.token || "");
     });
   });
 }
 
-function insertTokenIntoFormula(token) {
-  const input = document.getElementById("paramFormula");
-  if (!input || !token) return;
+// --- Formula panel / rich editor ---
 
-  const start = input.selectionStart ?? input.value.length;
-  const end = input.selectionEnd ?? input.value.length;
-  const before = input.value.slice(0, start);
-  const after = input.value.slice(end);
+function _getFormulaTokenSet() {
+  return new Set(
+    getAvailableFormulaParameters().flatMap(p => {
+      const refs = [];
+      if (p.initial) refs.push(String(p.initial).trim());
+      if (p.name) refs.push(String(p.name).trim().replace(/\s+/g, '_'));
+      return refs.filter(Boolean);
+    })
+  );
+}
 
-  const needLeftSpace = before.length > 0 && !/[\s(*/+\-]$/.test(before);
-  const needRightSpace = after.length > 0 && !/^[\s)*/+\-]/.test(after);
-  const insertion = `${needLeftSpace ? " " : ""}${token}${needRightSpace ? " " : ""}`;
+function highlightFormula(text) {
+  const tokens = _getFormulaTokenSet();
+  // Tokenize: identifiers, numbers (incl decimal), operators, parens, whitespace
+  const parts = String(text).match(/[A-Za-z_][A-Za-z0-9_]*|\d+\.?\d*|[+\-*/().]|\s+/g) || [];
+  return parts.map(p => {
+    if (tokens.has(p)) {
+      return `<span class="formula-hl-ref">${escapeHtml(p)}</span>`;
+    }
+    if (/^[+\-*/]$/.test(p)) {
+      return `<span class="formula-hl-op">${escapeHtml(p)}</span>`;
+    }
+    if (/^[()]$/.test(p)) {
+      return `<span class="formula-hl-paren">${escapeHtml(p)}</span>`;
+    }
+    if (/^\d/.test(p)) {
+      return `<span class="formula-hl-num">${escapeHtml(p)}</span>`;
+    }
+    // Unknown identifier (might be invalid ref)
+    if (/^[A-Za-z_]/.test(p)) {
+      return `<span class="formula-hl-unknown">${escapeHtml(p)}</span>`;
+    }
+    return escapeHtml(p);
+  }).join('');
+}
 
-  input.value = before + insertion + after;
-  const cursorPos = before.length + insertion.length;
-  input.focus();
-  input.setSelectionRange(cursorPos, cursorPos);
+function _getEditorPlainText(editor) {
+  return (editor.innerText || editor.textContent || '').replace(/\n/g, '').trim();
+}
 
-  const errorEl = document.getElementById("paramFormulaError");
-  if (errorEl) errorEl.classList.add("hidden");
+function syncFormulaEditorToInput() {
+  const editor = document.getElementById('formulaEditorDisplay');
+  const input = document.getElementById('paramFormula');
+  if (!editor || !input) return;
+  input.value = _getEditorPlainText(editor);
+}
+
+function renderFormulaHighlight() {
+  const editor = document.getElementById('formulaEditorDisplay');
+  if (!editor) return;
+  const raw = _getEditorPlainText(editor);
+  if (!raw) { editor.innerHTML = ''; return; }
+
+  // Save caret offset
+  const sel = window.getSelection();
+  let caretOffset = 0;
+  if (sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
+    const range = sel.getRangeAt(0).cloneRange();
+    range.selectNodeContents(editor);
+    range.setEnd(sel.anchorNode, sel.anchorOffset);
+    caretOffset = range.toString().length;
+  }
+
+  editor.innerHTML = highlightFormula(raw);
+
+  // Restore caret
+  _restoreCaret(editor, caretOffset);
+
+  syncFormulaEditorToInput();
+  renderFormulaParamPickerList();
+}
+
+function _restoreCaret(editor, offset) {
+  const sel = window.getSelection();
+  const range = document.createRange();
+  let charCount = 0;
+  let found = false;
+
+  function walk(node) {
+    if (found) return;
+    if (node.nodeType === 3) {
+      const len = node.textContent.length;
+      if (charCount + len >= offset) {
+        range.setStart(node, offset - charCount);
+        range.collapse(true);
+        found = true;
+        return;
+      }
+      charCount += len;
+    } else {
+      for (const child of node.childNodes) {
+        walk(child);
+        if (found) return;
+      }
+    }
+  }
+  walk(editor);
+  if (!found) {
+    range.selectNodeContents(editor);
+    range.collapse(false);
+  }
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function insertFormulaToken(token) {
+  const editor = document.getElementById('formulaEditorDisplay');
+  if (!editor || !token) return;
+
+  editor.focus();
+  const sel = window.getSelection();
+  let caretOffset = _getEditorPlainText(editor).length;
+  if (sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
+    const r = sel.getRangeAt(0).cloneRange();
+    r.selectNodeContents(editor);
+    r.setEnd(sel.anchorNode, sel.anchorOffset);
+    caretOffset = r.toString().length;
+  }
+
+  const raw = _getEditorPlainText(editor);
+  const before = raw.slice(0, caretOffset);
+  const after = raw.slice(caretOffset);
+  const needLeft = before.length > 0 && !/[\s(*/+\-]$/.test(before);
+  const insertion = `${needLeft ? ' ' : ''}${token}`;
+  const newRaw = before + insertion + after;
+  const newOffset = before.length + insertion.length;
+
+  editor.innerHTML = highlightFormula(newRaw);
+  _restoreCaret(editor, newOffset);
+  syncFormulaEditorToInput();
+  renderFormulaParamPickerList();
+
+  const err = document.getElementById('formulaPanelError');
+  if (err) err.classList.add('hidden');
+}
+
+function renderFormulaParamPickerList(filter) {
+  const list = document.getElementById('formulaParamPickerList');
+  if (!list) return;
+
+  const params = getAvailableFormulaParameters();
+  if (params.length === 0) {
+    list.innerHTML = '<div class="formula-picker-empty">No parameters available</div>';
+    return;
+  }
+
+  const currentFormula = _getEditorPlainText(document.getElementById('formulaEditorDisplay') || document.createElement('div'));
+  const usedTokens = new Set(
+    (currentFormula.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [])
+  );
+
+  const search = (filter ?? document.getElementById('formulaParamSearch')?.value ?? '').toLowerCase().trim();
+
+  const filtered = params.filter(p => {
+    if (!search) return true;
+    const name = (p.name || '').toLowerCase();
+    const initial = (p.initial || '').toLowerCase();
+    return name.includes(search) || initial.includes(search);
+  });
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="formula-picker-empty">No matching parameters</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(p => {
+    const token = (p.initial || p.name || '').trim();
+    const name = p.name || '';
+    const initial = p.initial || '';
+    const label = initial ? `${escapeHtml(name)} <span class="formula-picker-initial">(${escapeHtml(initial)})</span>` : escapeHtml(name);
+    const isUsed = usedTokens.has(token);
+    return `<div class="formula-picker-item${isUsed ? ' is-used' : ''}" data-token="${escapeHtml(token)}" title="Click to insert ${escapeHtml(token)}">
+      <span class="formula-picker-item-name">${label}</span>
+      ${isUsed ? '<span class="formula-picker-used-badge">used</span>' : ''}
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.formula-picker-item').forEach(item => {
+    item.addEventListener('click', () => {
+      insertFormulaToken(item.dataset.token || '');
+    });
+  });
+}
+
+function initFormulaPanel() {
+  const editor = document.getElementById('formulaEditorDisplay');
+  const input = document.getElementById('paramFormula');
+  const searchInput = document.getElementById('formulaParamSearch');
+
+  if (!editor) return;
+
+  // Populate editor from existing formula input value
+  const existingFormula = input?.value || '';
+  editor.innerHTML = existingFormula ? highlightFormula(existingFormula) : '';
+
+  // Remove old listeners
+  if (editor._formulaInput) editor.removeEventListener('input', editor._formulaInput);
+  if (editor._formulaPaste) editor.removeEventListener('paste', editor._formulaPaste);
+  if (editor._formulaKeydown) editor.removeEventListener('keydown', editor._formulaKeydown);
+  if (searchInput?._formulaSearch) searchInput.removeEventListener('input', searchInput._formulaSearch);
+
+  editor._formulaInput = () => {
+    renderFormulaHighlight();
+    const err = document.getElementById('formulaPanelError');
+    if (err) err.classList.add('hidden');
+  };
+  editor.addEventListener('input', editor._formulaInput);
+
+  editor._formulaPaste = (e) => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+    document.execCommand('insertText', false, text);
+  };
+  editor.addEventListener('paste', editor._formulaPaste);
+
+  editor._formulaKeydown = (e) => {
+    if (e.key === 'Enter') e.preventDefault();
+  };
+  editor.addEventListener('keydown', editor._formulaKeydown);
+
+  if (searchInput) {
+    searchInput.value = '';
+    searchInput._formulaSearch = () => renderFormulaParamPickerList();
+    searchInput.addEventListener('input', searchInput._formulaSearch);
+  }
+
+  // Build old-style chips too (for backward compat in paramFormulaGroup)
+  populateFormulaParameterList();
+  renderFormulaParamPickerList();
 }
 
 function validateFormulaExpression(formula) {
@@ -591,7 +816,10 @@ function populateParamDoo(existingDoo = {}) {
 
   // Populate crop select
   cropSelect.innerHTML = '<option value="">Select crop</option>' +
-    crops.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+    crops.map(c => {
+      const et = c.entryType ? ` (${c.entryType.charAt(0).toUpperCase() + c.entryType.slice(1)})` : '';
+      return `<option value="${c.id}">${escapeHtml(c.name + et)}</option>`;
+    }).join('');
   cropSelect.value = '';
   minInput.value = '';
   maxInput.value = '';
@@ -643,10 +871,25 @@ function renderDooSummary() {
   }
   summary.innerHTML = entries.map(([cid, val]) => {
     const crop = crops.find(c => c.id === cid);
-    const name = crop ? escapeHtml(crop.name) : 'Unknown';
+    const et = crop?.entryType ? ` (${crop.entryType.charAt(0).toUpperCase() + crop.entryType.slice(1)})` : '';
+    const name = crop ? escapeHtml(crop.name + et) : 'Unknown';
     const display = val.min === val.max ? `${val.min}` : `${val.min}–${val.max}`;
-    return `<div class="modal-doo-summary-row"><span class="modal-doo-summary-crop" title="${name}">${name}</span><span class="modal-doo-summary-val">${display}</span></div>`;
+    return `<div class="modal-doo-summary-row"><span class="modal-doo-summary-crop" title="${name}">${name}</span><span class="modal-doo-summary-val">${display}</span><button type="button" class="modal-doo-delete-btn" data-crop-id="${cid}" title="Remove"><span class="material-symbols-rounded" style="font-size:16px">close</span></button></div>`;
   }).join('');
+  summary.querySelectorAll('.modal-doo-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cid = btn.dataset.cropId;
+      delete _dooTempData[cid];
+      const cropSelect = document.getElementById('dooCropSelect');
+      if (cropSelect && cropSelect.value === cid) {
+        const minInput = document.getElementById('dooRangeMin');
+        const maxInput = document.getElementById('dooRangeMax');
+        if (minInput) minInput.value = '';
+        if (maxInput) maxInput.value = '';
+      }
+      renderDooSummary();
+    });
+  });
 }
 
 // Collect DoO values from temp store
@@ -814,12 +1057,17 @@ async function initializeInventory(options = {}) {
   let hasCache = false;
 
   try {
-    const cached = typeof loadLocalCache === "function"
-      ? loadLocalCache("inventory")
-      : null;
+    let cached = null;
+    if (typeof loadLocalCache === "function") {
+      cached = await loadLocalCache("inventory");
+    }
 
     if (cached?.items) {
       inventoryState.items = cached.items;
+      // Load folders from cache
+      if (cached.folders) {
+        inventoryState.folders = cached.folders;
+      }
       // Backward compat: migrate old "lines" key to "entries"
       if (inventoryState.items.lines && !inventoryState.items.entries) {
         inventoryState.items.entries = inventoryState.items.lines;
@@ -921,7 +1169,7 @@ async function initializeInventory(options = {}) {
     updateCropTypeSuggestions();
 
     if (typeof saveLocalCache === "function") {
-      saveLocalCache("inventory", { items: inventoryState.items });
+      saveLocalCache("inventory", { items: inventoryState.items, folders: inventoryState.folders });
     }
 
     if (onProgress) {
@@ -943,6 +1191,10 @@ function switchCategory(category) {
     return;
   }
   inventoryState.currentCategory = key;
+  inventoryState.currentFolderId = null;
+  inventoryState.searchQuery = "";
+  const searchInput = document.getElementById("inventorySearchInput");
+  if (searchInput) searchInput.value = "";
 
   if (key === "parameters" && !inventoryState.parametersSortInitialized) {
     inventoryState.sortBy = "updatedAt";
@@ -990,6 +1242,12 @@ function renderInventoryItems() {
   const isLocations = inventoryState.currentCategory === "locations";
   const isParameters = inventoryState.currentCategory === "parameters";
   const isAgronomy = inventoryState.currentCategory === "agronomy";
+  const inFolder = inventoryState.currentFolderId != null;
+
+  // Filter by folder
+  if (inFolder) {
+    items = items.filter(it => it.folderId === inventoryState.currentFolderId);
+  }
 
   // Apply filters for parameters and agronomy
   if ((isParameters || isAgronomy) && inventoryState.filterCrop) {
@@ -1017,15 +1275,91 @@ function renderInventoryItems() {
     items.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }
 
+  // Apply search filter
+  const sq = (inventoryState.searchQuery || "").trim().toLowerCase();
+  if (sq) {
+    items = items.filter(it => {
+      const name = (it.name || "").toLowerCase();
+      if (name.includes(sq)) return true;
+      if (isCrops && (it.cropType || "").toLowerCase().includes(sq)) return true;
+      if (isParameters) {
+        if ((it.initial || "").toLowerCase().includes(sq)) return true;
+        if ((it.type || "").toLowerCase().includes(sq)) return true;
+        if ((it.unit || "").toLowerCase().includes(sq)) return true;
+      }
+      if (isAgronomy) {
+        if ((it.activity || "").toLowerCase().includes(sq)) return true;
+        if ((it.chemical || "").toLowerCase().includes(sq)) return true;
+        if ((it.remark || "").toLowerCase().includes(sq)) return true;
+      }
+      return false;
+    });
+  }
+
+  // Get folders for current category
+  const categoryFolders = inventoryState.folders[inventoryState.currentCategory] || [];
+
   // Toggle agronomy-view class for full-width table layout
   container.classList.toggle("agronomy-view", isAgronomy);
 
-  if (items.length === 0) {
+  // Update folder navigation UI
+  const folderBackBtn = document.getElementById("folderBackBtn");
+  const folderBreadcrumb = document.getElementById("folderBreadcrumb");
+  if (folderBackBtn) folderBackBtn.classList.toggle("hidden", !inFolder);
+  if (folderBreadcrumb) {
+    if (inFolder) {
+      const openFolder = categoryFolders.find(f => f.id === inventoryState.currentFolderId);
+      folderBreadcrumb.innerHTML = `<span class="material-symbols-rounded" style="font-size:16px">${escapeHtml(openFolder?.icon || "folder")}</span> ${escapeHtml(openFolder?.name || "Folder")}`;
+      folderBreadcrumb.classList.remove("hidden");
+    } else {
+      folderBreadcrumb.classList.add("hidden");
+    }
+  }
+
+  // Build folder cards HTML if at root level and not searching
+  let folderCardsHtml = "";
+  if (!inFolder && !sq && categoryFolders.length > 0) {
+    // Filter folders by search if needed (not searching here)
+    const unfolderedItems = items.filter(it => !it.folderId);
+    const folderedItemIds = new Set(items.filter(it => it.folderId).map(it => it.folderId));
+
+    folderCardsHtml = categoryFolders.map(folder => {
+      const folderItems = (inventoryState.items[inventoryState.currentCategory] || []).filter(it => it.folderId === folder.id);
+      const count = folderItems.length;
+      const iconName = folder.icon || "folder";
+      const colorStyle = folder.color ? `color:${folder.color};` : "";
+      const borderStyle = folder.color ? `border-left: 3px solid ${folder.color};` : "";
+      return `
+        <div class="inventory-folder-card" data-folder-id="${folder.id}" style="${borderStyle}">
+          <div class="folder-card-icon" style="${colorStyle}">
+            <span class="material-symbols-rounded">${escapeHtml(iconName)}</span>
+          </div>
+          <div class="folder-card-meta">
+            <div class="folder-card-name">${escapeHtml(folder.name)}</div>
+            <div class="folder-card-count">${count} item${count !== 1 ? "s" : ""}</div>
+          </div>
+          <div class="folder-card-actions">
+            <button class="folder-edit-btn" data-folder-id="${folder.id}" title="Edit folder">
+              <span class="material-symbols-rounded">edit</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    // When at root, only show unfoldered items
+    items = unfolderedItems;
+  } else if (!inFolder && !sq) {
+    // No folders exist, show all items (none are foldered without folders)
+  }
+
+  const hasContent = items.length > 0 || folderCardsHtml;
+  if (!hasContent) {
     container.classList.add("empty-grid");
     container.innerHTML = `
             <div class="empty-state">
                 <span class="material-symbols-rounded">inbox</span>
-                <p>No items yet. Create your first item to get started.</p>
+                <p>${sq ? "No items match your search." : "No items yet. Create your first item to get started."}</p>
             </div>
         `;
     return;
@@ -1035,7 +1369,7 @@ function renderInventoryItems() {
 
   // Special rendering for Crops with nested Entries
   if (isCrops) {
-    container.innerHTML = items
+    const cropCardsHtml = items
       .map((crop, idx) => {
         const relatedLines = inventoryState.items.entries.filter((line) => {
           // Match by cropId (new way)
@@ -1067,6 +1401,9 @@ function renderInventoryItems() {
                             <button class="expand-crop-btn" data-crop-id="${crop.id}" title="View Entries">
                                 <span class="material-symbols-rounded">visibility</span>
                             </button>
+                            <button class="move-folder-btn" data-id="${crop.id}" title="Move to Folder">
+                                <span class="material-symbols-rounded">drive_file_move</span>
+                            </button>
                             <button class="edit-btn" data-id="${crop.id}" title="Edit">
                                 <span class="material-symbols-rounded">edit</span>
                             </button>
@@ -1079,6 +1416,11 @@ function renderInventoryItems() {
             `;
       })
       .join("");
+
+    container.innerHTML = folderCardsHtml + cropCardsHtml;
+
+    // Add folder card event listeners
+    attachFolderCardListeners(container);
 
     // Add event listeners for crops
     container.querySelectorAll(".expand-crop-btn").forEach((btn) => {
@@ -1114,6 +1456,13 @@ function renderInventoryItems() {
         inventoryState.currentCategory = prevCategory;
       });
     });
+
+    container.querySelectorAll(".move-folder-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openMoveToFolderModal(btn.dataset.id);
+      });
+    });
   } else if (isAgronomy) {
     // Table rendering for Agronomy
     const resolveCropNames = (cropIds) => {
@@ -1131,7 +1480,7 @@ function renderInventoryItems() {
       return item.dapMin != null ? `${item.dapMin}` : "-";
     };
 
-    container.innerHTML = `
+    const agronomyTableHtml = items.length > 0 ? `
       <div class="agronomy-table-wrapper">
         <table class="agronomy-table">
           <thead>
@@ -1155,6 +1504,9 @@ function renderInventoryItems() {
                 <td>${escapeHtml(item.dose || "-")}</td>
                 <td class="agronomy-cell-remark">${escapeHtml(item.remark || "-")}</td>
                 <td class="agronomy-table-actions">
+                  <button class="move-folder-btn" data-id="${item.id}" title="Move to Folder">
+                    <span class="material-symbols-rounded">drive_file_move</span>
+                  </button>
                   <button class="edit-btn" data-id="${item.id}" title="Edit">
                     <span class="material-symbols-rounded">edit</span>
                   </button>
@@ -1167,7 +1519,12 @@ function renderInventoryItems() {
           </tbody>
         </table>
       </div>
-    `;
+    ` : "";
+
+    container.innerHTML = folderCardsHtml + agronomyTableHtml;
+
+    // Add folder card event listeners
+    attachFolderCardListeners(container);
 
     // Add event listeners
     container.querySelectorAll(".edit-btn").forEach((btn) => {
@@ -1182,9 +1539,14 @@ function renderInventoryItems() {
         deleteItem(btn.dataset.id);
       });
     });
+    container.querySelectorAll(".move-folder-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openMoveToFolderModal(btn.dataset.id);
+      });
+    });
   } else {
-    // Standard rendering for Locations and Parameters
-    container.innerHTML = items
+    const stdCardsHtml = items
       .map((item) => {
         const locationMeta = "";
 
@@ -1207,6 +1569,9 @@ function renderInventoryItems() {
                         ${locationMeta || paramMeta}
                     </div>
                     <div class="item-actions">
+                        <button class="move-folder-btn" data-id="${item.id}" title="Move to Folder">
+                            <span class="material-symbols-rounded">drive_file_move</span>
+                        </button>
                         <button class="edit-btn" data-id="${item.id}" title="Edit">
                             <span class="material-symbols-rounded">edit</span>
                         </button>
@@ -1218,6 +1583,11 @@ function renderInventoryItems() {
             `;
       })
       .join("");
+
+    container.innerHTML = folderCardsHtml + stdCardsHtml;
+
+    // Add folder card event listeners
+    attachFolderCardListeners(container);
 
     // Initialize location preview maps
     if (isLocations) {
@@ -1242,8 +1612,329 @@ function renderInventoryItems() {
         deleteItem(itemId);
       });
     });
+
+    container.querySelectorAll(".move-folder-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openMoveToFolderModal(btn.dataset.id);
+      });
+    });
   }
 }
+
+// =============================
+// FOLDER SYSTEM
+// =============================
+
+function attachFolderCardListeners(container) {
+  container.querySelectorAll(".inventory-folder-card").forEach(card => {
+    card.addEventListener("click", (e) => {
+      if (e.target.closest(".folder-edit-btn")) return;
+      const folderId = card.dataset.folderId;
+      inventoryState.currentFolderId = folderId;
+      renderInventoryItems();
+    });
+  });
+  container.querySelectorAll(".folder-edit-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openFolderModal(btn.dataset.folderId);
+    });
+  });
+}
+
+function navigateBackFromFolder() {
+  inventoryState.currentFolderId = null;
+  renderInventoryItems();
+}
+
+let _editingFolderId = null;
+
+function openFolderModal(folderId) {
+  _editingFolderId = folderId || null;
+  const modal = document.getElementById("folderModal");
+  const titleEl = document.getElementById("folderModalTitle");
+  const nameInput = document.getElementById("folderNameInput");
+  const iconInput = document.getElementById("folderIconInput");
+  const iconPreview = document.getElementById("folderIconPreview");
+  const saveBtn = document.getElementById("folderModalSaveBtn");
+  const deleteBtn = document.getElementById("folderModalDeleteBtn");
+  const colorPicker = document.getElementById("folderColorPicker");
+
+  if (_editingFolderId) {
+    const cat = inventoryState.currentCategory;
+    const folder = (inventoryState.folders[cat] || []).find(f => f.id === _editingFolderId);
+    if (!folder) return;
+    titleEl.textContent = "Edit Folder";
+    nameInput.value = folder.name;
+    iconInput.value = folder.icon || "";
+    iconPreview.textContent = folder.icon || "folder";
+    saveBtn.textContent = "Save";
+    deleteBtn.style.display = "inline-flex";
+
+    // Set color
+    colorPicker.querySelectorAll(".folder-color-swatch").forEach(s => {
+      s.classList.toggle("active", s.dataset.color === (folder.color || ""));
+    });
+  } else {
+    titleEl.textContent = "New Folder";
+    nameInput.value = "";
+    iconInput.value = "";
+    iconPreview.textContent = "folder";
+    saveBtn.textContent = "Create";
+    deleteBtn.style.display = "none";
+
+    colorPicker.querySelectorAll(".folder-color-swatch").forEach(s => {
+      s.classList.toggle("active", s.dataset.color === "");
+    });
+  }
+
+  modal.classList.remove("hidden");
+  setTimeout(() => nameInput.focus(), 100);
+}
+
+function closeFolderModal() {
+  document.getElementById("folderModal").classList.add("hidden");
+  _editingFolderId = null;
+}
+
+function saveFolder() {
+  const nameInput = document.getElementById("folderNameInput");
+  const iconInput = document.getElementById("folderIconInput");
+  const colorPicker = document.getElementById("folderColorPicker");
+
+  const name = nameInput.value.trim();
+  if (!name) {
+    showToast("Folder name is required", "error");
+    nameInput.focus();
+    return;
+  }
+
+  const icon = iconInput.value.trim() || "";
+  const activeColor = colorPicker.querySelector(".folder-color-swatch.active");
+  const color = activeColor ? activeColor.dataset.color : "";
+  const cat = inventoryState.currentCategory;
+
+  if (!inventoryState.folders[cat]) {
+    inventoryState.folders[cat] = [];
+  }
+
+  if (_editingFolderId) {
+    const folder = inventoryState.folders[cat].find(f => f.id === _editingFolderId);
+    if (folder) {
+      folder.name = name;
+      folder.icon = icon;
+      folder.color = color;
+      folder.updatedAt = new Date().toISOString();
+    }
+  } else {
+    inventoryState.folders[cat].push({
+      id: `folder_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      name,
+      icon,
+      color,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  saveFoldersToCache();
+  closeFolderModal();
+  renderInventoryItems();
+}
+
+function deleteFolder(folderId) {
+  const cat = inventoryState.currentCategory;
+  const folder = (inventoryState.folders[cat] || []).find(f => f.id === folderId);
+  if (!folder) return;
+
+  if (!confirm(`Delete folder "${folder.name}"? Items inside will be moved out of the folder (not deleted).`)) return;
+
+  // Unfolder all items in this folder
+  (inventoryState.items[cat] || []).forEach(item => {
+    if (item.folderId === folderId) {
+      delete item.folderId;
+    }
+  });
+
+  inventoryState.folders[cat] = inventoryState.folders[cat].filter(f => f.id !== folderId);
+
+  // If currently in this folder, go back
+  if (inventoryState.currentFolderId === folderId) {
+    inventoryState.currentFolderId = null;
+  }
+
+  saveFoldersToCache();
+  saveItemsToCache();
+  closeFolderModal();
+  renderInventoryItems();
+}
+
+function saveFoldersToCache() {
+  if (typeof saveLocalCache === "function") {
+    saveLocalCache("inventory", {
+      items: inventoryState.items,
+      folders: inventoryState.folders,
+    });
+  }
+}
+
+function saveItemsToCache() {
+  if (typeof saveLocalCache === "function") {
+    saveLocalCache("inventory", {
+      items: inventoryState.items,
+      folders: inventoryState.folders,
+    });
+  }
+}
+
+// Move to folder modal
+function openMoveToFolderModal(itemId) {
+  const cat = inventoryState.currentCategory;
+  const item = (inventoryState.items[cat] || []).find(it => it.id === itemId);
+  if (!item) return;
+
+  const folders = inventoryState.folders[cat] || [];
+  const listEl = document.getElementById("moveFolderList");
+
+  let html = `<div class="move-folder-option${!item.folderId ? ' active' : ''}" data-folder-id="">
+    <span class="material-symbols-rounded">folder_off</span>
+    <span>No Folder</span>
+  </div>`;
+
+  html += folders.map(f => {
+    const isActive = item.folderId === f.id;
+    const iconName = f.icon || "folder";
+    const colorStyle = f.color ? `color:${f.color};` : "";
+    return `<div class="move-folder-option${isActive ? ' active' : ''}" data-folder-id="${f.id}">
+      <span class="material-symbols-rounded" style="${colorStyle}">${escapeHtml(iconName)}</span>
+      <span>${escapeHtml(f.name)}</span>
+    </div>`;
+  }).join("");
+
+  listEl.innerHTML = html;
+
+  listEl.querySelectorAll(".move-folder-option").forEach(opt => {
+    opt.addEventListener("click", () => {
+      const fId = opt.dataset.folderId;
+      if (fId) {
+        item.folderId = fId;
+      } else {
+        delete item.folderId;
+      }
+      saveItemsToCache();
+
+      // Sync to Drive
+      const categoryName = cat.charAt(0).toUpperCase() + cat.slice(1);
+      enqueueSync({
+        label: `Update ${categoryName}: ${item.name}`,
+        run: () => saveItemToGoogleDrive(categoryName, item),
+      });
+
+      closeMoveToFolderModal();
+      renderInventoryItems();
+    });
+  });
+
+  document.getElementById("moveToFolderModal").classList.remove("hidden");
+}
+
+function closeMoveToFolderModal() {
+  document.getElementById("moveToFolderModal").classList.add("hidden");
+}
+
+// Initialize folder system event listeners
+function initFolderSystem() {
+  // Add folder button
+  const addFolderBtn = document.getElementById("addFolderBtn");
+  if (addFolderBtn) {
+    addFolderBtn.addEventListener("click", () => openFolderModal());
+  }
+
+  // Back button
+  const folderBackBtn = document.getElementById("folderBackBtn");
+  if (folderBackBtn) {
+    folderBackBtn.addEventListener("click", navigateBackFromFolder);
+  }
+
+  // Folder modal buttons
+  const folderModalCloseBtn = document.getElementById("folderModalCloseBtn");
+  if (folderModalCloseBtn) folderModalCloseBtn.addEventListener("click", closeFolderModal);
+
+  const folderModalCancelBtn = document.getElementById("folderModalCancelBtn");
+  if (folderModalCancelBtn) folderModalCancelBtn.addEventListener("click", closeFolderModal);
+
+  const folderModalSaveBtn = document.getElementById("folderModalSaveBtn");
+  if (folderModalSaveBtn) folderModalSaveBtn.addEventListener("click", saveFolder);
+
+  const folderModalDeleteBtn = document.getElementById("folderModalDeleteBtn");
+  if (folderModalDeleteBtn) {
+    folderModalDeleteBtn.addEventListener("click", () => {
+      if (_editingFolderId) deleteFolder(_editingFolderId);
+    });
+  }
+
+  // Color picker
+  const colorPicker = document.getElementById("folderColorPicker");
+  if (colorPicker) {
+    colorPicker.addEventListener("click", (e) => {
+      const swatch = e.target.closest(".folder-color-swatch");
+      if (!swatch) return;
+      colorPicker.querySelectorAll(".folder-color-swatch").forEach(s => s.classList.remove("active"));
+      swatch.classList.add("active");
+    });
+  }
+
+  // Icon suggestions
+  const iconSuggestions = document.getElementById("folderIconSuggestions");
+  if (iconSuggestions) {
+    iconSuggestions.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-icon]");
+      if (!btn) return;
+      const icon = btn.dataset.icon;
+      document.getElementById("folderIconInput").value = icon;
+      document.getElementById("folderIconPreview").textContent = icon;
+    });
+  }
+
+  // Icon input live preview
+  const iconInput = document.getElementById("folderIconInput");
+  if (iconInput) {
+    iconInput.addEventListener("input", () => {
+      const val = iconInput.value.trim();
+      document.getElementById("folderIconPreview").textContent = val || "folder";
+    });
+  }
+
+  // Move to folder modal close
+  const moveToFolderCloseBtn = document.getElementById("moveToFolderCloseBtn");
+  if (moveToFolderCloseBtn) moveToFolderCloseBtn.addEventListener("click", closeMoveToFolderModal);
+
+  // Close modals on overlay click
+  document.getElementById("folderModal")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeFolderModal();
+  });
+  document.getElementById("moveToFolderModal")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeMoveToFolderModal();
+  });
+
+  // Search input
+  const searchInput = document.getElementById("inventorySearchInput");
+  if (searchInput) {
+    let searchTimer;
+    searchInput.addEventListener("input", () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        inventoryState.searchQuery = searchInput.value;
+        renderInventoryItems();
+      }, 200);
+    });
+  }
+}
+
+// =============================
+// END FOLDER SYSTEM
+// =============================
 
 // Open add item modal
 function openAddModal() {
@@ -1334,6 +2025,7 @@ function openAddModal() {
       };
     }
     populateFormulaParameterList();
+    initFormulaPanel();
     
     // Populate DoO inputs
     populateParamDoo();
@@ -1516,7 +2208,7 @@ function showCropLinesPopup(cropId) {
             updateDashboardCounts();
             renderInventoryItems();
             if (typeof saveLocalCache === "function") {
-              saveLocalCache("inventory", { items: inventoryState.items });
+              saveLocalCache("inventory", { items: inventoryState.items, folders: inventoryState.folders });
             }
             showToast("Entry deleted", "success");
             // Re-open the crop lines popup to reflect changes
@@ -1692,6 +2384,7 @@ function openEditModal(itemId) {
       };
     }
     populateFormulaParameterList();
+    initFormulaPanel();
     
     // Setup photo checkbox listener
     const photoCheckbox = document.getElementById("paramPhoto");
@@ -1782,6 +2475,13 @@ function closeModal() {
   if (paramPhoto) paramPhoto.checked = false;
   const formulaError = document.getElementById("paramFormulaError");
   if (formulaError) formulaError.classList.add("hidden");
+  const formulaPanelError = document.getElementById("formulaPanelError");
+  if (formulaPanelError) formulaPanelError.classList.add("hidden");
+  const formulaEditor = document.getElementById("formulaEditorDisplay");
+  if (formulaEditor) formulaEditor.innerHTML = '';
+  const formulaPanel = document.getElementById("modalFormulaPanel");
+  if (formulaPanel) formulaPanel.classList.add("hidden");
+  if (modal) modal.classList.remove("has-formula-panel");
 
   // Reset DoO panel
   _dooTempData = {};
@@ -1950,9 +2650,7 @@ async function saveItem() {
   const paramPhotoMode = isParameters && paramPhoto
     ? document.querySelector('input[name="photoMode"]:checked')?.value || 'per-sample'
     : undefined;
-  const paramDoo = isParameters
-    ? (paramType === "formula" ? {} : collectParamDoo())
-    : {};
+  const paramDoo = isParameters ? collectParamDoo() : {};
 
   // Agronomy fields
   const agronomyCropIds = isAgronomy
@@ -2051,6 +2749,11 @@ async function saveItem() {
           errorEl.textContent = result.message;
           errorEl.classList.remove("hidden");
         }
+        const panelErr = document.getElementById("formulaPanelError");
+        if (panelErr) {
+          panelErr.textContent = result.message;
+          panelErr.classList.remove("hidden");
+        }
         showToast(result.message, "error");
         return;
       }
@@ -2137,7 +2840,7 @@ async function saveItem() {
           item.numberOfSamples = paramType === "formula" ? 1 : (paramQuantity ? Number(paramQuantity) : 1);
           item.requirePhoto = paramType === "formula" ? false : paramPhoto;
           item.photoMode = paramType === "formula" ? undefined : paramPhotoMode;
-          item.daysOfObservation = paramType === "formula" ? {} : paramDoo;
+          item.daysOfObservation = paramDoo;
         }
         if (isAgronomy) {
           item.cropIds = agronomyCropIds;
@@ -2202,7 +2905,7 @@ async function saveItem() {
         numberOfSamples: isParameters ? (paramType === "formula" ? 1 : (paramQuantity ? Number(paramQuantity) : 1)) : 1,
         requirePhoto: isParameters ? (paramType === "formula" ? false : paramPhoto) : undefined,
         photoMode: isParameters ? (paramType === "formula" ? undefined : paramPhotoMode) : undefined,
-        daysOfObservation: isParameters ? (paramType === "formula" ? {} : paramDoo) : undefined,
+        daysOfObservation: isParameters ? paramDoo : undefined,
         cropIds: isAgronomy ? agronomyCropIds : undefined,
         activity: isAgronomy ? agronomyActivity : undefined,
         dapMin: isAgronomy && agronomyDapMin ? Number(agronomyDapMin) : undefined,
@@ -2210,6 +2913,7 @@ async function saveItem() {
         chemical: isAgronomy ? agronomyChemical : undefined,
         dose: isAgronomy ? agronomyDose : undefined,
         remark: isAgronomy ? agronomyRemark : undefined,
+        folderId: inventoryState.currentFolderId || undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -2244,7 +2948,7 @@ async function saveItem() {
     renderInventoryItems();
 
     if (typeof saveLocalCache === "function") {
-      saveLocalCache("inventory", { items: inventoryState.items });
+      saveLocalCache("inventory", { items: inventoryState.items, folders: inventoryState.folders });
     }
 
     // Close modal
@@ -2293,7 +2997,7 @@ function deleteItem(itemId) {
         renderInventoryItems();
 
         if (typeof saveLocalCache === "function") {
-          saveLocalCache("inventory", { items: inventoryState.items });
+          saveLocalCache("inventory", { items: inventoryState.items, folders: inventoryState.folders });
         }
         
         showToast("Item deleted", "success");

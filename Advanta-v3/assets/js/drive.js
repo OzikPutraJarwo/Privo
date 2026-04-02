@@ -54,9 +54,9 @@ async function initializeDriveStructure() {
   }
 }
 
-async function upsertJsonFileInFolder(fileName, parentFolderId, data) {
+async function upsertJsonFileInFolder(fileName, parentFolderId, data, knownExistingFile) {
   const fileContent = JSON.stringify(data ?? {}, null, 2);
-  const existingFile = await findFile(fileName, parentFolderId);
+  const existingFile = knownExistingFile || await findFile(fileName, parentFolderId);
 
   const boundary = "===============7330845974216740156==";
   const mimeType = "application/json";
@@ -350,13 +350,28 @@ async function saveItemToGoogleDrive(category, item) {
       return await saveEntryToDrive(item);
     }
 
-    const fileName = `${item.id}.json`;
-    const fileContent = JSON.stringify(item, null, 2);
     const parentFolderId = driveState.categoryFolderIds[category.toLowerCase()];
-
     if (!parentFolderId) {
       throw new Error(`Folder ID not found for category: ${category}`);
     }
+
+    // Check if consolidated file exists
+    const consolidatedFile = await findFile("_consolidated.json", parentFolderId);
+    if (consolidatedFile) {
+      const content = await getFileContent(consolidatedFile.id);
+      const items = Array.isArray(content) ? content : [];
+      const idx = items.findIndex((i) => i.id === item.id);
+      if (idx >= 0) {
+        items[idx] = item;
+      } else {
+        items.push(item);
+      }
+      await upsertJsonFileInFolder("_consolidated.json", parentFolderId, items, consolidatedFile);
+      return true;
+    }
+
+    const fileName = `${item.id}.json`;
+    const fileContent = JSON.stringify(item, null, 2);
 
     // Check if file already exists
     const existingFile = await findFile(fileName, parentFolderId);
@@ -454,6 +469,23 @@ async function saveItemsToGoogleDrive(category, items) {
       return await saveAllEntriesToDrive(items);
     }
 
+    const parentFolderId = driveState.categoryFolderIds[category.toLowerCase()];
+    if (parentFolderId) {
+      const consolidatedFile = await findFile("_consolidated.json", parentFolderId);
+      if (consolidatedFile) {
+        const content = await getFileContent(consolidatedFile.id);
+        const existing = Array.isArray(content) ? content : [];
+        const merged = [...existing];
+        for (const item of items) {
+          const idx = merged.findIndex((i) => i.id === item.id);
+          if (idx >= 0) merged[idx] = item;
+          else merged.push(item);
+        }
+        await upsertJsonFileInFolder("_consolidated.json", parentFolderId, merged, consolidatedFile);
+        return true;
+      }
+    }
+
     // Save each item sequentially
     for (const item of items) {
       await saveItemToGoogleDrive(category, item);
@@ -520,7 +552,19 @@ async function loadItemsFromGoogleDrive(category) {
       return items;
     }
 
+    // Check for consolidated file
+    const consolidatedFile = files.find((f) => f.name === "_consolidated.json");
+    if (consolidatedFile) {
+      try {
+        const content = await getFileContent(consolidatedFile.id);
+        if (Array.isArray(content)) return content;
+      } catch (error) {
+        console.error("Error loading consolidated file:", error);
+      }
+    }
+
     for (const file of files) {
+      if (file.name === "_consolidated.json") continue;
       try {
         const content = await getFileContent(file.id);
         items.push(content);
@@ -580,6 +624,18 @@ async function deleteItemFromGoogleDrive(category, itemId) {
     // Entries: search all crop files for this entry and remove it
     if (category === "Entries") {
       return await deleteEntryFromDrive(itemId, parentFolderId);
+    }
+
+    // Check if consolidated file exists
+    const consolidatedFile = await findFile("_consolidated.json", parentFolderId);
+    if (consolidatedFile) {
+      const content = await getFileContent(consolidatedFile.id);
+      const items = Array.isArray(content) ? content : [];
+      const filtered = items.filter((i) => i.id !== itemId);
+      if (filtered.length !== items.length) {
+        await upsertJsonFileInFolder("_consolidated.json", parentFolderId, filtered, consolidatedFile);
+      }
+      return true;
     }
 
     const fileName = `${itemId}.json`;

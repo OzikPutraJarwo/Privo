@@ -19,16 +19,33 @@ async function initializeTrials(options = {}) {
   let hasCache = false;
 
   try {
-    const cached = typeof loadLocalCache === "function"
-      ? loadLocalCache("trials")
-      : null;
+    let cached = null;
+    if (typeof loadLocalCache === "function") {
+      cached = await loadLocalCache("trials");
+    }
 
     if (cached?.trials) {
       trialState.trials = cached.trials;
-      // Restore _responsesLoaded flag from cache (responses are in cache)
+      // Restore loading state from cache
       trialState.trials.forEach(t => {
-        if (t.responses || t.agronomyResponses) {
+        // Restore _loadedAreas array from cache
+        if (!Array.isArray(t._loadedAreas)) t._loadedAreas = [];
+
+        // Determine if fully loaded: must have _loadedAreas AND actual response data
+        const hasResponseData = t._loadedAreas.length > 0 &&
+          (t.responses && Object.keys(t.responses).some(k => Object.keys(t.responses[k] || {}).length > 0));
+        const totalAreas = (t.areas || []).length;
+        const allAreasLoaded = totalAreas > 0 ? t._loadedAreas.length >= totalAreas : t._loadedAreas.length > 0;
+
+        if (hasResponseData && allAreasLoaded) {
           t._responsesLoaded = true;
+        } else if (t._loadedAreas.length > 0 && hasResponseData) {
+          // Partially loaded — keep the loaded areas, don't mark as fully loaded
+          t._responsesLoaded = false;
+        } else {
+          // No data loaded
+          t._responsesLoaded = false;
+          t._loadedAreas = [];
         }
       });
       hasCache = true;
@@ -52,10 +69,13 @@ async function initializeTrials(options = {}) {
             // Merge: keep locally loaded responses for trials that already have them
             for (const freshTrial of freshTrials) {
               const cached = trialState.trials.find(t => t.id === freshTrial.id);
-              if (cached && cached._responsesLoaded) {
+              if (cached && (cached._responsesLoaded || (Array.isArray(cached._loadedAreas) && cached._loadedAreas.length > 0))) {
                 freshTrial.responses = cached.responses;
                 freshTrial.agronomyResponses = cached.agronomyResponses;
-                freshTrial._responsesLoaded = true;
+                freshTrial._responsesLoaded = cached._responsesLoaded;
+                freshTrial._loadedAreas = cached._loadedAreas;
+                freshTrial._loadedAreaTypes = cached._loadedAreaTypes || {};
+                freshTrial._loadSyncMarker = cached._loadSyncMarker || {};
               }
             }
 
@@ -81,10 +101,13 @@ async function initializeTrials(options = {}) {
 
         for (const freshTrial of freshTrials) {
           const cached = trialState.trials.find(t => t.id === freshTrial.id);
-          if (cached && cached._responsesLoaded) {
+          if (cached && (cached._responsesLoaded || (Array.isArray(cached._loadedAreas) && cached._loadedAreas.length > 0))) {
             freshTrial.responses = cached.responses;
             freshTrial.agronomyResponses = cached.agronomyResponses;
-            freshTrial._responsesLoaded = true;
+            freshTrial._responsesLoaded = cached._responsesLoaded;
+            freshTrial._loadedAreas = cached._loadedAreas;
+            freshTrial._loadedAreaTypes = cached._loadedAreaTypes || {};
+            freshTrial._loadSyncMarker = cached._loadSyncMarker || {};
           }
         }
 
@@ -217,14 +240,6 @@ function renderTrials() {
   renderDashboardTrialProgress();
   if (typeof refreshReminderViewsRealtime === "function") {
     refreshReminderViewsRealtime();
-  }
-
-  const databaseContent = document.getElementById("databaseContent");
-  if (
-    databaseContent?.classList.contains("active") &&
-    typeof renderDatabaseTable === "function"
-  ) {
-    renderDatabaseTable();
   }
 }
 
@@ -669,10 +684,6 @@ function enterTrialFullscreenMode({ title, onClose }) {
     "runTrialSaveBtn",
     "trialReportSheetSelect",
     "trialReportTopbarDownloadBtn",
-    "databaseSeasonFilter",
-    "databaseYearFilter",
-    "databaseLocationFilter",
-    "databaseExportBtn",
     "userMenu",
   ];
 
@@ -4729,120 +4740,275 @@ function getTrialProgress(trial) {
 
 /**
  * Load observation responses for a single trial from Drive.
- * Sets trial._responsesLoaded = true when done.
+ * Sets trial._responsesLoaded = true when all areas are loaded.
+ * @param {string} trialId
+ * @param {number|string} areaIndex - specific area to load
+ * @param {function} [onProgress] - progress callback
  */
-async function loadTrialResponsesFromDrive(trialId, onProgress) {
+async function loadTrialAreaFromDrive(trialId, areaIndex, onProgress, options = {}) {
   const trial = trialState.trials.find(t => t.id === trialId);
   if (!trial) return;
-  if (trial._responsesLoaded) return; // Already loaded
 
-  const reportProgress = (loaded, total) => {
-    if (typeof onProgress === "function") {
-      const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
-      onProgress({ loaded, total, percentage: pct });
-    }
+  const areaIdx = String(areaIndex);
+  const loadType = options.type || "all"; // "all" | "observation" | "agronomy"
+
+  // Initialize tracking
+  if (!Array.isArray(trial._loadedAreas)) trial._loadedAreas = [];
+  if (!trial.responses) trial.responses = {};
+  if (!trial.agronomyResponses) trial.agronomyResponses = {};
+
+  // Track per-type loading
+  if (!trial._loadedAreaTypes) trial._loadedAreaTypes = {};
+  if (!trial._loadedAreaTypes[areaIdx]) trial._loadedAreaTypes[areaIdx] = {};
+  if (!trial._loadSyncMarker) trial._loadSyncMarker = {};
+  if (!trial._loadSyncMarker[areaIdx]) trial._loadSyncMarker[areaIdx] = {};
+
+  // Already loaded this area+type
+  if (loadType === "all" && trial._loadedAreas.includes(areaIdx)) return;
+  if (loadType === "observation" && trial._loadedAreaTypes[areaIdx].observation) return;
+  if (loadType === "agronomy" && trial._loadedAreaTypes[areaIdx].agronomy) return;
+
+  const totalAreas = (trial.areas || []).length;
+  const areaNum = Number(areaIdx);
+  const areaName = trial.areas?.[areaNum]?.name || `Area ${areaNum + 1}`;
+
+  const report = (info) => {
+    if (typeof onProgress === "function") onProgress(info);
   };
+
+  report({ areaName, percentage: 0, step: "Connecting..." });
 
   try {
     const rootFolderId = await getTrialsFolderId();
     const trialFolder = await findFolder(trialId, rootFolderId);
-    if (!trialFolder) { trial._responsesLoaded = true; reportProgress(1, 1); return; }
+    if (!trialFolder) {
+      // No trial folder on Drive — mark area as loaded (empty)
+      trial._loadedAreas.push(areaIdx);
+      _checkAllAreasLoaded(trial);
+      report({ areaName, percentage: 100, step: "Done" });
+      return;
+    }
 
-    // Collect all files to load first, so we can track progress
-    let allFiles = [];
-    let loadedCount = 0;
+    // --- LOAD RESPONSES ---
+    const loadObs = loadType === "all" || loadType === "observation";
+    const loadAgro = loadType === "all" || loadType === "agronomy";
 
-    // Load responses from responses/ subfolder
+    if (loadObs) {
     const responsesFolderObj = await findFolder("responses", trialFolder.id);
-    let respFilesList = [];
+    if (!trial.responses[areaIdx]) trial.responses[areaIdx] = {};
+
     if (responsesFolderObj) {
-      const respFiles = await gapi.client.drive.files.list({
-        q: `'${responsesFolderObj.id}' in parents and mimeType='application/json' and trashed=false`,
-        fields: "files(id, name)",
-        pageSize: 1000,
-      });
-      respFilesList = respFiles.result.files || [];
-      allFiles.push(...respFilesList.map(f => ({ ...f, type: "response" })));
-    }
+      report({ areaName, percentage: 10, step: "Loading parameters..." });
 
-    // Load agronomy files list
-    const agronomyFolder = await findFolder("agronomy", trialFolder.id);
-    let agroFilesList = [];
-    if (agronomyFolder) {
-      const agroFiles = await gapi.client.drive.files.list({
-        q: `'${agronomyFolder.id}' in parents and mimeType='application/json' and trashed=false`,
-        fields: "files(id, name)",
-        pageSize: 1000,
-      });
-      agroFilesList = agroFiles.result.files || [];
-      allFiles.push(...agroFilesList.map(f => ({ ...f, type: "agronomy" })));
-    }
+      // Try consolidated file first: {areaIdx}~responses.json
+      const consolidatedResp = await findFile(`${areaIdx}~responses.json`, responsesFolderObj.id);
+      if (consolidatedResp) {
+        const data = await getFileContent(consolidatedResp.id);
+        trial.responses[areaIdx] = data || {};
+        report({ areaName, percentage: 50, step: "Parameters loaded" });
+      } else {
+        // Fallback: load individual files for this area
+        const respFiles = await gapi.client.drive.files.list({
+          q: `'${responsesFolderObj.id}' in parents and mimeType='application/json' and name contains '${areaIdx}~' and trashed=false`,
+          fields: "files(id, name)",
+          pageSize: 1000,
+        });
+        const areaRespFiles = (respFiles.result.files || []).filter(f => {
+          const base = f.name.replace(".json", "");
+          const parts = base.split("~");
+          return parts[0] === areaIdx && parts[1] !== "responses";
+        });
 
-    const totalFiles = allFiles.length;
-    reportProgress(0, totalFiles);
+        // Also check legacy format: {areaIdx}_{paramId}.json
+        const legacyFiles = await gapi.client.drive.files.list({
+          q: `'${responsesFolderObj.id}' in parents and mimeType='application/json' and name contains '${areaIdx}_' and trashed=false`,
+          fields: "files(id, name)",
+          pageSize: 1000,
+        });
+        const legacyRespFiles = (legacyFiles.result.files || []).filter(f => {
+          const base = f.name.replace(".json", "");
+          const sepIdx = base.indexOf("_");
+          return sepIdx !== -1 && base.substring(0, sepIdx) === areaIdx;
+        });
 
-    // Load response files
-    const responses = {};
-    for (const respFile of respFilesList) {
-      try {
-        const respData = await getFileContent(respFile.id);
-        const fileName = respFile.name.replace(".json", "");
+        const allRespFiles = [...areaRespFiles, ...legacyRespFiles];
+        const total = allRespFiles.length;
 
-        if (fileName.includes("~")) {
-          const parts = fileName.split("~");
-          if (parts.length < 4) { loadedCount++; reportProgress(loadedCount, totalFiles); continue; }
-          const areaIndex = parts[0];
-          const paramId = parts[1];
-          if (!responses[areaIndex]) responses[areaIndex] = {};
-          if (!responses[areaIndex][paramId]) responses[areaIndex][paramId] = {};
-          Object.assign(responses[areaIndex][paramId], respData);
-        } else {
-          const sepIdx = fileName.indexOf("_");
-          if (sepIdx === -1) { loadedCount++; reportProgress(loadedCount, totalFiles); continue; }
-          const areaIndex = fileName.substring(0, sepIdx);
-          const paramId = fileName.substring(sepIdx + 1);
-          if (!responses[areaIndex]) responses[areaIndex] = {};
-          responses[areaIndex][paramId] = respData;
+        for (let i = 0; i < allRespFiles.length; i++) {
+          const respFile = allRespFiles[i];
+          try {
+            const respData = await getFileContent(respFile.id);
+            const fileName = respFile.name.replace(".json", "");
+
+            if (fileName.includes("~")) {
+              const parts = fileName.split("~");
+              if (parts.length >= 4) {
+                const paramId = parts[1];
+                if (!trial.responses[areaIdx][paramId]) trial.responses[areaIdx][paramId] = {};
+                Object.assign(trial.responses[areaIdx][paramId], respData);
+              }
+            } else {
+              const sepIdx = fileName.indexOf("_");
+              if (sepIdx !== -1) {
+                const paramId = fileName.substring(sepIdx + 1);
+                trial.responses[areaIdx][paramId] = respData;
+              }
+            }
+          } catch (e) {
+            console.error(`Error loading response ${respFile.name}:`, e);
+          }
+          const pct = 10 + Math.round(((i + 1) / Math.max(total, 1)) * 40);
+          report({ areaName, percentage: pct, step: `Parameters ${i + 1}/${total}` });
         }
-      } catch (e) {
-        console.error(`Error loading response ${respFile.name}:`, e);
+
+        // Migrate: save consolidated file for future fast loads
+        if (Object.keys(trial.responses[areaIdx]).length > 0) {
+          try {
+            await saveAreaResponsesToDrive(trial, areaIdx);
+          } catch (e) {
+            console.warn("Migration save failed (responses):", e);
+          }
+        }
       }
-      loadedCount++;
-      reportProgress(loadedCount, totalFiles);
     }
-    trial.responses = responsesFolderObj ? responses : (trial.responses || {});
+    trial._loadedAreaTypes[areaIdx].observation = true;
+    trial._loadSyncMarker[areaIdx].observation = new Date().toISOString();
+    } // end loadObs
 
-    // Load agronomy files
-    const agronomyResponses = {};
-    for (const agroFile of agroFilesList) {
-      try {
-        const agroData = await getFileContent(agroFile.id);
-        const fileName = agroFile.name.replace(".json", "");
-        const parts = fileName.split("~");
-        if (parts.length < 2) { loadedCount++; reportProgress(loadedCount, totalFiles); continue; }
-        const areaIndex = parts[0];
-        const itemId = parts[1];
-        if (!agronomyResponses[areaIndex]) agronomyResponses[areaIndex] = {};
-        agronomyResponses[areaIndex][itemId] = agroData;
-      } catch (e) {
-        console.error(`Error loading agronomy response ${agroFile.name}:`, e);
+    // --- LOAD AGRONOMY ---
+    if (loadAgro) {
+    const agronomyFolderObj = await findFolder("agronomy", trialFolder.id);
+    if (!trial.agronomyResponses[areaIdx]) trial.agronomyResponses[areaIdx] = {};
+
+    if (agronomyFolderObj) {
+      report({ areaName, percentage: 55, step: "Loading locations..." });
+
+      // Try consolidated file first: {areaIdx}~agronomy.json
+      const consolidatedAgro = await findFile(`${areaIdx}~agronomy.json`, agronomyFolderObj.id);
+      if (consolidatedAgro) {
+        const data = await getFileContent(consolidatedAgro.id);
+        trial.agronomyResponses[areaIdx] = data || {};
+        report({ areaName, percentage: 90, step: "Locations loaded" });
+      } else {
+        // Fallback: load individual agronomy files
+        const agroFiles = await gapi.client.drive.files.list({
+          q: `'${agronomyFolderObj.id}' in parents and mimeType='application/json' and name contains '${areaIdx}~' and trashed=false`,
+          fields: "files(id, name)",
+          pageSize: 1000,
+        });
+        const areaAgroFiles = (agroFiles.result.files || []).filter(f => {
+          const base = f.name.replace(".json", "");
+          const parts = base.split("~");
+          return parts[0] === areaIdx && parts[1] !== "agronomy";
+        });
+
+        const total = areaAgroFiles.length;
+        for (let i = 0; i < areaAgroFiles.length; i++) {
+          const agroFile = areaAgroFiles[i];
+          try {
+            const agroData = await getFileContent(agroFile.id);
+            const fileName = agroFile.name.replace(".json", "");
+            const parts = fileName.split("~");
+            if (parts.length >= 2) {
+              const itemId = parts[1];
+              trial.agronomyResponses[areaIdx][itemId] = agroData;
+            }
+          } catch (e) {
+            console.error(`Error loading agronomy ${agroFile.name}:`, e);
+          }
+          const pct = 55 + Math.round(((i + 1) / Math.max(total, 1)) * 35);
+          report({ areaName, percentage: pct, step: `Locations ${i + 1}/${total}` });
+        }
+
+        // Migrate: save consolidated file
+        if (Object.keys(trial.agronomyResponses[areaIdx]).length > 0) {
+          try {
+            await saveAreaAgronomyToDrive(trial, areaIdx);
+          } catch (e) {
+            console.warn("Migration save failed (agronomy):", e);
+          }
+        }
       }
-      loadedCount++;
-      reportProgress(loadedCount, totalFiles);
     }
-    trial.agronomyResponses = agronomyFolder ? agronomyResponses : (trial.agronomyResponses || {});
+    trial._loadedAreaTypes[areaIdx].agronomy = true;
+    trial._loadSyncMarker[areaIdx].agronomy = new Date().toISOString();
+    } // end loadAgro
 
-    trial._responsesLoaded = true;
-    reportProgress(totalFiles, totalFiles);
+    // Mark area as loaded if both types done
+    const types = trial._loadedAreaTypes[areaIdx] || {};
+    if (types.observation && types.agronomy && !trial._loadedAreas.includes(areaIdx)) {
+      trial._loadedAreas.push(areaIdx);
+      _checkAllAreasLoaded(trial);
+    }
 
-    // Update local cache with newly loaded responses
+    // Save cache
     if (typeof saveLocalCache === "function") {
       saveLocalCache("trials", { trials: trialState.trials });
     }
+
+    report({ areaName, percentage: 100, step: "Done" });
   } catch (error) {
-    console.error(`Error lazy-loading responses for trial ${trialId}:`, error);
-    // Mark as loaded anyway to avoid repeated failures
+    console.error(`Error loading area ${areaIdx} for trial ${trialId}:`, error);
+    // Save whatever partial data we got
+    if (typeof saveLocalCache === "function") {
+      saveLocalCache("trials", { trials: trialState.trials });
+    }
+    throw error;
+  }
+}
+
+/** Check if all areas are loaded and set _responsesLoaded flag */
+function _checkAllAreasLoaded(trial) {
+  const totalAreas = (trial.areas || []).length;
+  if (totalAreas > 0 && trial._loadedAreas.length >= totalAreas) {
     trial._responsesLoaded = true;
+  }
+}
+
+/**
+ * Load ALL areas for a trial (convenience wrapper).
+ * @param {string} trialId
+ * @param {function} [onProgress] - progress callback
+ */
+async function loadTrialResponsesFromDrive(trialId, onProgress) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial) return;
+  if (trial._responsesLoaded) return;
+
+  if (!Array.isArray(trial._loadedAreas)) trial._loadedAreas = [];
+
+  const totalAreas = (trial.areas || []).length;
+  const areasToLoad = [];
+  for (let i = 0; i < totalAreas; i++) {
+    if (!trial._loadedAreas.includes(String(i))) areasToLoad.push(i);
+  }
+
+  for (let i = 0; i < areasToLoad.length; i++) {
+    const areaIdx = areasToLoad[i];
+    const areaName = trial.areas?.[areaIdx]?.name || `Area ${areaIdx + 1}`;
+    if (typeof onProgress === "function") {
+      onProgress({
+        areasLoaded: trial._loadedAreas.length,
+        areasTotal: totalAreas,
+        percentage: Math.round((trial._loadedAreas.length / totalAreas) * 100),
+        areaName,
+        filesLoaded: 0,
+        filesTotal: 0,
+      });
+    }
+    await loadTrialAreaFromDrive(trialId, areaIdx, (info) => {
+      if (typeof onProgress === "function") {
+        onProgress({
+          areasLoaded: trial._loadedAreas.length,
+          areasTotal: totalAreas,
+          percentage: Math.round(((trial._loadedAreas.length + info.percentage / 100) / totalAreas) * 100),
+          areaName: info.areaName,
+          filesLoaded: 0,
+          filesTotal: 0,
+          step: info.step,
+        });
+      }
+    });
   }
 }
 
@@ -4859,6 +5025,12 @@ async function ensureTrialResponsesLoaded(trialId) {
   if (!trial) return false;
   if (trial._responsesLoaded) return true;
 
+  const loadedCount = Array.isArray(trial._loadedAreas) ? trial._loadedAreas.length : 0;
+  const totalAreas = (trial.areas || []).length;
+  const partialMsg = loadedCount > 0
+    ? `<p style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-secondary)">${loadedCount} of ${totalAreas} areas already loaded.</p>`
+    : "";
+
   return new Promise((resolve) => {
     const modal = document.createElement("div");
     modal.className = "confirm-modal active";
@@ -4870,11 +5042,12 @@ async function ensureTrialResponsesLoaded(trialId) {
           <h3>Trial Data Not Loaded</h3>
         </div>
         <div class="confirm-modal-body">
-          <p>Response data for <b>${escapeHtml(trial.name)}</b> has not been loaded from Google Drive yet. You need to load the data before continuing.</p>
+          <p>Response data for <b>${escapeHtml(trial.name)}</b> has not been fully loaded from Google Drive yet. You need to load all areas before continuing.</p>
+          ${partialMsg}
         </div>
         <div class="confirm-modal-footer">
           <button class="btn btn-secondary" id="loadConfirmCancelBtn">Cancel</button>
-          <button class="btn btn-primary" id="loadConfirmNowBtn"><span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Load Now</button>
+          <button class="btn btn-primary" id="loadConfirmNowBtn"><span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Open Load Panel</button>
         </div>
       </div>
     `;
@@ -4890,22 +5063,13 @@ async function ensureTrialResponsesLoaded(trialId) {
 
     modal.querySelector("#loadConfirmNowBtn").addEventListener("click", async () => {
       cleanup();
-      // Open load panel and auto-trigger load for this trial
+      // Open load panel so user can select which areas to load
       if (typeof openLoadDataPanel === "function") openLoadDataPanel("trial");
-      // Wait a tick for panel to render, then trigger the load button
+      // Auto-expand the trial in the list
       await new Promise(r => setTimeout(r, 100));
-      const trialItem = document.querySelector(`.load-data-trial-item[data-trial-id="${trialId}"]`);
-      const loadBtn = trialItem?.querySelector(".load-data-trial-btn:not(.load-data-unload-btn)");
-      if (loadBtn) {
-        loadBtn.click();
-      } else {
-        // Fallback: load directly
-        try {
-          await loadTrialResponsesFromDrive(trialId);
-          renderLoadDataTrialList();
-        } catch (err) {
-          showToast("Error loading trial data: " + err.message, "error");
-        }
+      const group = document.querySelector(`.load-data-trial-group[data-trial-id="${trialId}"]`);
+      if (group && !group.classList.contains("expanded")) {
+        group.classList.add("expanded");
       }
       resolve(false);
     });
@@ -5143,68 +5307,30 @@ async function saveTrialToGoogleDrive(trial) {
 }
 
 // Save a single line's responses to Drive (targeted — per area+param+rep+line file)
+// LEGACY: kept for backward compatibility but auto-save now uses consolidated format
 async function saveTrialLineToDrive(trial, areaIndex, paramId, repIndex, lineId) {
-  const rootFolderId = await getTrialsFolderId();
-  const trialFolderId = await getOrCreateFolder(trial.id, rootFolderId);
-  const responsesFolderId = await getOrCreateFolder("responses", trialFolderId);
-
-  // Extract all data keys belonging to this line (samples + per-line photos)
-  const paramResponses = trial.responses?.[areaIndex]?.[paramId] || {};
-  const lineData = {};
-  const prefix = `${lineId}_${repIndex}_`;
-  const exactKey = `${lineId}_${repIndex}`;
-
-  for (const key of Object.keys(paramResponses)) {
-    if (key === exactKey || key.startsWith(prefix)) {
-      lineData[key] = paramResponses[key];
-    }
-  }
-
-  if (Object.keys(lineData).length === 0) return; // Nothing to save
-
-  const fileName = `${areaIndex}~${paramId}~${repIndex}~${lineId}.json`;
-  await uploadJsonFile(fileName, responsesFolderId, lineData);
+  // Redirect to consolidated area save
+  return saveAreaResponsesToDrive(trial, areaIndex);
 }
 
-// Save all responses for a trial to Drive (full backup — iterates per area+param+rep+line)
-async function saveTrialResponsesToDrive(trial) {
+// Save ALL responses for a single area as one consolidated file: {areaIndex}~responses.json
+async function saveAreaResponsesToDrive(trial, areaIndex) {
+  const areaResponses = trial.responses?.[areaIndex];
+  if (!areaResponses || Object.keys(areaResponses).length === 0) return;
+
   const rootFolderId = await getTrialsFolderId();
   const trialFolderId = await getOrCreateFolder(trial.id, rootFolderId);
   const responsesFolderId = await getOrCreateFolder("responses", trialFolderId);
 
+  const fileName = `${areaIndex}~responses.json`;
+  await uploadJsonFile(fileName, responsesFolderId, areaResponses);
+}
+
+// Save all responses for a trial to Drive (full backup — one consolidated file per area)
+async function saveTrialResponsesToDrive(trial) {
   const responses = trial.responses || {};
-
   for (const areaIndex of Object.keys(responses)) {
-    for (const paramId of Object.keys(responses[areaIndex])) {
-      const area = trial.areas?.[parseInt(areaIndex)];
-      const layoutResult = area?.layout?.result || [];
-
-      for (let repIndex = 0; repIndex < layoutResult.length; repIndex++) {
-        const grid = layoutResult[repIndex] || [];
-        const uniqueLines = new Set();
-        grid.forEach(row => (row || []).forEach(cell => {
-          if (cell?.id) uniqueLines.add(cell.id);
-        }));
-
-        for (const lineId of uniqueLines) {
-          const paramResponses = responses[areaIndex]?.[paramId] || {};
-          const lineData = {};
-          const prefix = `${lineId}_${repIndex}_`;
-          const exactKey = `${lineId}_${repIndex}`;
-
-          for (const key of Object.keys(paramResponses)) {
-            if (key === exactKey || key.startsWith(prefix)) {
-              lineData[key] = paramResponses[key];
-            }
-          }
-
-          if (Object.keys(lineData).length === 0) continue;
-
-          const fileName = `${areaIndex}~${paramId}~${repIndex}~${lineId}.json`;
-          await uploadJsonFile(fileName, responsesFolderId, lineData);
-        }
-      }
-    }
+    await saveAreaResponsesToDrive(trial, areaIndex);
   }
 }
 
@@ -5247,6 +5373,128 @@ async function uploadJsonFile(fileName, parentFolderId, data) {
   });
 
   await request;
+}
+
+// Upload a binary blob (e.g. WebP photo) to Drive, returns file id
+async function uploadBinaryFileToDrive(fileName, parentFolderId, blob, mimeType) {
+  const existingFile = await findFile(fileName, parentFolderId);
+  const token = getAccessToken();
+  if (!token) throw new Error("No access token");
+
+  const metadata = { name: fileName, mimeType };
+  if (!existingFile) metadata.parents = [parentFolderId];
+
+  const form = new FormData();
+  form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+  form.append("file", blob);
+
+  const url = existingFile
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=multipart`
+    : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
+
+  const resp = await fetch(url, {
+    method: existingFile ? "PATCH" : "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`);
+  const result = await resp.json();
+  return result.id;
+}
+
+// Delete a file from Drive by file ID
+async function deleteDriveFileById(fileId) {
+  const token = getAccessToken();
+  if (!token) throw new Error("No access token");
+  const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok && resp.status !== 204) throw new Error(`Delete failed: ${resp.status}`);
+}
+
+// Convert a base64 data URL to a compressed WebP blob (max 1000x1000, quality 0.7)
+function compressPhotoToWebP(dataUrl, maxSize = 1000, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > maxSize || h > maxSize) {
+        const scale = maxSize / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => blob ? resolve({ blob, width: w, height: h }) : reject(new Error("Canvas toBlob failed")),
+        "image/webp",
+        quality,
+      );
+    };
+    img.onerror = () => reject(new Error("Image load failed"));
+    img.src = dataUrl;
+  });
+}
+
+// Photo display helpers: handle both base64 strings and external references
+const _photoBlobCache = {};
+
+function getPhotoSrc(photo) {
+  if (typeof photo === "string") return photo;
+  if (photo && photo.fileId) return _photoBlobCache[photo.fileId] || "";
+  return "";
+}
+
+async function loadExternalPhotos(containerSelector) {
+  const container = typeof containerSelector === "string"
+    ? document.querySelector(containerSelector)
+    : containerSelector;
+  if (!container) return;
+
+  const imgs = container.querySelectorAll("img[data-photo-fileid]");
+  const token = getAccessToken();
+  if (!token || imgs.length === 0) return;
+
+  for (const img of imgs) {
+    const fileId = img.dataset.photoFileid;
+    if (!fileId) continue;
+    if (_photoBlobCache[fileId]) {
+      img.src = _photoBlobCache[fileId];
+      continue;
+    }
+    try {
+      const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) continue;
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      _photoBlobCache[fileId] = url;
+      img.src = url;
+    } catch (e) {
+      console.warn("Failed to load external photo:", e);
+    }
+  }
+}
+
+function renderPhotoThumb(photo, idx, removeFunc, previewFunc) {
+  const isRef = typeof photo === "object" && photo && photo.fileId;
+  const src = isRef ? (_photoBlobCache[photo.fileId] || "") : photo;
+  const fileIdAttr = isRef ? `data-photo-fileid="${photo.fileId}"` : "";
+  const placeholderClass = isRef && !src ? "photo-loading" : "";
+  return `
+    <div class="run-photo-preview ${placeholderClass}" data-index="${idx}" onclick="${previewFunc}(${idx})">
+      <img src="${src || ''}" alt="Photo ${idx + 1}" ${fileIdAttr}>
+      ${isRef && !src ? '<span class="material-symbols-rounded photo-placeholder-icon spin-slow">progress_activity</span>' : ''}
+      <button class="run-photo-remove" onclick="${removeFunc}(${idx}); event.stopPropagation();">
+        <span class="material-symbols-rounded">close</span>
+      </button>
+    </div>
+  `;
 }
 
 // Delete trial folder and all contents from Google Drive
@@ -7257,14 +7505,7 @@ function renderAgronomyQuestionCard() {
         Photo Documentation
       </div>
       <div class="run-photo-upload" id="agronomyPhotoContainer">
-        ${existingPhotos.map((photo, idx) => `
-          <div class="run-photo-preview" data-index="${idx}" onclick="openAgronomyPhotoPreview(${idx})">
-            <img src="${photo}" alt="Photo ${idx + 1}">
-            <button class="run-photo-remove" onclick="removeAgronomyPhoto(${idx}); event.stopPropagation();">
-              <span class="material-symbols-rounded">close</span>
-            </button>
-          </div>
-        `).join("")}
+        ${existingPhotos.map((photo, idx) => renderPhotoThumb(photo, idx, "removeAgronomyPhoto", "openAgronomyPhotoPreview")).join("")}
         <label class="run-photo-add" onclick="showAgronomyPhotoUploadChoice(event)">
           <span class="material-symbols-rounded">add_a_photo</span>
           <span>Add</span>
@@ -7344,6 +7585,9 @@ function renderAgronomyQuestionCard() {
       </div>
     </div>
   `;
+
+  // Load external photo references
+  loadExternalPhotos("#agronomyPhotoContainer");
 }
 
 // Navigation
@@ -7440,8 +7684,8 @@ async function autoSaveAgronomyProgress() {
 
       enqueueSync({
         label: `Saving ${trialName} · ${areaName} · ${itemName}`,
-        fileKey: `${trial.id}~agronomy~${areaIndex}~${itemId}`,
-        run: () => saveAgronomyResponseToDrive(trial, areaIndex, itemId),
+        fileKey: `${trial.id}~agronomy~${areaIndex}`,
+        run: () => saveAreaAgronomyToDrive(trial, areaIndex),
       });
     } else {
       enqueueSync({
@@ -7473,33 +7717,29 @@ async function autoSaveAgronomyProgress() {
   }
 }
 
-// Save single agronomy response to Drive
+// Save single agronomy response to Drive — redirects to consolidated area save
 async function saveAgronomyResponseToDrive(trial, areaIndex, itemId) {
-  const rootFolderId = await getTrialsFolderId();
-  const trialFolderId = await getOrCreateFolder(trial.id, rootFolderId);
-  const agronomyFolderId = await getOrCreateFolder("agronomy", trialFolderId);
-
-  const responseData = trial.agronomyResponses?.[areaIndex]?.[itemId];
-  if (!responseData) return;
-
-  const fileName = `${areaIndex}~${itemId}.json`;
-  await uploadJsonFile(fileName, agronomyFolderId, responseData);
+  return saveAreaAgronomyToDrive(trial, areaIndex);
 }
 
-// Save all agronomy responses to Drive
-async function saveAllAgronomyResponsesToDrive(trial) {
+// Save ALL agronomy responses for a single area as one consolidated file: {areaIndex}~agronomy.json
+async function saveAreaAgronomyToDrive(trial, areaIndex) {
+  const areaAgronomy = trial.agronomyResponses?.[areaIndex];
+  if (!areaAgronomy || Object.keys(areaAgronomy).length === 0) return;
+
   const rootFolderId = await getTrialsFolderId();
   const trialFolderId = await getOrCreateFolder(trial.id, rootFolderId);
   const agronomyFolderId = await getOrCreateFolder("agronomy", trialFolderId);
 
+  const fileName = `${areaIndex}~agronomy.json`;
+  await uploadJsonFile(fileName, agronomyFolderId, areaAgronomy);
+}
+
+// Save all agronomy responses to Drive (one consolidated file per area)
+async function saveAllAgronomyResponsesToDrive(trial) {
   const responses = trial.agronomyResponses || {};
   for (const areaIndex of Object.keys(responses)) {
-    for (const itemId of Object.keys(responses[areaIndex])) {
-      const responseData = responses[areaIndex][itemId];
-      if (!responseData) continue;
-      const fileName = `${areaIndex}~${itemId}.json`;
-      await uploadJsonFile(fileName, agronomyFolderId, responseData);
-    }
+    await saveAreaAgronomyToDrive(trial, areaIndex);
   }
 }
 
@@ -7593,7 +7833,13 @@ function removeAgronomyPhoto(idx) {
 
   const resp = agronomyMonitoringState.responses[areaIndex]?.[itemId];
   if (!resp || !resp.photos) return;
-  resp.photos.splice(idx, 1);
+  const removed = resp.photos.splice(idx, 1)[0];
+
+  // If the removed photo was an external reference, delete from Drive
+  if (removed && typeof removed === "object" && removed.fileId) {
+    deleteDriveFileById(removed.fileId).catch(e => console.warn("Failed to delete agronomy photo file:", e));
+  }
+
   resp.timestamp = new Date().toISOString();
 
   autoSaveAgronomyProgress();
@@ -7606,11 +7852,18 @@ function openAgronomyPhotoPreview(idx) {
   const resp = agronomyMonitoringState.responses[areaIndex]?.[itemId];
   if (!resp || !resp.photos || !resp.photos[idx]) return;
 
-  // Reuse existing photo preview modal
+  const photo = resp.photos[idx];
   const modal = document.getElementById("photoPreviewModal");
   const img = modal?.querySelector("img");
   if (modal && img) {
-    img.src = resp.photos[idx];
+    const src = getPhotoSrc(photo);
+    if (src) {
+      img.src = src;
+    } else if (typeof photo === "object" && photo.fileId) {
+      img.src = "";
+      img.dataset.photoFileid = photo.fileId;
+      loadExternalPhotos(modal);
+    }
     modal.classList.remove("hidden");
     modal.classList.add("active");
   }
@@ -8520,14 +8773,7 @@ function renderQuestionCard() {
         <div class="run-photo-upload" id="runPhotoContainer">
           ${photoList
             .map(
-              (photo, idx) => `
-            <div class="run-photo-preview" data-index="${idx}" onclick="openPhotoPreview(${idx})">
-              <img src="${photo}" alt="Photo ${idx + 1}">
-              <button class="run-photo-remove" onclick="removePhoto(${idx}); event.stopPropagation();">
-                <span class="material-symbols-rounded">close</span>
-              </button>
-            </div>
-          `
+              (photo, idx) => renderPhotoThumb(photo, idx, "removePhoto", "openPhotoPreview")
             )
             .join("")}
           <label class="run-photo-add" onclick="showPhotoUploadChoice(event)">
@@ -8607,6 +8853,9 @@ function renderQuestionCard() {
     if (nextLineBtn && !isLastOverall) nextLineBtn.disabled = true;
     if (nextAreaBtn && areaIndex < trial.areas.length - 1) nextAreaBtn.style.display = "flex";
   }
+
+  // Load external photo references
+  loadExternalPhotos("#runPhotoContainer");
 }
 
 function finishRunTrialLastQuestion() {
@@ -8890,16 +9139,18 @@ function removePhoto(idx) {
   // Get current photos from response
   const response = runTrialState.responses[areaIndex]?.[paramId]?.[photoKey];
   if (response && response.photos) {
-    // Remove photo at index
-    response.photos.splice(idx, 1);
+    const removed = response.photos.splice(idx, 1)[0];
+    
+    // If the removed photo was an external reference, delete from Drive
+    if (removed && typeof removed === "object" && removed.fileId) {
+      deleteDriveFileById(removed.fileId).catch(e => console.warn("Failed to delete photo file:", e));
+    }
     
     // Update timestamp
     response.timestamp = new Date().toISOString();
-    
-    // If no photos left, we can keep the empty array or remove the response
-    // Let's keep it to maintain the structure
   }
   
+  autoSaveProgress();
   renderQuestionCard();
 }
 
@@ -8942,7 +9193,15 @@ function openPhotoPreview(photoIndex = 0) {
   const nextBtn = document.getElementById("nextPhotoBtn");
   
   if (modal && image && counter) {
-    image.src = photos[photoPreviewState.currentIndex];
+    const currentPhoto = photos[photoPreviewState.currentIndex];
+    const src = getPhotoSrc(currentPhoto);
+    if (src) {
+      image.src = src;
+    } else if (typeof currentPhoto === "object" && currentPhoto.fileId) {
+      image.src = "";
+      image.dataset.photoFileid = currentPhoto.fileId;
+      loadExternalPhotos(modal);
+    }
     counter.textContent = `${photoPreviewState.currentIndex + 1} / ${photos.length}`;
     prevBtn.disabled = photoPreviewState.currentIndex === 0;
     nextBtn.disabled = photoPreviewState.currentIndex === photos.length - 1;
@@ -8977,7 +9236,17 @@ function navigatePhotos(direction) {
   const nextBtn = document.getElementById("nextPhotoBtn");
   
   if (image && counter) {
-    image.src = photos[photoPreviewState.currentIndex];
+    const currentPhoto = photos[photoPreviewState.currentIndex];
+    const src = getPhotoSrc(currentPhoto);
+    if (src) {
+      image.src = src;
+      delete image.dataset.photoFileid;
+    } else if (typeof currentPhoto === "object" && currentPhoto.fileId) {
+      image.src = "";
+      image.dataset.photoFileid = currentPhoto.fileId;
+      const modal = document.getElementById("photoPreviewModal");
+      if (modal) loadExternalPhotos(modal);
+    }
     counter.textContent = `${photoPreviewState.currentIndex + 1} / ${photos.length}`;
     prevBtn.disabled = photoPreviewState.currentIndex === 0;
     nextBtn.disabled = photoPreviewState.currentIndex === photos.length - 1;
@@ -9490,8 +9759,8 @@ async function autoSaveProgress() {
       
       enqueueSync({
         label: `Saving ${trialName} · ${areaName} · ${paramName} · ${repLabel} · ${lineName}${sampleLabel}`,
-        fileKey: `${trial.id}~${saveAreaIndex}~${saveParamId}~${saveRepIndex}~${saveLineId}`,
-        run: () => saveTrialLineToDrive(trial, saveAreaIndex, saveParamId, saveRepIndex, saveLineId),
+        fileKey: `${trial.id}~${saveAreaIndex}~responses`,
+        run: () => saveAreaResponsesToDrive(trial, saveAreaIndex),
       });
     } else {
       // Fallback: full backup if current line context is unknown
@@ -11002,847 +11271,6 @@ function getTrialPlantingYear(trial) {
   const match = source.match(/^(\d{4})/);
   return match ? match[1] : "";
 }
-
-const databaseViewState = {
-  initialized: false,
-  menusBound: false,
-  filtersLoaded: false,
-  filters: {},
-  sort: null,
-  freezeUntilColKey: null,
-  visibleColumnKeys: null,
-  columns: {
-    fixed: [],
-    extra: [],
-    params: [],
-    all: [],
-  },
-  rows: [],
-};
-
-function getDatabaseFilterStorageKey() {
-  const email = getCurrentUser?.()?.email || "anonymous";
-  return `advanta_database_filters_${email}`;
-}
-
-function loadDatabaseFiltersFromStorage() {
-  if (databaseViewState.filtersLoaded) return;
-  databaseViewState.filtersLoaded = true;
-
-  try {
-    const raw = localStorage.getItem(getDatabaseFilterStorageKey());
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return;
-    if (parsed.filters && typeof parsed.filters === "object") {
-      databaseViewState.filters = parsed.filters;
-    }
-    if (parsed.sort && typeof parsed.sort === "object") {
-      databaseViewState.sort = parsed.sort;
-    }
-    databaseViewState.freezeUntilColKey = parsed.freezeUntilColKey
-      ? String(parsed.freezeUntilColKey)
-      : null;
-  } catch (error) {
-    console.warn("Failed to load database filters:", error);
-  }
-}
-
-function saveDatabaseFiltersToStorage() {
-  try {
-    localStorage.setItem(
-      getDatabaseFilterStorageKey(),
-      JSON.stringify({
-        filters: databaseViewState.filters,
-        sort: databaseViewState.sort,
-        freezeUntilColKey: databaseViewState.freezeUntilColKey,
-      }),
-    );
-  } catch (error) {
-    console.warn("Failed to save database filters:", error);
-  }
-}
-
-function ensureDatabaseControls() {
-  loadDatabaseFiltersFromStorage();
-  if (databaseViewState.initialized) return;
-
-  databaseViewState.initialized = true;
-}
-
-function normalizeDatabaseFilterValue(value) {
-  const text = String(value ?? "").trim();
-  if (!text) return "__BLANK__";
-  return text;
-}
-
-function getDatabaseFilterLabel(filterValue) {
-  return filterValue === "__BLANK__" ? "(blank)" : filterValue;
-}
-
-function getDatabaseAllColumns() {
-  if (Array.isArray(databaseViewState.columns.all) && databaseViewState.columns.all.length > 0) {
-    return databaseViewState.columns.all;
-  }
-
-  return [
-    ...(databaseViewState.columns.fixed || []).map((column) => ({
-      key: column.key,
-      label: column.label,
-      source: column.source || "fixed",
-      defaultVisible: !!column.defaultVisible,
-    })),
-    ...(databaseViewState.columns.extra || []).map((column) => ({
-      key: column.key,
-      label: column.label,
-      source: column.source || "extra",
-      defaultVisible: !!column.defaultVisible,
-    })),
-    ...(databaseViewState.columns.params || []).map((param) => ({
-      key: `param_${param.id}`,
-      label: param.name || "Parameter",
-      source: "param",
-      defaultVisible: !!param.defaultVisible,
-    })),
-  ];
-}
-
-function getDatabaseDefaultVisibleColumnKeys(allColumns = null) {
-  const columns = Array.isArray(allColumns) && allColumns.length > 0
-    ? allColumns
-    : getDatabaseAllColumns();
-  return columns
-    .filter((column) => column.defaultVisible)
-    .map((column) => column.key);
-}
-
-function getDatabaseVisibleColumns(allColumns = null) {
-  const columns = Array.isArray(allColumns) && allColumns.length > 0
-    ? allColumns
-    : getDatabaseAllColumns();
-
-  if (!Array.isArray(databaseViewState.visibleColumnKeys) || databaseViewState.visibleColumnKeys.length === 0) {
-    const defaults = new Set(getDatabaseDefaultVisibleColumnKeys(columns));
-    const preferred = columns.filter((column) => defaults.has(column.key));
-    return preferred.length > 0 ? preferred : columns;
-  }
-
-  const allowed = new Set(databaseViewState.visibleColumnKeys);
-  const visible = columns.filter((column) => allowed.has(column.key));
-  return visible.length > 0 ? visible : columns;
-}
-
-function setDatabaseVisibleColumns(columnKeys, options = {}) {
-  const allColumns = getDatabaseAllColumns();
-  const hasColumns = Array.isArray(allColumns) && allColumns.length > 0;
-  const allKeys = new Set(allColumns.map((column) => column.key));
-  const normalized = Array.isArray(columnKeys)
-    ? Array.from(
-      new Set(
-        columnKeys
-          .map((key) => String(key))
-          .filter((key) => (hasColumns ? allKeys.has(key) : !!key)),
-      ),
-    )
-    : [];
-
-  databaseViewState.visibleColumnKeys = normalized.length > 0
-    ? normalized
-    : null;
-
-  if (!options.skipRender) {
-    const databaseContent = document.getElementById("databaseContent");
-    if (databaseContent?.classList.contains("active")) {
-      renderDatabaseTable();
-    }
-  }
-}
-
-function getDatabaseColumnOptionsForSettings() {
-  const dataset = buildDatabaseDataset();
-  const allColumns = [
-    ...dataset.fixedColumns.map((column) => ({
-      key: column.key,
-      label: column.label,
-      source: column.source || "fixed",
-      defaultVisible: !!column.defaultVisible,
-    })),
-    ...(dataset.extraColumns || []).map((column) => ({
-      key: column.key,
-      label: column.label,
-      source: column.source || "extra",
-      defaultVisible: !!column.defaultVisible,
-    })),
-    ...dataset.parameterColumns.map((param) => ({
-      key: `param_${param.id}`,
-      label: param.name || "Parameter",
-      source: "param",
-      defaultVisible: !!param.defaultVisible,
-    })),
-  ];
-
-  databaseViewState.columns.fixed = dataset.fixedColumns;
-  databaseViewState.columns.extra = dataset.extraColumns || [];
-  databaseViewState.columns.params = dataset.parameterColumns;
-  databaseViewState.columns.all = allColumns;
-
-  const visible = new Set(getDatabaseVisibleColumns(allColumns).map((column) => column.key));
-  return allColumns.map((column) => ({
-    key: column.key,
-    label: column.label,
-    visible: visible.has(column.key),
-  }));
-}
-
-function getDatabaseColumnFilterSetting(colKey) {
-  if (!databaseViewState.filters[colKey]) {
-    databaseViewState.filters[colKey] = {
-      mode: "default",
-      selectedValues: [],
-    };
-  }
-  return databaseViewState.filters[colKey];
-}
-
-function getDatabaseUniqueColumnValues(rows, colKey) {
-  const unique = new Set();
-  (rows || []).forEach((row) => {
-    unique.add(normalizeDatabaseFilterValue(row?.[colKey]));
-  });
-  return Array.from(unique).sort((a, b) =>
-    getDatabaseFilterLabel(a).localeCompare(getDatabaseFilterLabel(b), undefined, {
-      numeric: true,
-      sensitivity: "base",
-    }),
-  );
-}
-
-function applyDatabaseFilters(rows) {
-  if (!Array.isArray(rows) || rows.length === 0) return [];
-
-  const hasCustomFilter = Object.values(databaseViewState.filters || {}).some(
-    (setting) => setting?.mode === "custom",
-  );
-  if (!hasCustomFilter) return rows;
-
-  return rows.filter((row) =>
-    Object.entries(databaseViewState.filters || {}).every(([colKey, setting]) => {
-      if (!setting || setting.mode !== "custom") return true;
-      const selected = Array.isArray(setting.selectedValues)
-        ? setting.selectedValues
-        : [];
-      if (selected.length === 0) return false;
-      const value = normalizeDatabaseFilterValue(row?.[colKey]);
-      return selected.includes(value);
-    }),
-  );
-}
-
-function applyDatabaseSort(rows) {
-  const sortSetting = databaseViewState.sort;
-  if (!sortSetting || sortSetting.mode === "default") return rows;
-
-  const colKey = String(sortSetting.colKey || "");
-  const direction = sortSetting.mode === "desc" ? -1 : 1;
-  const sorted = [...rows];
-
-  sorted.sort((left, right) => {
-    const a = String(left?.[colKey] ?? "");
-    const b = String(right?.[colKey] ?? "");
-    const cmp = a.localeCompare(b, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
-    return cmp * direction;
-  });
-
-  return sorted;
-}
-
-function closeDatabaseColumnMenus() {
-  document
-    .querySelectorAll(".trial-report-column-menu-container.database-column-menu")
-    .forEach((el) => el.remove());
-}
-
-function bindDatabaseMenuGlobalClose() {
-  if (databaseViewState.menusBound) return;
-  document.addEventListener("click", (event) => {
-    const insideMenu = event.target.closest(".trial-report-column-menu-container.database-column-menu");
-    const insideHeaderButton = event.target.closest(".trial-report-th-btn.database-th-btn");
-    if (!insideMenu && !insideHeaderButton) {
-      closeDatabaseColumnMenus();
-    }
-  });
-  databaseViewState.menusBound = true;
-}
-
-function getDatabaseColumnMode(colKey) {
-  if (
-    databaseViewState.sort &&
-    String(databaseViewState.sort.colKey || "") === String(colKey)
-  ) {
-    return databaseViewState.sort.mode;
-  }
-  return databaseViewState.filters?.[colKey]?.mode || "default";
-}
-
-function openDatabaseColumnMenuByKeyEncoded(encodedColKey, forceCustom) {
-  const colKey = decodeURIComponent(String(encodedColKey || ""));
-  const headerButton = Array.from(
-    document.querySelectorAll(".trial-report-th-btn.database-th-btn"),
-  ).find((button) => button.dataset.colKey === colKey);
-  if (!headerButton) return;
-  const fakeEvent = { currentTarget: headerButton, stopPropagation: () => {} };
-  openDatabaseColumnMenu(fakeEvent, colKey, !!forceCustom);
-}
-
-function setDatabaseColumnSortEncoded(encodedColKey, mode) {
-  const colKey = decodeURIComponent(String(encodedColKey || ""));
-  if (mode === "default") {
-    databaseViewState.sort = null;
-  } else {
-    databaseViewState.sort = { colKey, mode };
-  }
-  saveDatabaseFiltersToStorage();
-  closeDatabaseColumnMenus();
-  renderDatabaseTable();
-}
-
-function setDatabaseFreezeUntilEncoded(encodedColKey) {
-  const colKey = decodeURIComponent(String(encodedColKey || ""));
-  databaseViewState.freezeUntilColKey = colKey;
-  saveDatabaseFiltersToStorage();
-  closeDatabaseColumnMenus();
-  renderDatabaseTable();
-}
-
-function clearDatabaseFreeze() {
-  databaseViewState.freezeUntilColKey = null;
-  saveDatabaseFiltersToStorage();
-  closeDatabaseColumnMenus();
-  renderDatabaseTable();
-}
-
-function resetDatabaseColumnSettingEncoded(encodedColKey) {
-  const colKey = decodeURIComponent(String(encodedColKey || ""));
-  const setting = getDatabaseColumnFilterSetting(colKey);
-  setting.mode = "default";
-  setting.selectedValues = [];
-
-  if (
-    databaseViewState.sort &&
-    String(databaseViewState.sort.colKey || "") === String(colKey)
-  ) {
-    databaseViewState.sort = null;
-  }
-  if (String(databaseViewState.freezeUntilColKey || "") === String(colKey)) {
-    databaseViewState.freezeUntilColKey = null;
-  }
-
-  saveDatabaseFiltersToStorage();
-  closeDatabaseColumnMenus();
-  renderDatabaseTable();
-}
-
-function setDatabaseColumnCustomModeEncoded(encodedColKey) {
-  const colKey = decodeURIComponent(String(encodedColKey || ""));
-  const setting = getDatabaseColumnFilterSetting(colKey);
-  const allValues = getDatabaseUniqueColumnValues(databaseViewState.rows || [], colKey);
-  setting.mode = "custom";
-  if (!Array.isArray(setting.selectedValues) || setting.selectedValues.length === 0) {
-    setting.selectedValues = [...allValues];
-  }
-  saveDatabaseFiltersToStorage();
-  renderDatabaseTable();
-  openDatabaseColumnMenuByKeyEncoded(encodedColKey, true);
-}
-
-function clearAllDatabaseCustomValuesEncoded(encodedColKey) {
-  const colKey = decodeURIComponent(String(encodedColKey || ""));
-  const setting = getDatabaseColumnFilterSetting(colKey);
-  setting.mode = "custom";
-  setting.selectedValues = [];
-  saveDatabaseFiltersToStorage();
-  renderDatabaseTable();
-  openDatabaseColumnMenuByKeyEncoded(encodedColKey, true);
-}
-
-function toggleDatabaseCustomValueEncoded(encodedColKey, encodedValue, checked) {
-  const colKey = decodeURIComponent(String(encodedColKey || ""));
-  const value = decodeURIComponent(String(encodedValue || ""));
-
-  const setting = getDatabaseColumnFilterSetting(colKey);
-  setting.mode = "custom";
-  const selectedSet = new Set(
-    Array.isArray(setting.selectedValues) ? setting.selectedValues : [],
-  );
-  if (checked) selectedSet.add(value);
-  else selectedSet.delete(value);
-  setting.selectedValues = Array.from(selectedSet);
-
-  saveDatabaseFiltersToStorage();
-  renderDatabaseTable();
-  openDatabaseColumnMenuByKeyEncoded(encodedColKey, true);
-}
-
-function openDatabaseColumnMenuEncoded(event, encodedColKey, openCustomSubmenu = false) {
-  const colKey = decodeURIComponent(String(encodedColKey || ""));
-  openDatabaseColumnMenu(event, colKey, openCustomSubmenu);
-}
-
-function openDatabaseColumnMenu(event, colKey, openCustomSubmenu = false) {
-  event.stopPropagation();
-  bindDatabaseMenuGlobalClose();
-
-  const target = event.currentTarget;
-  if (!target) return;
-
-  closeDatabaseColumnMenus();
-
-  const setting = getDatabaseColumnFilterSetting(colKey);
-  const currentSort =
-    databaseViewState.sort && String(databaseViewState.sort.colKey || "") === String(colKey)
-      ? databaseViewState.sort.mode
-      : "default";
-  const isFrozenToThis =
-    String(databaseViewState.freezeUntilColKey || "") === String(colKey);
-  const encodedColKey = encodeURIComponent(String(colKey));
-
-  const menu = document.createElement("div");
-  menu.className = "trial-report-column-menu-container database-column-menu";
-  menu.innerHTML = `
-    <div class="trial-report-column-menu" onclick="event.stopPropagation()">
-      <button type="button" class="trial-report-menu-item ${currentSort === "asc" ? "active" : ""}" onclick="setDatabaseColumnSortEncoded('${encodedColKey}', 'asc')">Ascending</button>
-      <button type="button" class="trial-report-menu-item ${currentSort === "desc" ? "active" : ""}" onclick="setDatabaseColumnSortEncoded('${encodedColKey}', 'desc')">Descending</button>
-      <button type="button" class="trial-report-menu-item ${isFrozenToThis ? "active" : ""}" onclick="setDatabaseFreezeUntilEncoded('${encodedColKey}')">Freeze up to this</button>
-      <button type="button" class="trial-report-menu-item" onclick="clearDatabaseFreeze()">Unfreeze</button>
-      <button type="button" class="trial-report-menu-item ${setting.mode === "custom" ? "active" : ""}" onclick="setDatabaseColumnCustomModeEncoded('${encodedColKey}')">Custom</button>
-      <button type="button" class="trial-report-menu-item" onclick="resetDatabaseColumnSettingEncoded('${encodedColKey}')">Default</button>
-      <div class="trial-report-custom-submenu ${openCustomSubmenu || setting.mode === "custom" ? "active" : ""}">
-        <div class="trial-report-custom-actions">
-          <button type="button" class="trial-report-menu-item subtle" onclick="clearAllDatabaseCustomValuesEncoded('${encodedColKey}')">Clear all</button>
-        </div>
-        <div class="trial-report-custom-list">
-          ${getDatabaseUniqueColumnValues(databaseViewState.rows || [], colKey)
-            .map((value) => {
-              const selected =
-                Array.isArray(setting.selectedValues) && setting.selectedValues.includes(value);
-              const encodedValue = encodeURIComponent(value);
-              return `
-                <label class="trial-report-custom-item">
-                  <input type="checkbox" ${selected ? "checked" : ""} onchange="toggleDatabaseCustomValueEncoded('${encodedColKey}', '${encodedValue}', this.checked)">
-                  <span>${escapeHtml(getDatabaseFilterLabel(value))}</span>
-                </label>
-              `;
-            })
-            .join("")}
-        </div>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(menu);
-
-  const rect = target.getBoundingClientRect();
-  menu.style.top = `${rect.bottom + 4}px`;
-  menu.style.left = `${rect.left}px`;
-}
-
-function applyDatabaseFreezeColumns(tableEl, visibleColumns) {
-  if (!tableEl) return;
-
-  tableEl.querySelectorAll("th, td").forEach((cell) => {
-    cell.style.position = "";
-    cell.style.left = "";
-    cell.style.zIndex = "";
-  });
-
-  const freezeKey = databaseViewState.freezeUntilColKey;
-  if (!freezeKey) return;
-
-  const freezeIndex = visibleColumns.findIndex(
-    (column) => String(column.key) === String(freezeKey),
-  );
-  if (freezeIndex < 0) return;
-
-  const headCells = Array.from(tableEl.querySelectorAll("thead th"));
-  let left = 0;
-
-  for (let colIndex = 0; colIndex <= freezeIndex; colIndex++) {
-    const headCell = headCells[colIndex];
-    if (!headCell) continue;
-
-    const width =
-      headCell.offsetWidth || headCell.getBoundingClientRect().width || 0;
-
-    headCell.style.position = "sticky";
-    headCell.style.left = `${left}px`;
-    headCell.style.zIndex = "7";
-
-    tableEl.querySelectorAll("tbody tr").forEach((row) => {
-      const bodyCell = row.children[colIndex];
-      if (!bodyCell) return;
-      bodyCell.style.position = "sticky";
-      bodyCell.style.left = `${left}px`;
-      bodyCell.style.zIndex = "4";
-    });
-
-    left += width;
-  }
-}
-
-function buildDatabaseDataset() {
-  const trials = (trialState.trials || []).filter(
-    (trial) =>
-      trial &&
-      trial.areas &&
-      trial.areas.length > 0 &&
-      trial.areas.some((area) => area.layout?.result),
-  );
-
-  const allParameters = inventoryState.items.parameters || [];
-  const lines = inventoryState.items.entries || [];
-  const locations = inventoryState.items.locations || [];
-
-  const linesById = new Map(lines.map((line) => [String(line.id), line]));
-  const locationsById = new Map(
-    locations.map((location) => [String(location.id), location]),
-  );
-
-  const parameterIdsUsed = new Set();
-  trials.forEach((trial) => {
-    (trial.parameters || []).forEach((paramId) =>
-      parameterIdsUsed.add(String(paramId)),
-    );
-  });
-
-  const parameterColumns = allParameters.filter((param) =>
-    parameterIdsUsed.has(String(param.id)),
-  );
-
-  const headerColumns = [
-    { key: "no", label: "No", source: "fixed", defaultVisible: true },
-    { key: "trialName", label: "Trial", source: "fixed", defaultVisible: true },
-    { key: "season", label: "Season", source: "fixed", defaultVisible: true },
-    { key: "pollination", label: "Type of Pollination", source: "fixed", defaultVisible: true },
-    { key: "trialType", label: "Trial Type", source: "fixed", defaultVisible: true },
-    { key: "expDesign", label: "Experimental Design", source: "fixed", defaultVisible: true },
-    { key: "location", label: "Location", source: "fixed", defaultVisible: true },
-    { key: "year", label: "Year", source: "fixed", defaultVisible: true },
-    { key: "parentCode", label: "Parent Code", source: "fixed", defaultVisible: true },
-    { key: "sprCode", label: "SPR Code", source: "fixed", defaultVisible: true },
-    { key: "hybridCode", label: "Hybrid Code", source: "fixed", defaultVisible: true },
-    { key: "fieldCode", label: "Field Code", source: "fixed", defaultVisible: true },
-    { key: "femaleParent", label: "Female Parent", source: "fixed", defaultVisible: true },
-    { key: "maleParent", label: "Male Parent", source: "fixed", defaultVisible: true },
-    { key: "replication", label: "Replication", source: "fixed", defaultVisible: true },
-  ];
-
-  const extraColumns = [
-    { key: "crop", label: "Crop", source: "extra", defaultVisible: false },
-    { key: "plantingDate", label: "Planting Date", source: "extra", defaultVisible: false },
-    { key: "line", label: "Entry", source: "extra", defaultVisible: false },
-    { key: "lineType", label: "Entry Type", source: "extra", defaultVisible: false },
-    { key: "lineRole", label: "Entry Role", source: "extra", defaultVisible: false },
-    { key: "lineStage", label: "Entry Stage", source: "extra", defaultVisible: false },
-    { key: "lineQty", label: "Entry Qty", source: "extra", defaultVisible: false },
-    { key: "area", label: "Area", source: "extra", defaultVisible: false },
-    { key: "sample", label: "Sample", source: "extra", defaultVisible: false },
-  ];
-
-  const rows = [];
-  let rowNo = 1;
-
-  trials.forEach((trial) => {
-    const cropName =
-      inventoryState.items.crops?.find((crop) => String(crop.id) === String(trial.cropId || ""))
-        ?.name ||
-      trial.cropName ||
-      "";
-    const season = trial.plantingSeason || "";
-    const locationName =
-      locationsById.get(String(trial.locationId || ""))?.name || "";
-    const year = getTrialPlantingYear(trial);
-
-    const trialParams = (trial.parameters || [])
-      .map((paramId) =>
-        allParameters.find((param) => String(param.id) === String(paramId)),
-      )
-      .filter(Boolean);
-
-    const nonFormulaParams = trialParams.filter(
-      (param) => (param.type || "").toLowerCase() !== "formula",
-    );
-    const formulaParams = trialParams.filter(
-      (param) => (param.type || "").toLowerCase() === "formula",
-    );
-
-    (trial.areas || []).forEach((area, areaIndex) => {
-      const result = area?.layout?.result;
-      if (!result) return;
-
-      result.forEach((rep, repIndex) => {
-        rep.forEach((layoutRow) => {
-          layoutRow.forEach((cell) => {
-            if (!cell) return;
-
-            const lineRef =
-              linesById.get(String(cell.id || "")) ||
-              lines.find(
-                (line) => String(line.name || "") === String(cell.name || ""),
-              );
-
-            const maxSampleCount = Math.max(
-              1,
-              ...nonFormulaParams.map((param) =>
-                Math.max(1, Number(param.numberOfSamples || 1)),
-              ),
-            );
-
-            for (
-              let sampleIndex = 0;
-              sampleIndex < maxSampleCount;
-              sampleIndex++
-            ) {
-              const row = {
-                no: rowNo++,
-                season,
-                pollination: trial.pollination || "",
-                trialType: trial.trialType || "",
-                expDesign: trial.expDesign || "",
-                location: locationName,
-                year,
-                trialName: trial.name || "",
-                crop: cropName,
-                plantingDate: getAreaPlantingDate(trial, areaIndex) || "",
-                line: lineRef?.name || cell.name || "",
-                lineType: lineRef?.lineType || "",
-                lineRole: lineRef?.role || "",
-                lineStage: lineRef?.stage || "",
-                lineQty: lineRef?.quantity ?? "",
-                area: area?.name || `Area ${areaIndex + 1}`,
-                range: layoutRow?.rangeIndex != null ? layoutRow.rangeIndex + 1 : "",
-                row: layoutRow?.rowIndex != null ? layoutRow.rowIndex + 1 : "",
-                sample: sampleIndex + 1,
-                parentCode: lineRef?.parentCode || "",
-                sprCode: lineRef?.sprCode || "",
-                hybridCode: lineRef?.hybridCode || "",
-                fieldCode: lineRef?.fieldCode || "",
-                femaleParent: lineRef?.femaleParent || "",
-                maleParent: lineRef?.maleParent || "",
-                replication: repIndex + 1,
-              };
-
-              parameterColumns.forEach((param) => {
-                row[`param_${param.id}`] = "";
-              });
-
-              nonFormulaParams.forEach((param) => {
-                const sampleCount = Math.max(1, Number(param.numberOfSamples || 1));
-                if (sampleIndex >= sampleCount) return;
-                const entry = getObservationReportEntry(
-                  trial,
-                  areaIndex,
-                  param,
-                  cell.id,
-                  repIndex,
-                  sampleIndex,
-                );
-                row[`param_${param.id}`] = entry.value;
-              });
-
-              if (sampleIndex === 0 && formulaParams.length > 0) {
-                const formulaContext = buildFormulaObservationContext(
-                  trial,
-                  areaIndex,
-                  cell.id,
-                  repIndex,
-                  nonFormulaParams,
-                );
-
-                formulaParams.forEach((formulaParam) => {
-                  const resultValue = evaluateFormulaForReport(
-                    formulaParam.formula,
-                    formulaContext.values,
-                  );
-                  row[`param_${formulaParam.id}`] = resultValue.ok
-                    ? resultValue.value
-                    : "";
-                });
-              }
-
-              rows.push(row);
-            }
-          });
-        });
-      });
-    });
-  });
-
-  return {
-    fixedColumns: headerColumns,
-    extraColumns,
-    parameterColumns,
-    rows,
-  };
-}
-
-function renderDatabaseTable() {
-  ensureDatabaseControls();
-
-  const tableEl = document.getElementById("databaseTable");
-  if (!tableEl) return;
-
-  const rowCountEl = document.getElementById("databaseRowCount");
-
-  closeDatabaseColumnMenus();
-
-  const dataset = buildDatabaseDataset();
-
-  databaseViewState.columns.fixed = dataset.fixedColumns;
-  databaseViewState.columns.extra = dataset.extraColumns || [];
-  databaseViewState.columns.params = dataset.parameterColumns;
-  databaseViewState.columns.all = [
-    ...dataset.fixedColumns.map((column) => ({
-      key: column.key,
-      label: column.label,
-      source: column.source || "fixed",
-      defaultVisible: !!column.defaultVisible,
-    })),
-    ...(dataset.extraColumns || []).map((column) => ({
-      key: column.key,
-      label: column.label,
-      source: column.source || "extra",
-      defaultVisible: !!column.defaultVisible,
-    })),
-    ...dataset.parameterColumns.map((param) => ({
-      key: `param_${param.id}`,
-      label: param.name || "Parameter",
-      source: "param",
-      defaultVisible: true,
-    })),
-  ];
-  databaseViewState.rows = dataset.rows;
-
-  const allColumns = getDatabaseAllColumns();
-  const visibleColumns = getDatabaseVisibleColumns(allColumns);
-  const rows = applyDatabaseSort(applyDatabaseFilters(dataset.rows));
-
-  if (rows.length === 0) {
-    tableEl.innerHTML = `
-      <thead>
-        <tr>
-          ${visibleColumns
-            .map(
-              (column, colIndex) => `
-                <th>
-                  <button type="button" class="trial-report-th-btn database-th-btn ${column.source === "param" ? "database-param-th" : ""}" data-col-key="${escapeHtml(column.key)}" data-col-index="${colIndex}" onclick="openDatabaseColumnMenuEncoded(event, '${encodeURIComponent(column.key)}')">
-                    <span class="trial-report-th-text">${escapeHtml(column.label)}</span>
-                    <span class="material-symbols-rounded trial-report-th-marker ${getDatabaseColumnMode(column.key) !== "default" ? "active" : ""}">filter_alt</span>
-                  </button>
-                </th>
-              `,
-            )
-            .join("")}
-        </tr>
-      </thead>
-      <tbody>
-        <tr><td colspan="${visibleColumns.length}" class="trial-report-empty">No rows</td></tr>
-      </tbody>
-    `;
-    if (rowCountEl) rowCountEl.textContent = "0 rows";
-    return;
-  }
-
-  const headerHtml = `
-    <thead>
-      <tr>
-        ${visibleColumns
-          .map(
-            (column, colIndex) => `
-              <th>
-                <button type="button" class="trial-report-th-btn database-th-btn ${column.source === "param" ? "database-param-th" : ""}" data-col-key="${escapeHtml(column.key)}" data-col-index="${colIndex}" onclick="openDatabaseColumnMenuEncoded(event, '${encodeURIComponent(column.key)}')">
-                  <span class="trial-report-th-text">${escapeHtml(column.label)}</span>
-                  <span class="material-symbols-rounded trial-report-th-marker ${getDatabaseColumnMode(column.key) !== "default" ? "active" : ""}">filter_alt</span>
-                </button>
-              </th>
-            `,
-          )
-          .join("")}
-      </tr>
-    </thead>
-  `;
-
-  const bodyHtml = `
-    <tbody>
-      ${rows
-        .map((row) => {
-          const cells = visibleColumns
-            .map((column) => `<td class="${column.source === "param" ? "database-param-td" : ""}">${escapeHtml(String(row[column.key] ?? ""))}</td>`)
-            .join("");
-          return `<tr>${cells}</tr>`;
-        })
-        .join("")}
-    </tbody>
-  `;
-
-  tableEl.innerHTML = `${headerHtml}${bodyHtml}`;
-  applyDatabaseFreezeColumns(tableEl, visibleColumns);
-  if (rowCountEl) rowCountEl.textContent = `${rows.length.toLocaleString()} rows`;
-}
-
-function downloadDatabaseExcel() {
-  if (typeof XLSX === "undefined") {
-    showToast("Excel library not loaded. Please try again.", "error");
-    return;
-  }
-
-  const allColumns = getDatabaseVisibleColumns(getDatabaseAllColumns());
-  const filteredRows = applyDatabaseSort(
-    applyDatabaseFilters(databaseViewState.rows || []),
-  );
-
-  if (filteredRows.length === 0) {
-    showToast("No database rows to export", "error");
-    return;
-  }
-
-  const header = [
-    ...allColumns.map((column) => column.label),
-  ];
-
-  const aoa = [
-    header,
-    ...filteredRows.map((row) => [
-      ...allColumns.map((column) => row[column.key] ?? ""),
-    ]),
-  ];
-
-  const workbook = XLSX.utils.book_new();
-  const worksheet = XLSX.utils.aoa_to_sheet(aoa);
-
-  const maxScanRows = Math.min(aoa.length, 300);
-  const widths = header.map((_, colIndex) => {
-    let maxLen = 8;
-    for (let rowIndex = 0; rowIndex < maxScanRows; rowIndex++) {
-      const value = String(aoa[rowIndex]?.[colIndex] ?? "");
-      if (value.length > maxLen) maxLen = value.length;
-    }
-    return { wch: Math.min(maxLen + 2, 45) };
-  });
-  worksheet["!cols"] = widths;
-
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Database");
-  XLSX.writeFile(workbook, "Database_Report.xlsx");
-  showToast(`Exported ${filteredRows.length.toLocaleString()} rows`, "success");
-}
-
-window.getDatabaseColumnOptionsForSettings = getDatabaseColumnOptionsForSettings;
-window.getDatabaseVisibleColumnKeys = function getDatabaseVisibleColumnKeys() {
-  return (getDatabaseVisibleColumns(getDatabaseAllColumns()) || []).map((column) => column.key);
-};
-window.setDatabaseVisibleColumns = setDatabaseVisibleColumns;
 
 function buildTrialDetailLayoutResultHtml(area) {
   const layouts = Array.isArray(area?.layout?.result) ? area.layout.result : [];

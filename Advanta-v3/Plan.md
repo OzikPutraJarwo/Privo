@@ -128,20 +128,28 @@
 ## Mar 29, 2026
 
 ### Update
-- [ ] `Inventory` Find for every items
-- [ ] `Inventory` Folders for every items
-- [ ] `Inventory > Parameter` Formula type use DoO too
-- [ ] `Trial` Load data per area/location
-- [ ] `Trial` Remark for every answer
-- [ ] `Trial` Report format as database/dataset (params on the right side per column)
-- [ ] `Database` Removed
-- [ ] `User` User authority (Field User, SuperUser)
-### Bug Fixes
+- [x] `User Settings` New logo and description
+- [x] `User Settings` Optimization for inventory's data and trials
+- [x] `User Settings` Data cache change from localStorage to IndexedDB
+- [x] `User Settings` Checking for new data mechanism
+- [ ] `User Settings` User authority (Field User, SuperUser)
+- [x] `Inventory` Find for every items
+- [x] `Inventory` Folders for every items
+- [x] `Inventory > Parameter` Formula type use DoO too
+- [x] `Trial` Load data per area/location
+- [x] `Trial` Save data per replication
+- [ ] `Trial` Report format as dataset (params on the right side per column)
+- [ ] `Trial > Observation` Remark for every answer
+- [x] `Trial > Observation` Save image as separated binary file
+- [x] `Library` Submenu for trial photos
+- [x] `Database` Removed
+### Bug Fixes, Redesign, etc
+- [x] `Inventory > Parameters` Delete button for DoO
+- [x] `Inventory > Parameters` Crop name with entry type
+- [ ] `Inventory > Parameters` Better UI/UX for formula list (find etc, on the left wing)
 - [ ] `Trial > Run` Units for every answer
 - [ ] `Trial > Run` .run-nav-area overflow bug on phone
 - [ ] `Trial > Report` Right toolbar bug
-- [ ] `Inventory > Parameters` Delete button for DoO
-- [ ] `Inventory > Parameters` Better UI/UX for formula list (find etc, on the left wing)
 - [ ] `Dataset` Load gradually with load more
 
 ## UPCOMING PLANS

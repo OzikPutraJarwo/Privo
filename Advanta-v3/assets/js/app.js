@@ -61,6 +61,143 @@ if ("serviceWorker" in navigator) {
 
 // Loading & Caching Helpers
 const CACHE_VERSION = 1;
+const PERSISTENT_DB_NAME = "advanta_persistent_cache";
+const PERSISTENT_DB_VERSION = 1;
+const PERSISTENT_STORE_CACHE = "cache";
+
+let _persistentDbPromise = null;
+
+function openPersistentCacheDb() {
+  if (_persistentDbPromise) return _persistentDbPromise;
+  _persistentDbPromise = new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("IndexedDB not supported"));
+      return;
+    }
+
+    const req = indexedDB.open(PERSISTENT_DB_NAME, PERSISTENT_DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(PERSISTENT_STORE_CACHE)) {
+        db.createObjectStore(PERSISTENT_STORE_CACHE, { keyPath: "id" });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error("Failed to open persistent DB"));
+  });
+
+  return _persistentDbPromise;
+}
+
+async function loadPersistentCache(name) {
+  try {
+    const db = await openPersistentCacheDb();
+    const key = getCacheKey(name);
+
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(PERSISTENT_STORE_CACHE, "readonly");
+      const store = tx.objectStore(PERSISTENT_STORE_CACHE);
+      const req = store.get(key);
+      req.onsuccess = () => {
+        const row = req.result;
+        if (!row || row.version !== CACHE_VERSION) {
+          resolve(null);
+          return;
+        }
+        resolve(row.data || null);
+      };
+      req.onerror = () => reject(req.error || new Error("Failed reading persistent cache"));
+    });
+  } catch (error) {
+    console.warn("Failed to load persistent cache:", name, error);
+    return null;
+  }
+}
+
+async function savePersistentCache(name, data) {
+  try {
+    const db = await openPersistentCacheDb();
+    const payload = {
+      id: getCacheKey(name),
+      version: CACHE_VERSION,
+      savedAt: new Date().toISOString(),
+      data,
+    };
+
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(PERSISTENT_STORE_CACHE, "readwrite");
+      tx.objectStore(PERSISTENT_STORE_CACHE).put(payload);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("Failed writing persistent cache"));
+    });
+  } catch (error) {
+    console.warn("Failed to save persistent cache:", name, error);
+  }
+}
+
+async function getPersistentCachePayload(name) {
+  try {
+    const db = await openPersistentCacheDb();
+    const key = getCacheKey(name);
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(PERSISTENT_STORE_CACHE, "readonly");
+      const store = tx.objectStore(PERSISTENT_STORE_CACHE);
+      const req = store.get(key);
+      req.onsuccess = () => {
+        const row = req.result;
+        resolve(row && row.version === CACHE_VERSION ? row.data : null);
+      };
+      req.onerror = () => reject(req.error || new Error("Failed reading persistent payload"));
+    });
+  } catch (error) {
+    return null;
+  }
+}
+
+async function clearPersistentCache() {
+  try {
+    const db = await openPersistentCacheDb();
+    const user = getCurrentUser?.();
+    const userKey = user?.email || "anonymous";
+    const prefix = `advanta_cache_v${CACHE_VERSION}_`;
+
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(PERSISTENT_STORE_CACHE, "readwrite");
+      const store = tx.objectStore(PERSISTENT_STORE_CACHE);
+      const cursorReq = store.openCursor();
+
+      cursorReq.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) return;
+        const key = String(cursor.key || "");
+        if (key.startsWith(prefix) && key.endsWith(`_${userKey}`)) {
+          cursor.delete();
+        }
+        cursor.continue();
+      };
+      cursorReq.onerror = () => reject(cursorReq.error || new Error("Failed clearing persistent cache"));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("Failed clearing persistent cache"));
+    });
+  } catch (error) {
+    console.warn("Failed to clear persistent cache:", error);
+  }
+}
+
+async function requestPersistentStorage() {
+  if (!(navigator.storage && navigator.storage.persist)) return false;
+
+  try {
+    const already = navigator.storage.persisted
+      ? await navigator.storage.persisted()
+      : false;
+    if (already) return true;
+    return await navigator.storage.persist();
+  } catch (error) {
+    console.warn("Failed requesting persistent storage:", error);
+    return false;
+  }
+}
 
 function getCacheKey(name) {
   const user = getCurrentUser?.();
@@ -68,30 +205,294 @@ function getCacheKey(name) {
   return `advanta_cache_v${CACHE_VERSION}_${name}_${userKey}`;
 }
 
-function loadLocalCache(name) {
+/**
+ * Load cache from IndexedDB (primary). Falls back to localStorage for migration.
+ * Returns the cached data or null. Always async.
+ */
+async function loadLocalCache(name) {
+  // Primary: IndexedDB persistent store
+  try {
+    const persistent = await loadPersistentCache(name);
+    if (persistent) return persistent;
+  } catch (error) {
+    console.warn("Failed to load persistent cache:", name, error);
+  }
+
+  // Migration fallback: read from old localStorage, migrate, then remove
   try {
     const raw = localStorage.getItem(getCacheKey(name));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || parsed.version !== CACHE_VERSION) return null;
-    return parsed.data || null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.version === CACHE_VERSION && parsed.data) {
+        // Migrate to IndexedDB then remove localStorage entry
+        savePersistentCache(name, parsed.data).catch(() => {});
+        try { localStorage.removeItem(getCacheKey(name)); } catch (_e) { /* ignore */ }
+        return parsed.data;
+      }
+    }
   } catch (error) {
-    console.warn("Failed to load cache:", name, error);
-    return null;
+    console.warn("Failed to load legacy localStorage cache:", name, error);
   }
+
+  return null;
 }
 
-function saveLocalCache(name, data) {
+/**
+ * Save cache to IndexedDB (primary storage).
+ * Fires async — callers should await if they need confirmation.
+ */
+async function saveLocalCache(name, data) {
   try {
-    const payload = {
-      version: CACHE_VERSION,
-      savedAt: new Date().toISOString(),
-      data,
-    };
-    localStorage.setItem(getCacheKey(name), JSON.stringify(payload));
+    let payloadData = data;
+    if (name === "trials") {
+      payloadData = _compactTrialSnapshot(data);
+    }
+
+    await savePersistentCache(name, payloadData);
+
+    // Remove old localStorage entry to free browser quota
+    try { localStorage.removeItem(getCacheKey(name)); } catch (_e) { /* ignore */ }
   } catch (error) {
     console.warn("Failed to save cache:", name, error);
   }
+}
+
+function formatBytes(bytes = 0) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIdx = 0;
+  while (value >= 1024 && unitIdx < units.length - 1) {
+    value /= 1024;
+    unitIdx++;
+  }
+  return `${value.toFixed(value >= 10 || unitIdx === 0 ? 0 : 1)} ${units[unitIdx]}`;
+}
+
+function estimateStringBytes(text = "") {
+  return text.length * 2;
+}
+
+function estimateObjectBytes(data) {
+  try {
+    return estimateStringBytes(JSON.stringify(data || null));
+  } catch (error) {
+    return 0;
+  }
+}
+
+async function getCacheDomainUsage() {
+  const names = ["trials", "inventory", "library", "userSettings"];
+  const result = {
+    domains: {},
+    totalBytes: 0,
+  };
+
+  for (const name of names) {
+    const persistentData = await getPersistentCachePayload(name);
+    const bytes = persistentData ? estimateObjectBytes(persistentData) : 0;
+
+    result.domains[name] = { bytes };
+    result.totalBytes += bytes;
+  }
+
+  return result;
+}
+
+function _compactTrialSnapshot(trialsData) {
+  if (!trialsData || !Array.isArray(trialsData.trials)) return trialsData;
+
+  const compacted = {
+    ...trialsData,
+    trials: trialsData.trials.map((trial) => {
+      const next = { ...trial };
+
+      // Drop empty response buckets.
+      if (next.responses && typeof next.responses === "object") {
+        const filtered = {};
+        Object.entries(next.responses).forEach(([areaIdx, areaObj]) => {
+          if (areaObj && Object.keys(areaObj).length > 0) filtered[areaIdx] = areaObj;
+        });
+        next.responses = filtered;
+      }
+
+      if (next.agronomyResponses && typeof next.agronomyResponses === "object") {
+        const filteredAgro = {};
+        Object.entries(next.agronomyResponses).forEach(([areaIdx, areaObj]) => {
+          if (areaObj && Object.keys(areaObj).length > 0) filteredAgro[areaIdx] = areaObj;
+        });
+        next.agronomyResponses = filteredAgro;
+      }
+
+      return next;
+    }),
+  };
+
+  return compacted;
+}
+
+async function compactLocalCacheData() {
+  const domainNames = ["trials", "inventory", "library"];
+  let changed = false;
+
+  for (const name of domainNames) {
+    const current = await getPersistentCachePayload(name);
+    if (!current) continue;
+
+    let compacted = current;
+    if (name === "trials") {
+      compacted = _compactTrialSnapshot(current);
+    }
+
+    const beforeBytes = estimateObjectBytes(current);
+    const afterBytes = estimateObjectBytes(compacted);
+
+    await savePersistentCache(name, compacted);
+    changed = changed || afterBytes <= beforeBytes;
+  }
+
+  return changed;
+}
+
+async function refreshStorageHealthCard() {
+  const card = document.getElementById("storageHealthCard");
+  if (!card) return;
+
+  const bodyEl = card.querySelector(".optimization-card-body");
+  const persistBtn = card.querySelector(".storage-btn-persistent");
+  if (!bodyEl) return;
+
+  bodyEl.innerHTML = `<div class="optimization-file-count">
+    <span class="material-symbols-rounded spin-slow">progress_activity</span>
+    <span>Checking storage usage…</span>
+  </div>`;
+
+  try {
+    const estimate = navigator.storage?.estimate
+      ? await navigator.storage.estimate()
+      : null;
+    const persisted = navigator.storage?.persisted
+      ? await navigator.storage.persisted()
+      : false;
+
+    const usage = estimate?.usage || 0;
+    const quota = estimate?.quota || 0;
+    const usagePct = quota > 0 ? Math.min(100, Math.round((usage / quota) * 100)) : 0;
+    const domainUsage = await getCacheDomainUsage();
+
+    const domainsHtml = ["trials", "inventory", "library", "userSettings"].map((name) => {
+      const entry = domainUsage.domains[name] || { bytes: 0 };
+      const label = name === "userSettings" ? "User Settings" : name.charAt(0).toUpperCase() + name.slice(1);
+      return `
+        <div class="storage-domain-item">
+          <div class="storage-domain-title">${label}</div>
+          <div class="storage-domain-meta">
+            <span>${formatBytes(entry.bytes)}</span>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    bodyEl.innerHTML = `
+      <div class="storage-health-grid">
+        <div class="storage-health-item">
+          <span class="storage-health-label">Used</span>
+          <span class="storage-health-value">${formatBytes(usage)}</span>
+        </div>
+        <div class="storage-health-item">
+          <span class="storage-health-label">Quota</span>
+          <span class="storage-health-value">${formatBytes(quota)}</span>
+        </div>
+        <div class="storage-health-item">
+          <span class="storage-health-label">Usage</span>
+          <span class="storage-health-value">${usagePct}%</span>
+        </div>
+        <div class="storage-health-item">
+          <span class="storage-health-label">Persistent</span>
+          <span class="storage-health-value ${persisted ? "ok" : "warn"}">${persisted ? "Enabled" : "Not granted"}</span>
+        </div>
+      </div>
+      <div class="load-data-progress-bar" style="margin-top:8px;"><div class="load-data-progress-fill" style="width:${usagePct}%"></div></div>
+      <div class="storage-domain-list">
+        <div class="storage-domain-header">Cache by Domain</div>
+        ${domainsHtml}
+        <div class="storage-domain-summary">Domain Total: ${formatBytes(domainUsage.totalBytes)}</div>
+      </div>
+    `;
+
+    if (persistBtn) {
+      persistBtn.disabled = persisted;
+      persistBtn.innerHTML = persisted
+        ? '<span class="material-symbols-rounded">check_circle</span> Persistent Active'
+        : '<span class="material-symbols-rounded">lock</span> Enable Persistent';
+    }
+  } catch (error) {
+    console.warn("Failed reading storage estimate:", error);
+    bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--error">
+      <span class="material-symbols-rounded">error</span>
+      <span>Failed to read storage status</span>
+    </div>`;
+  }
+}
+
+async function requestPersistentStorageFromUi() {
+  const granted = await requestPersistentStorage();
+  if (granted) {
+    showToast("Persistent storage enabled for long-term local data.", "success");
+  } else {
+    showToast("Persistent storage not granted by browser.", "warning");
+  }
+  await refreshStorageHealthCard();
+}
+
+async function compactLocalCacheFromUi() {
+  const card = document.getElementById("storageHealthCard");
+  const compactBtn = card?.querySelector(".storage-btn-compact");
+  if (compactBtn) compactBtn.disabled = true;
+
+  try {
+    await compactLocalCacheData();
+    showToast("Local cache compacted. Primary data remains in persistent storage.", "success", 3800);
+  } catch (error) {
+    console.error("Compact cache failed:", error);
+    showToast("Failed to compact cache.", "error");
+  } finally {
+    if (compactBtn) compactBtn.disabled = false;
+    await refreshStorageHealthCard();
+  }
+}
+
+function renderStorageHealthCard() {
+  const container = document.getElementById("storageHealthContainer");
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="optimization-card" id="storageHealthCard">
+      <div class="optimization-card-header">
+        <span class="material-symbols-rounded optimization-card-icon">hard_drive</span>
+        <span class="optimization-card-title">Storage Health</span>
+      </div>
+      <div class="optimization-card-body">
+        <div class="optimization-file-count">
+          <span class="material-symbols-rounded spin-slow">progress_activity</span>
+          <span>Checking storage usage…</span>
+        </div>
+      </div>
+      <div class="optimization-card-footer" style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="refreshStorageHealthCard()">
+          <span class="material-symbols-rounded">refresh</span> Refresh
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm storage-btn-persistent" onclick="requestPersistentStorageFromUi()">
+          <span class="material-symbols-rounded">lock</span> Enable Persistent
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm storage-btn-compact" onclick="compactLocalCacheFromUi()">
+          <span class="material-symbols-rounded">compression</span> Compact Local Cache
+        </button>
+      </div>
+    </div>
+  `;
+
+  refreshStorageHealthCard().catch(() => {});
 }
 
 function clearLocalCache() {
@@ -105,14 +506,17 @@ function clearLocalCache() {
   } catch (error) {
     console.warn("Failed to clear cache:", error);
   }
+
+  if (typeof clearPersistentCache === "function") {
+    clearPersistentCache().catch((error) => {
+      console.warn("Failed clearing persistent cache:", error);
+    });
+  }
 }
 
 const userSettingsState = {
   loaded: false,
   data: {
-    database: {
-      visibleColumns: [],
-    },
     analysis: {
       visibleColumns: [],
       sectionLayout: "horizontal",
@@ -125,9 +529,6 @@ const userSettingsState = {
 
 function normalizeUserSettings(data) {
   const safe = data && typeof data === "object" ? data : {};
-  const database = safe.database && typeof safe.database === "object"
-    ? safe.database
-    : {};
   const analysis = safe.analysis && typeof safe.analysis === "object"
     ? safe.analysis
     : {};
@@ -144,11 +545,6 @@ function normalizeUserSettings(data) {
     : "balanced";
 
   return {
-    database: {
-      visibleColumns: Array.isArray(database.visibleColumns)
-        ? database.visibleColumns.map((key) => String(key))
-        : [],
-    },
     analysis: {
       visibleColumns: Array.isArray(analysis.visibleColumns)
         ? analysis.visibleColumns.map((key) => String(key))
@@ -170,19 +566,6 @@ function getStoredAnalysisUserSettings() {
 }
 
 function applyUserSettingsToModules() {
-  const visibleColumns = userSettingsState.data?.database?.visibleColumns || [];
-  if (typeof setDatabaseVisibleColumns === "function") {
-    setDatabaseVisibleColumns(visibleColumns, { skipRender: true });
-  }
-
-  const databaseContent = document.getElementById("databaseContent");
-  if (
-    databaseContent?.classList.contains("active") &&
-    typeof renderDatabaseTable === "function"
-  ) {
-    renderDatabaseTable();
-  }
-
   const analysisPrefs = userSettingsState.data?.analysis || {};
   if (typeof applyAnalysisUserSettings === "function") {
     applyAnalysisUserSettings(analysisPrefs);
@@ -218,7 +601,7 @@ async function loadUserSettingsForCurrentUser(options = {}) {
 
   try {
     const cached = typeof loadLocalCache === "function"
-      ? loadLocalCache("userSettings")
+      ? await loadLocalCache("userSettings")
       : null;
     if (cached && typeof cached === "object") {
       userSettingsState.data = normalizeUserSettings(cached);
@@ -261,41 +644,6 @@ async function loadUserSettingsForCurrentUser(options = {}) {
   }
 
   userSettingsState.loaded = true;
-}
-
-function renderUserSettingsDatabaseTab() {
-  const listEl = document.getElementById("dbSettingsColumnsList");
-  if (!listEl) return;
-
-  const options = typeof getDatabaseColumnOptionsForSettings === "function"
-    ? getDatabaseColumnOptionsForSettings()
-    : [];
-
-  if (!Array.isArray(options) || options.length === 0) {
-    listEl.innerHTML = '<div class="user-settings-column-item">No columns available</div>';
-    return;
-  }
-
-  const savedVisible = Array.isArray(userSettingsState.data?.database?.visibleColumns)
-    ? userSettingsState.data.database.visibleColumns
-    : [];
-  const useSaved = savedVisible.length > 0;
-  const currentVisible = new Set(
-    useSaved
-      ? savedVisible
-      : options.filter((item) => item.visible).map((item) => item.key),
-  );
-
-  listEl.innerHTML = options
-    .map(
-      (item) => `
-        <label class="user-settings-column-item">
-          <input type="checkbox" class="db-settings-col-checkbox" data-col-key="${escapeHtml(item.key)}" ${currentVisible.has(item.key) ? "checked" : ""}>
-          <span>${escapeHtml(item.label)}</span>
-        </label>
-      `,
-    )
-    .join("");
 }
 
 function renderUserSettingsAnalysisTab() {
@@ -399,18 +747,667 @@ function renderUserSettingsAnalysisTab() {
   }
 }
 
-function switchUserSettingsTab(tabKey = "database") {
-  const safeTabKey = ["database", "analysis"].includes(tabKey)
+function switchUserSettingsTab(tabKey = "analysis") {
+  const safeTabKey = ["analysis", "optimization"].includes(tabKey)
     ? tabKey
-    : "database";
+    : "analysis";
 
   document.querySelectorAll(".user-settings-nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.settingsTab === safeTabKey);
   });
 
   document.querySelectorAll(".user-settings-tab").forEach((tab) => {
-    tab.classList.toggle("active", tab.id === `userSettingsTab${safeTabKey === "database" ? "Database" : "Analysis"}`);
+    tab.classList.remove("active");
   });
+
+  const targetId = "userSettingsTab" + safeTabKey.charAt(0).toUpperCase() + safeTabKey.slice(1);
+  const targetTab = document.getElementById(targetId);
+  if (targetTab) targetTab.classList.add("active");
+
+  if (safeTabKey === "optimization") {
+    renderOptimizationTab();
+  }
+}
+
+const OPTIMIZATION_CATEGORIES = ["Parameters", "Agronomy", "Locations"];
+
+async function renderOptimizationTab() {
+  renderStorageHealthCard();
+
+  const container = document.getElementById("optimizationCategoriesList");
+  if (!container) return;
+
+  container.innerHTML = OPTIMIZATION_CATEGORIES.map((cat) => `
+    <div class="optimization-card" id="optimizeCard_${cat}">
+      <div class="optimization-card-header">
+        <span class="material-symbols-rounded optimization-card-icon">folder</span>
+        <span class="optimization-card-title">${escapeHtml(cat)}</span>
+      </div>
+      <div class="optimization-card-body">
+        <div class="optimization-file-count">
+          <span class="material-symbols-rounded spin-slow">progress_activity</span>
+          <span>Scanning files…</span>
+        </div>
+      </div>
+      <div class="optimization-card-footer">
+        <button type="button" class="btn btn-secondary btn-sm" disabled onclick="optimizeInventoryCategory('${cat}')">
+          <span class="material-symbols-rounded">compress</span> Optimize
+        </button>
+      </div>
+    </div>
+  `).join("");
+
+  for (const cat of OPTIMIZATION_CATEGORIES) {
+    await scanOptimizationCategory(cat);
+  }
+
+  // Render trial optimization cards
+  renderTrialOptimizationCards();
+}
+
+async function scanOptimizationCategory(category) {
+  const card = document.getElementById(`optimizeCard_${category}`);
+  if (!card) return;
+
+  const bodyEl = card.querySelector(".optimization-card-body");
+  const btn = card.querySelector(".optimization-card-footer button");
+
+  try {
+    const parentFolderId = driveState.categoryFolderIds[category.toLowerCase()];
+    if (!parentFolderId) {
+      bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--error">
+        <span class="material-symbols-rounded">error</span>
+        <span>Drive folder not found. Sign in first.</span>
+      </div>`;
+      return;
+    }
+
+    const response = await gapi.client.drive.files.list({
+      q: `'${parentFolderId}' in parents and mimeType='application/json' and trashed=false`,
+      spaces: "drive",
+      fields: "files(id, name)",
+      pageSize: 1000,
+    });
+
+    const files = response.result.files || [];
+    const fileCount = files.length;
+
+    if (fileCount <= 1) {
+      bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--ok">
+        <span class="material-symbols-rounded">check_circle</span>
+        <span>${fileCount === 0 ? "No files" : "1 file"} — already optimized</span>
+      </div>`;
+      btn.disabled = true;
+    } else {
+      bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--warn">
+        <span class="material-symbols-rounded">inventory_2</span>
+        <span>${fileCount} individual files</span>
+      </div>`;
+      btn.disabled = false;
+    }
+  } catch (error) {
+    console.error(`Error scanning ${category}:`, error);
+    bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--error">
+      <span class="material-symbols-rounded">error</span>
+      <span>Failed to scan files</span>
+    </div>`;
+  }
+}
+
+async function optimizeInventoryCategory(category) {
+  const card = document.getElementById(`optimizeCard_${category}`);
+  if (!card) return;
+
+  const bodyEl = card.querySelector(".optimization-card-body");
+  const btn = card.querySelector(".optimization-card-footer button");
+  btn.disabled = true;
+
+  bodyEl.innerHTML = `<div class="optimization-file-count">
+    <span class="material-symbols-rounded spin-slow">progress_activity</span>
+    <span>Loading all files…</span>
+  </div>`;
+
+  try {
+    const parentFolderId = driveState.categoryFolderIds[category.toLowerCase()];
+    if (!parentFolderId) throw new Error("Folder not found");
+
+    const response = await gapi.client.drive.files.list({
+      q: `'${parentFolderId}' in parents and mimeType='application/json' and trashed=false`,
+      spaces: "drive",
+      fields: "files(id, name)",
+      pageSize: 1000,
+    });
+
+    const files = response.result.files || [];
+    if (files.length <= 1) {
+      showToast(`${category} is already optimized`, "info");
+      await scanOptimizationCategory(category);
+      return;
+    }
+
+    // Load all file contents
+    const allItems = [];
+    let loaded = 0;
+    for (const file of files) {
+      try {
+        const content = await getFileContent(file.id);
+        if (Array.isArray(content)) {
+          allItems.push(...content);
+        } else if (content && typeof content === "object") {
+          allItems.push(content);
+        }
+        loaded++;
+        bodyEl.innerHTML = `<div class="optimization-file-count">
+          <span class="material-symbols-rounded spin-slow">progress_activity</span>
+          <span>Loaded ${loaded} / ${files.length} files…</span>
+        </div>`;
+      } catch (err) {
+        console.error(`Error loading file ${file.name}:`, err);
+      }
+    }
+
+    if (allItems.length === 0) {
+      showToast(`No items found in ${category}`, "warning");
+      await scanOptimizationCategory(category);
+      return;
+    }
+
+    // Upload consolidated file
+    bodyEl.innerHTML = `<div class="optimization-file-count">
+      <span class="material-symbols-rounded spin-slow">progress_activity</span>
+      <span>Uploading consolidated file…</span>
+    </div>`;
+
+    await upsertJsonFileInFolder("_consolidated.json", parentFolderId, allItems);
+
+    // Delete old individual files
+    bodyEl.innerHTML = `<div class="optimization-file-count">
+      <span class="material-symbols-rounded spin-slow">progress_activity</span>
+      <span>Removing old files…</span>
+    </div>`;
+
+    const token = getAccessToken();
+    let deleted = 0;
+    for (const file of files) {
+      try {
+        const resp = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${file.id}`,
+          { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (resp.ok || resp.status === 204) deleted++;
+        bodyEl.innerHTML = `<div class="optimization-file-count">
+          <span class="material-symbols-rounded spin-slow">progress_activity</span>
+          <span>Removed ${deleted} / ${files.length} old files…</span>
+        </div>`;
+      } catch (err) {
+        console.error(`Error deleting file ${file.name}:`, err);
+      }
+    }
+
+    showToast(`${category} optimized: ${allItems.length} items consolidated into 1 file`, "success");
+    await scanOptimizationCategory(category);
+  } catch (error) {
+    console.error(`Error optimizing ${category}:`, error);
+    showToast(`Failed to optimize ${category}`, "error");
+    bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--error">
+      <span class="material-symbols-rounded">error</span>
+      <span>Optimization failed</span>
+    </div>`;
+    btn.disabled = false;
+  }
+}
+
+// === Trial Optimization ===
+
+function renderTrialOptimizationCards() {
+  const container = document.getElementById("optimizationTrialList");
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="optimization-card" id="optimizeCard_TrialPhotos">
+      <div class="optimization-card-header">
+        <span class="material-symbols-rounded optimization-card-icon">photo_camera</span>
+        <span class="optimization-card-title">Photo Optimization</span>
+      </div>
+      <div class="optimization-card-body">
+        <div class="optimization-file-count">
+          <span class="material-symbols-rounded spin-slow">progress_activity</span>
+          <span>Scanning trial photos…</span>
+        </div>
+      </div>
+      <div class="optimization-card-footer">
+        <button type="button" class="btn btn-secondary btn-sm" disabled onclick="optimizeTrialPhotos()">
+          <span class="material-symbols-rounded">compress</span> Optimize Photos
+        </button>
+      </div>
+    </div>
+    <div class="optimization-card" id="optimizeCard_TrialStructure">
+      <div class="optimization-card-header">
+        <span class="material-symbols-rounded optimization-card-icon">account_tree</span>
+        <span class="optimization-card-title">File Structure (Per-Rep)</span>
+      </div>
+      <div class="optimization-card-body">
+        <div class="optimization-file-count">
+          <span class="material-symbols-rounded spin-slow">progress_activity</span>
+          <span>Scanning file structure…</span>
+        </div>
+      </div>
+      <div class="optimization-card-footer">
+        <button type="button" class="btn btn-secondary btn-sm" disabled onclick="optimizeTrialStructure()">
+          <span class="material-symbols-rounded">compress</span> Consolidate to Per-Rep
+        </button>
+      </div>
+    </div>
+  `;
+
+  scanTrialPhotos();
+  scanTrialStructure();
+}
+
+async function _getTrialResponseFiles() {
+  const rootFolderId = await getTrialsFolderId();
+  const trialsListResp = await gapi.client.drive.files.list({
+    q: `'${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: "files(id, name)",
+    pageSize: 1000,
+  });
+  const trialFolders = trialsListResp.result.files || [];
+  const result = [];
+
+  for (const folder of trialFolders) {
+    const respFolder = await findFolder("responses", folder.id);
+    if (!respFolder) continue;
+
+    const filesResp = await gapi.client.drive.files.list({
+      q: `'${respFolder.id}' in parents and mimeType='application/json' and trashed=false`,
+      fields: "files(id, name)",
+      pageSize: 1000,
+    });
+
+    for (const file of (filesResp.result.files || [])) {
+      result.push({
+        trialFolderId: folder.id,
+        trialFolderName: folder.name,
+        responseFolderId: respFolder.id,
+        fileId: file.id,
+        fileName: file.name,
+      });
+    }
+
+    // Also scan agronomy folder
+    const agroFolder = await findFolder("agronomy", folder.id);
+    if (agroFolder) {
+      const agroFilesResp = await gapi.client.drive.files.list({
+        q: `'${agroFolder.id}' in parents and mimeType='application/json' and trashed=false`,
+        fields: "files(id, name)",
+        pageSize: 1000,
+      });
+      for (const file of (agroFilesResp.result.files || [])) {
+        result.push({
+          trialFolderId: folder.id,
+          trialFolderName: folder.name,
+          responseFolderId: agroFolder.id,
+          fileId: file.id,
+          fileName: file.name,
+          isAgronomy: true,
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+async function scanTrialPhotos() {
+  const card = document.getElementById("optimizeCard_TrialPhotos");
+  if (!card) return;
+  const bodyEl = card.querySelector(".optimization-card-body");
+  const btn = card.querySelector(".optimization-card-footer button");
+
+  try {
+    const files = await _getTrialResponseFiles();
+    let totalInlinePhotos = 0;
+    let scanned = 0;
+
+    for (const f of files) {
+      try {
+        const data = await getFileContent(f.fileId);
+        if (!data || typeof data !== "object") continue;
+        totalInlinePhotos += _countInlinePhotos(data);
+      } catch (e) {
+        console.warn(`Error reading ${f.fileName}:`, e);
+      }
+      scanned++;
+      if (scanned % 5 === 0) {
+        bodyEl.innerHTML = `<div class="optimization-file-count">
+          <span class="material-symbols-rounded spin-slow">progress_activity</span>
+          <span>Scanned ${scanned}/${files.length} files…</span>
+        </div>`;
+      }
+    }
+
+    if (totalInlinePhotos === 0) {
+      bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--ok">
+        <span class="material-symbols-rounded">check_circle</span>
+        <span>No inline base64 photos found — already optimized</span>
+      </div>`;
+      btn.disabled = true;
+    } else {
+      bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--warn">
+        <span class="material-symbols-rounded">photo_library</span>
+        <span>${totalInlinePhotos} inline photo${totalInlinePhotos !== 1 ? "s" : ""} in ${files.length} files</span>
+      </div>`;
+      btn.disabled = false;
+    }
+  } catch (err) {
+    console.error("Error scanning trial photos:", err);
+    bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--error">
+      <span class="material-symbols-rounded">error</span>
+      <span>Failed to scan trial photos</span>
+    </div>`;
+  }
+}
+
+function _countInlinePhotos(data) {
+  let count = 0;
+  for (const key of Object.keys(data)) {
+    const val = data[key];
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      if (Array.isArray(val.photos)) {
+        count += val.photos.filter(p => typeof p === "string" && p.startsWith("data:")).length;
+      } else {
+        count += _countInlinePhotos(val);
+      }
+    }
+  }
+  return count;
+}
+
+async function optimizeTrialPhotos() {
+  const card = document.getElementById("optimizeCard_TrialPhotos");
+  if (!card) return;
+  const bodyEl = card.querySelector(".optimization-card-body");
+  const btn = card.querySelector(".optimization-card-footer button");
+  btn.disabled = true;
+
+  bodyEl.innerHTML = `<div class="optimization-file-count">
+    <span class="material-symbols-rounded spin-slow">progress_activity</span>
+    <span>Loading trial files…</span>
+  </div>`;
+
+  try {
+    const files = await _getTrialResponseFiles();
+    let totalConverted = 0;
+    let fileIdx = 0;
+
+    for (const f of files) {
+      fileIdx++;
+      let data;
+      try {
+        data = await getFileContent(f.fileId);
+      } catch (e) {
+        continue;
+      }
+      if (!data || typeof data !== "object") continue;
+
+      const inlineCount = _countInlinePhotos(data);
+      if (inlineCount === 0) continue;
+
+      bodyEl.innerHTML = `<div class="optimization-file-count">
+        <span class="material-symbols-rounded spin-slow">progress_activity</span>
+        <span>Processing file ${fileIdx}/${files.length} (${inlineCount} photos)…</span>
+      </div>`;
+
+      // Get or create photos folder in trial
+      const photosFolderId = await getOrCreateFolder("photos", f.trialFolderId);
+
+      const converted = await _extractInlinePhotos(data, photosFolderId);
+      if (converted > 0) {
+        // Re-upload the modified JSON (references instead of base64)
+        const boundary = "-------314159265358979323846";
+        const delimiter = "\r\n--" + boundary + "\r\n";
+        const closeDelimiter = "\r\n--" + boundary + "--";
+        const metadata = { name: f.fileName, mimeType: "application/json" };
+        const body = delimiter + "Content-Type: application/json\r\n\r\n" + JSON.stringify(metadata) +
+          delimiter + "Content-Type: application/json\r\n\r\n" + JSON.stringify(data, null, 2) + closeDelimiter;
+
+        await gapi.client.request({
+          path: `/upload/drive/v3/files/${f.fileId}`,
+          method: "PATCH",
+          params: { uploadType: "multipart" },
+          headers: { "Content-Type": 'multipart/related; boundary="' + boundary + '"' },
+          body,
+        });
+
+        totalConverted += converted;
+      }
+    }
+
+    bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--ok">
+      <span class="material-symbols-rounded">check_circle</span>
+      <span>${totalConverted} photo${totalConverted !== 1 ? "s" : ""} converted to WebP</span>
+    </div>`;
+
+    showToast(`Photo optimization complete: ${totalConverted} photos converted`, "success");
+  } catch (err) {
+    console.error("Error optimizing trial photos:", err);
+    bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--error">
+      <span class="material-symbols-rounded">error</span>
+      <span>Optimization failed</span>
+    </div>`;
+    btn.disabled = false;
+  }
+}
+
+async function _extractInlinePhotos(data, photosFolderId) {
+  let converted = 0;
+  for (const key of Object.keys(data)) {
+    const val = data[key];
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      if (Array.isArray(val.photos)) {
+        for (let i = 0; i < val.photos.length; i++) {
+          const photo = val.photos[i];
+          if (typeof photo === "string" && photo.startsWith("data:")) {
+            try {
+              const { blob, width, height } = await compressPhotoToWebP(photo);
+              const photoId = crypto.randomUUID();
+              const fileName = `${photoId}.webp`;
+              const fileId = await uploadBinaryFileToDrive(fileName, photosFolderId, blob, "image/webp");
+              val.photos[i] = {
+                photoId,
+                fileId,
+                width,
+                height,
+                timestamp: val.timestamp || new Date().toISOString(),
+              };
+              converted++;
+            } catch (e) {
+              console.warn("Failed to convert photo:", e);
+            }
+          }
+        }
+      } else {
+        converted += await _extractInlinePhotos(val, photosFolderId);
+      }
+    }
+  }
+  return converted;
+}
+
+async function scanTrialStructure() {
+  const card = document.getElementById("optimizeCard_TrialStructure");
+  if (!card) return;
+  const bodyEl = card.querySelector(".optimization-card-body");
+  const btn = card.querySelector(".optimization-card-footer button");
+
+  try {
+    const files = await _getTrialResponseFiles();
+    // Only consider consolidated response files (e.g., 0~responses.json)
+    const consolidatedFiles = files.filter(f => f.fileName.match(/^\d+~responses\.json$/));
+    let perSampleKeys = 0;
+    let totalKeys = 0;
+
+    for (const f of consolidatedFiles) {
+      try {
+        const data = await getFileContent(f.fileId);
+        if (!data || typeof data !== "object") continue;
+        // data = { paramId: { lineId_repId_sampleId: { value, photos } } }
+        for (const paramId of Object.keys(data)) {
+          const paramData = data[paramId];
+          if (!paramData || typeof paramData !== "object") continue;
+          for (const key of Object.keys(paramData)) {
+            totalKeys++;
+            // Per-sample keys have 3 parts: lineId_repIndex_sampleIndex
+            const parts = key.split("_");
+            if (parts.length >= 3) {
+              // Check if third part is a numeric sample index
+              const potentialSample = Number(parts[parts.length - 1]);
+              if (!isNaN(potentialSample) && potentialSample >= 0) {
+                perSampleKeys++;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`Error reading ${f.fileName}:`, e);
+      }
+    }
+
+    if (perSampleKeys === 0) {
+      bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--ok">
+        <span class="material-symbols-rounded">check_circle</span>
+        <span>All ${totalKeys} keys are per-rep — already optimized</span>
+      </div>`;
+      btn.disabled = true;
+    } else {
+      bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--warn">
+        <span class="material-symbols-rounded">account_tree</span>
+        <span>${perSampleKeys} per-sample keys found (of ${totalKeys} total)</span>
+      </div>`;
+      btn.disabled = false;
+    }
+  } catch (err) {
+    console.error("Error scanning trial structure:", err);
+    bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--error">
+      <span class="material-symbols-rounded">error</span>
+      <span>Failed to scan file structure</span>
+    </div>`;
+  }
+}
+
+async function optimizeTrialStructure() {
+  const card = document.getElementById("optimizeCard_TrialStructure");
+  if (!card) return;
+  const bodyEl = card.querySelector(".optimization-card-body");
+  const btn = card.querySelector(".optimization-card-footer button");
+  btn.disabled = true;
+
+  bodyEl.innerHTML = `<div class="optimization-file-count">
+    <span class="material-symbols-rounded spin-slow">progress_activity</span>
+    <span>Loading response files…</span>
+  </div>`;
+
+  try {
+    const files = await _getTrialResponseFiles();
+    const consolidatedFiles = files.filter(f => f.fileName.match(/^\d+~responses\.json$/));
+    let totalMerged = 0;
+    let fileIdx = 0;
+
+    for (const f of consolidatedFiles) {
+      fileIdx++;
+      let data;
+      try {
+        data = await getFileContent(f.fileId);
+      } catch (e) {
+        continue;
+      }
+      if (!data || typeof data !== "object") continue;
+
+      let fileMerged = 0;
+      for (const paramId of Object.keys(data)) {
+        const paramData = data[paramId];
+        if (!paramData || typeof paramData !== "object") continue;
+
+        const mergedKeys = {};
+        const keysToDelete = [];
+
+        for (const key of Object.keys(paramData)) {
+          const parts = key.split("_");
+          if (parts.length < 3) continue;
+
+          const potentialSample = Number(parts[parts.length - 1]);
+          if (isNaN(potentialSample) || potentialSample < 0) continue;
+
+          // This is a per-sample key — merge to per-rep key
+          const repKey = parts.slice(0, -1).join("_");
+          if (!mergedKeys[repKey]) {
+            mergedKeys[repKey] = paramData[repKey] || { value: "", photos: [], timestamp: "" };
+          }
+
+          const sampleData = paramData[key];
+          // Merge: keep the latest timestamp, concatenate photos, keep latest non-empty value
+          if (sampleData.value && (!mergedKeys[repKey].value || sampleData.timestamp > (mergedKeys[repKey].timestamp || ""))) {
+            mergedKeys[repKey].value = sampleData.value;
+          }
+          if (Array.isArray(sampleData.photos) && sampleData.photos.length > 0) {
+            mergedKeys[repKey].photos = [...(mergedKeys[repKey].photos || []), ...sampleData.photos];
+          }
+          if (sampleData.timestamp && sampleData.timestamp > (mergedKeys[repKey].timestamp || "")) {
+            mergedKeys[repKey].timestamp = sampleData.timestamp;
+          }
+
+          keysToDelete.push(key);
+          fileMerged++;
+        }
+
+        // Apply merged data
+        for (const repKey of Object.keys(mergedKeys)) {
+          paramData[repKey] = mergedKeys[repKey];
+        }
+        for (const key of keysToDelete) {
+          if (!mergedKeys[key]) delete paramData[key];
+        }
+      }
+
+      if (fileMerged > 0) {
+        bodyEl.innerHTML = `<div class="optimization-file-count">
+          <span class="material-symbols-rounded spin-slow">progress_activity</span>
+          <span>Saving file ${fileIdx}/${consolidatedFiles.length}…</span>
+        </div>`;
+
+        const boundary = "-------314159265358979323846";
+        const delimiter = "\r\n--" + boundary + "\r\n";
+        const closeDelimiter = "\r\n--" + boundary + "--";
+        const metadata = { name: f.fileName, mimeType: "application/json" };
+        const body = delimiter + "Content-Type: application/json\r\n\r\n" + JSON.stringify(metadata) +
+          delimiter + "Content-Type: application/json\r\n\r\n" + JSON.stringify(data, null, 2) + closeDelimiter;
+
+        await gapi.client.request({
+          path: `/upload/drive/v3/files/${f.fileId}`,
+          method: "PATCH",
+          params: { uploadType: "multipart" },
+          headers: { "Content-Type": 'multipart/related; boundary="' + boundary + '"' },
+          body,
+        });
+
+        totalMerged += fileMerged;
+      }
+    }
+
+    bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--ok">
+      <span class="material-symbols-rounded">check_circle</span>
+      <span>${totalMerged} per-sample keys merged to per-rep</span>
+    </div>`;
+
+    showToast(`Structure optimization complete: ${totalMerged} keys consolidated`, "success");
+  } catch (err) {
+    console.error("Error optimizing trial structure:", err);
+    bodyEl.innerHTML = `<div class="optimization-file-count optimization-file-count--error">
+      <span class="material-symbols-rounded">error</span>
+      <span>Optimization failed</span>
+    </div>`;
+    btn.disabled = false;
+  }
 }
 
 function updateStoredAnalysisUserSettings(patch = {}, options = {}) {
@@ -441,7 +1438,7 @@ function updateStoredAnalysisUserSettings(patch = {}, options = {}) {
   }
 }
 
-function openUserSettingsModal(activeTab = "database") {
+function openUserSettingsModal(activeTab = "analysis") {
   const modal = document.getElementById("userSettingsModal");
   const dropdown = document.getElementById("userDropdown");
   const trigger = document.getElementById("userMenuTrigger");
@@ -450,7 +1447,6 @@ function openUserSettingsModal(activeTab = "database") {
   if (dropdown) dropdown.classList.remove("active");
   if (trigger) trigger.classList.remove("active");
 
-  renderUserSettingsDatabaseTab();
   renderUserSettingsAnalysisTab();
   switchUserSettingsTab(activeTab);
   modal.classList.remove("hidden");
@@ -465,20 +1461,6 @@ function closeUserSettingsModal() {
 }
 
 async function saveUserSettingsFromModal() {
-  const databaseCheckboxes = Array.from(
-    document.querySelectorAll("#dbSettingsColumnsList .db-settings-col-checkbox"),
-  );
-
-  const selectedDatabaseKeys = databaseCheckboxes
-    .filter((checkbox) => checkbox.checked)
-    .map((checkbox) => String(checkbox.dataset.colKey || ""))
-    .filter(Boolean);
-
-  if (selectedDatabaseKeys.length === 0) {
-    showToast("At least one Database column must be visible", "warning");
-    return;
-  }
-
   const analysisCheckboxes = Array.from(
     document.querySelectorAll("#analysisSettingsColumnsList .analysis-settings-col-checkbox"),
   );
@@ -528,10 +1510,6 @@ async function saveUserSettingsFromModal() {
 
   userSettingsState.data = normalizeUserSettings({
     ...userSettingsState.data,
-    database: {
-      ...(userSettingsState.data?.database || {}),
-      visibleColumns: selectedDatabaseKeys,
-    },
     analysis: {
       ...(userSettingsState.data?.analysis || {}),
       visibleColumns: selectedAnalysisKeys,
@@ -541,10 +1519,6 @@ async function saveUserSettingsFromModal() {
       ggeBiplotDefaults: parsedGgeBiplotDefaults,
     },
   });
-
-  if (typeof setDatabaseVisibleColumns === "function") {
-    setDatabaseVisibleColumns(selectedDatabaseKeys, { skipRender: false });
-  }
 
   if (typeof applyAnalysisUserSettings === "function") {
     applyAnalysisUserSettings(userSettingsState.data.analysis);
@@ -891,8 +1865,6 @@ function showView(viewName) {
         ? "inventory"
         : activePage?.id === "trialContent"
           ? "trial"
-          : activePage?.id === "databaseContent"
-            ? "database"
           : activePage?.id === "libraryContent"
             ? "library"
             : "dashboard";
@@ -901,87 +1873,6 @@ function showView(viewName) {
 }
 
 // Switch page content
-const databaseFullscreenState = {
-  active: false,
-  previousPageTitle: "Dashboard",
-  previousMenuHtml: '<span class="material-symbols-rounded">menu</span>',
-  previousMenuOnclick: null,
-  previousDisplays: {},
-};
-
-function setDatabaseTopbarControls(show) {
-  const exportBtn = document.getElementById("databaseExportBtn");
-
-  const controls = [exportBtn];
-  controls.forEach((control) => {
-    if (!control) return;
-    control.classList.toggle("hidden", !show);
-    control.style.display = show ? "" : "none";
-  });
-}
-
-function enterDatabaseFullscreenMode() {
-  if (databaseFullscreenState.active) return;
-
-  const topbar = document.querySelector(".topbar");
-  const pageTitle = document.getElementById("pageTitle");
-  const menuToggle = document.getElementById("menuToggle");
-
-  const managedIds = ["loadDataBtn", "syncStatusBtn", "userMenu"];
-  databaseFullscreenState.previousDisplays = {};
-  managedIds.forEach((id) => {
-    const element = document.getElementById(id);
-    if (!element) return;
-    databaseFullscreenState.previousDisplays[id] = element.style.display;
-    element.style.display = "none";
-  });
-
-  databaseFullscreenState.previousPageTitle = pageTitle?.textContent || "Database";
-  if (menuToggle) {
-    databaseFullscreenState.previousMenuHtml = menuToggle.innerHTML;
-    databaseFullscreenState.previousMenuOnclick = menuToggle.onclick;
-    menuToggle.innerHTML = '<span class="material-symbols-rounded">close</span>';
-    menuToggle.onclick = () => switchPage("dashboard");
-  }
-
-  if (topbar) topbar.classList.add("run-trial-mode");
-  if (pageTitle) pageTitle.textContent = "Database";
-
-  document.body.classList.add("database-fullscreen-active", "sidebar-collapsed");
-  databaseFullscreenState.active = true;
-}
-
-function exitDatabaseFullscreenMode() {
-  if (!databaseFullscreenState.active) return;
-
-  const topbar = document.querySelector(".topbar");
-  const pageTitle = document.getElementById("pageTitle");
-  const menuToggle = document.getElementById("menuToggle");
-  const sidebar = document.querySelector(".sidebar");
-  const sidebarOverlay = document.getElementById("sidebarOverlay");
-
-  if (topbar) topbar.classList.remove("run-trial-mode");
-  if (pageTitle) pageTitle.textContent = databaseFullscreenState.previousPageTitle || "Dashboard";
-
-  if (menuToggle) {
-    menuToggle.innerHTML = databaseFullscreenState.previousMenuHtml || '<span class="material-symbols-rounded">menu</span>';
-    menuToggle.onclick = databaseFullscreenState.previousMenuOnclick || null;
-  }
-
-  Object.entries(databaseFullscreenState.previousDisplays || {}).forEach(([id, display]) => {
-    const element = document.getElementById(id);
-    if (!element) return;
-    element.style.display = display || "";
-  });
-
-  // Return to normal (not fullscreen, not collapsed)
-  document.body.classList.remove("database-fullscreen-active", "sidebar-collapsed");
-  if (sidebar) sidebar.classList.remove("open");
-  if (sidebarOverlay) sidebarOverlay.classList.remove("active");
-
-  databaseFullscreenState.active = false;
-}
-
 function switchPage(pageName, options = {}) {
   const trialEditor = document.getElementById("trialEditor");
   const isTrialEditorOpen = Boolean(trialEditor?.classList.contains("active"));
@@ -998,11 +1889,6 @@ function switchPage(pageName, options = {}) {
     return;
   }
 
-  if (pageName !== "database") {
-    exitDatabaseFullscreenMode();
-    setDatabaseTopbarControls(false);
-  }
-
   if (pageName !== "analysis") {
     if (typeof exitAnalysisFullscreenMode === "function") exitAnalysisFullscreenMode();
   }
@@ -1017,7 +1903,6 @@ function switchPage(pageName, options = {}) {
     dashboard: "dashboardContent",
     inventory: "inventoryContent",
     trial: "trialContent",
-    database: "databaseContent",
     analysis: "analysisContent",
     library: "libraryContent",
     reminder: "reminderContent",
@@ -1032,7 +1917,6 @@ function switchPage(pageName, options = {}) {
     dashboard: "Dashboard",
     inventory: "Inventory",
     trial: "Trial",
-    database: "Database",
     analysis: "Data Analysis",
     library: "Library",
     reminder: "Reminder",
@@ -1044,21 +1928,17 @@ function switchPage(pageName, options = {}) {
 
   syncNavActiveState(pageName);
 
-  if (pageName === "database") {
-    enterDatabaseFullscreenMode();
-    setDatabaseTopbarControls(true);
-    if (typeof renderDatabaseTable === "function") {
-      renderDatabaseTable();
-    }
-  }
-
   if (pageName === "analysis") {
     if (typeof enterAnalysisFullscreenMode === "function") enterAnalysisFullscreenMode();
     if (typeof initAnalysis === "function") initAnalysis();
   }
 
   if (pageName === "library") {
-    if (typeof lazyLoadLibraryFromDrive === "function") lazyLoadLibraryFromDrive();
+    if (typeof ensureLibrarySectionLoaded === "function") {
+      ensureLibrarySectionLoaded();
+    } else if (typeof lazyLoadLibraryFromDrive === "function") {
+      lazyLoadLibraryFromDrive();
+    }
   }
 }
 
@@ -1124,6 +2004,19 @@ function navigateToView(item) {
       const tab = firstSub.dataset.reminderTab;
       switchReminderTab(tab);
     }
+  } else if (view === "library") {
+    const firstSub = document.querySelector(
+      '.nav-subitem[data-parent="library"]',
+    );
+    if (firstSub) {
+      document.querySelectorAll('.nav-subitem').forEach((s) => s.classList.remove('active'));
+      firstSub.classList.add('active');
+      const section = firstSub.dataset.librarySection || "files";
+      if (typeof switchLibrarySection === "function") {
+        switchLibrarySection(section);
+      }
+      syncLibraryNavState(section);
+    }
   }
 
   // Close mobile sidebar after navigation
@@ -1163,6 +2056,15 @@ function navigateToSubView(item) {
     const tab = item.dataset.reminderTab;
     switchPage("reminder");
     switchReminderTab(tab);
+  }
+
+  if (parent === "library") {
+    const section = item.dataset.librarySection || "files";
+    switchPage("library");
+    if (typeof switchLibrarySection === "function") {
+      switchLibrarySection(section);
+    }
+    syncLibraryNavState(section);
   }
 
   const isMobile = window.matchMedia("(max-width: 768px)").matches;
@@ -1215,6 +2117,14 @@ function syncNavActiveState(pageName) {
     return;
   }
 
+  if (pageName === "library") {
+    const activeSection = (typeof libraryState !== "undefined" && libraryState?.section)
+      ? libraryState.section
+      : "files";
+    syncLibraryNavState(activeSection);
+    return;
+  }
+
   document
     .querySelectorAll(".nav-subitem")
     .forEach((item) => item.classList.remove("active"));
@@ -1233,6 +2143,9 @@ function syncInventoryNavState(category) {
   document
     .querySelectorAll('.nav-subitem[data-parent="reminder"]')
     .forEach((item) => item.classList.remove("active"));
+  document
+    .querySelectorAll('.nav-subitem[data-parent="library"]')
+    .forEach((item) => item.classList.remove("active"));
 }
 
 function syncReminderNavState(tabName) {
@@ -1248,6 +2161,26 @@ function syncReminderNavState(tabName) {
   document
     .querySelectorAll('.nav-subitem[data-parent="trial"]')
     .forEach((item) => item.classList.remove("active"));
+  document
+    .querySelectorAll('.nav-subitem[data-parent="library"]')
+    .forEach((item) => item.classList.remove("active"));
+}
+
+function syncLibraryNavState(sectionName) {
+  document
+    .querySelectorAll('.nav-subitem[data-parent="library"]')
+    .forEach((item) => {
+      item.classList.toggle("active", item.dataset.librarySection === sectionName);
+    });
+  document
+    .querySelectorAll('.nav-subitem[data-parent="inventory"]')
+    .forEach((item) => item.classList.remove("active"));
+  document
+    .querySelectorAll('.nav-subitem[data-parent="trial"]')
+    .forEach((item) => item.classList.remove("active"));
+  document
+    .querySelectorAll('.nav-subitem[data-parent="reminder"]')
+    .forEach((item) => item.classList.remove("active"));
 }
 
 // Initialize app
@@ -1257,6 +2190,9 @@ async function initializeApp() {
   try {
     showLoading(true);
     setLoadingProgress(5, "Preparing your workspace...");
+
+    // Ask browser to keep app storage persistent (reduces eviction risk on large datasets).
+    requestPersistentStorage().catch(() => {});
 
     // Update user info
     const user = getCurrentUser();
@@ -1341,6 +2277,13 @@ async function initializeApp() {
     const loadDataBtn = document.getElementById("loadDataBtn");
     if (loadDataBtn) loadDataBtn.classList.toggle("hidden", !!isGuest);
 
+    if (!isGuest) {
+      // Periodic update signal for already-loaded trial data.
+      setInterval(() => {
+        checkLoadedTrialUpdates({ silent: true }).catch(() => {});
+      }, 10 * 60 * 1000);
+    }
+
     setLoadingProgress(100, "Ready");
     showView("app");
     showLoading(false);
@@ -1371,7 +2314,6 @@ function setupEventListeners() {
   if (menuToggle && sidebar) {
     menuToggle.addEventListener("click", () => {
       if (document.body.classList.contains("run-trial-active")) return;
-      if (document.body.classList.contains("database-fullscreen-active")) return;
       const isMobile = window.matchMedia("(max-width: 768px)").matches;
       if (isMobile) {
         sidebar.classList.toggle("open");
@@ -1433,8 +2375,6 @@ function setupEventListeners() {
   const userSettingsCancelBtn = document.getElementById("userSettingsCancelBtn");
   const userSettingsSaveBtn = document.getElementById("userSettingsSaveBtn");
   const userSettingsModal = document.getElementById("userSettingsModal");
-  const dbSettingsSelectAllBtn = document.getElementById("dbSettingsSelectAllBtn");
-  const dbSettingsClearAllBtn = document.getElementById("dbSettingsClearAllBtn");
   const analysisSettingsSelectAllBtn = document.getElementById("analysisSettingsSelectAllBtn");
   const analysisSettingsClearAllBtn = document.getElementById("analysisSettingsClearAllBtn");
 
@@ -1459,29 +2399,9 @@ function setupEventListeners() {
 
   document.querySelectorAll(".user-settings-nav-item").forEach((button) => {
     button.addEventListener("click", () => {
-      switchUserSettingsTab(button.dataset.settingsTab || "database");
+      switchUserSettingsTab(button.dataset.settingsTab || "analysis");
     });
   });
-
-  if (dbSettingsSelectAllBtn) {
-    dbSettingsSelectAllBtn.addEventListener("click", () => {
-      document
-        .querySelectorAll("#dbSettingsColumnsList .db-settings-col-checkbox")
-        .forEach((checkbox) => {
-          checkbox.checked = true;
-        });
-    });
-  }
-
-  if (dbSettingsClearAllBtn) {
-    dbSettingsClearAllBtn.addEventListener("click", () => {
-      document
-        .querySelectorAll("#dbSettingsColumnsList .db-settings-col-checkbox")
-        .forEach((checkbox, index) => {
-          checkbox.checked = index === 0;
-        });
-    });
-  }
 
   if (analysisSettingsSelectAllBtn) {
     analysisSettingsSelectAllBtn.addEventListener("click", () => {
@@ -1614,6 +2534,11 @@ function setupEventListeners() {
   document.getElementById("addItemBtn").addEventListener("click", () => {
     openAddModal();
   });
+
+  // Initialize folder system
+  if (typeof initFolderSystem === "function") {
+    initFolderSystem();
+  }
 
   // Inventory filter controls
   const invFilterCrop = document.getElementById("inventoryFilterCrop");
@@ -2269,34 +3194,164 @@ const loadDataBgState = {
   loadAllActive: false,
   loadAllLoaded: 0,
   loadAllTotal: 0,
+  /** Map of trialId~areaIdx~type -> boolean (remote newer data available) */
+  updateFlags: {},
+  checkingUpdates: false,
+  lastUpdateCheckAt: null,
 };
+
+function _setAreaTypeUpdateFlag(trialId, areaIndex, type, hasUpdate) {
+  const key = `${trialId}~${areaIndex}~${type}`;
+  if (hasUpdate) {
+    loadDataBgState.updateFlags[key] = true;
+  } else {
+    delete loadDataBgState.updateFlags[key];
+  }
+}
+
+function _hasAreaTypeUpdate(trialId, areaIndex, type) {
+  return !!loadDataBgState.updateFlags[`${trialId}~${areaIndex}~${type}`];
+}
+
+function _hasTrialUpdates(trialId) {
+  const prefix = `${trialId}~`;
+  return Object.keys(loadDataBgState.updateFlags).some((k) => k.startsWith(prefix));
+}
+
+function _fileMatchesAreaType(fileName, areaIdx, type) {
+  const base = String(fileName || "").replace(/\.json$/i, "");
+  if (type === "observation") {
+    return base.startsWith(`${areaIdx}~`) || base.startsWith(`${areaIdx}_`);
+  }
+  return base.startsWith(`${areaIdx}~`);
+}
+
+async function checkLoadedTrialUpdates(options = {}) {
+  const { silent = true } = options;
+  if (loadDataBgState.checkingUpdates) return;
+
+  const user = getCurrentUser?.();
+  if (!user || user.isGuest) return;
+
+  const trials = (trialState?.trials || []).filter((t) => {
+    const loadedAreas = Array.isArray(t._loadedAreas) ? t._loadedAreas : [];
+    const typeMap = t._loadedAreaTypes || {};
+    return t._responsesLoaded || loadedAreas.length > 0 || Object.keys(typeMap).length > 0;
+  });
+  if (trials.length === 0) return;
+
+  loadDataBgState.checkingUpdates = true;
+  let anyNewUpdate = false;
+
+  try {
+    const rootFolderId = await getTrialsFolderId();
+
+    for (const trial of trials) {
+      const trialFolder = await findFolder(trial.id, rootFolderId);
+      if (!trialFolder) continue;
+
+      const responsesFolder = await findFolder("responses", trialFolder.id);
+      const agronomyFolder = await findFolder("agronomy", trialFolder.id);
+
+      const [respFiles, agroFiles] = await Promise.all([
+        responsesFolder
+          ? gapi.client.drive.files.list({
+            q: `'${responsesFolder.id}' in parents and mimeType='application/json' and trashed=false`,
+            fields: "files(id,name,modifiedTime)",
+            pageSize: 1000,
+          }).then((r) => r.result.files || [])
+          : Promise.resolve([]),
+        agronomyFolder
+          ? gapi.client.drive.files.list({
+            q: `'${agronomyFolder.id}' in parents and mimeType='application/json' and trashed=false`,
+            fields: "files(id,name,modifiedTime)",
+            pageSize: 1000,
+          }).then((r) => r.result.files || [])
+          : Promise.resolve([]),
+      ]);
+
+      const loadedAreaTypes = trial._loadedAreaTypes || {};
+      const areaIndexes = new Set([
+        ...Object.keys(loadedAreaTypes),
+        ...((trial._loadedAreas || []).map((x) => String(x))),
+      ]);
+
+      for (const areaIdx of areaIndexes) {
+        const markerObs = trial._loadSyncMarker?.[areaIdx]?.observation;
+        const markerAgro = trial._loadSyncMarker?.[areaIdx]?.agronomy;
+        const obsLoaded = !!loadedAreaTypes?.[areaIdx]?.observation || !!trial._loadedAreas?.includes(String(areaIdx));
+        const agroLoaded = !!loadedAreaTypes?.[areaIdx]?.agronomy || !!trial._loadedAreas?.includes(String(areaIdx));
+
+        if (obsLoaded && markerObs) {
+          const hasObsUpdate = respFiles.some((f) => {
+            if (!_fileMatchesAreaType(f.name, areaIdx, "observation")) return false;
+            return new Date(f.modifiedTime || 0).getTime() > new Date(markerObs).getTime();
+          });
+          _setAreaTypeUpdateFlag(trial.id, areaIdx, "observation", hasObsUpdate);
+          if (hasObsUpdate) anyNewUpdate = true;
+        }
+
+        if (agroLoaded && markerAgro) {
+          const hasAgroUpdate = agroFiles.some((f) => {
+            if (!_fileMatchesAreaType(f.name, areaIdx, "agronomy")) return false;
+            return new Date(f.modifiedTime || 0).getTime() > new Date(markerAgro).getTime();
+          });
+          _setAreaTypeUpdateFlag(trial.id, areaIdx, "agronomy", hasAgroUpdate);
+          if (hasAgroUpdate) anyNewUpdate = true;
+        }
+      }
+    }
+
+    loadDataBgState.lastUpdateCheckAt = new Date().toISOString();
+    if (!silent && anyNewUpdate) {
+      showToast("There's new trial data in Drive. Click Update in the available area.", "info", 4500);
+    }
+
+    // Refresh UI badge/status if panel is open
+    const modal = document.getElementById("loadDataModal");
+    if (modal?.classList.contains("active")) {
+      renderLoadDataTrialList();
+    }
+  } catch (error) {
+    console.warn("Failed checking trial updates:", error);
+  } finally {
+    loadDataBgState.checkingUpdates = false;
+  }
+}
 
 /** Helper: push progress into background state AND live-update DOM if visible */
 function _updateTrialLoadUI(trialId, info) {
   loadDataBgState.loadingTrials[trialId] = info;
+  _updateLoadAllUI();
 
-  // Try to update live DOM elements (may not exist if panel is closed)
+  // Update area-level progress in the DOM
+  const areaKey = info._areaKey; // e.g., "trialId~0"
+  if (areaKey) {
+    const areaRow = document.querySelector(`.load-data-area-row[data-area-key="${areaKey}"]`);
+    if (!areaRow) return;
+    const progressEl = areaRow.querySelector(".load-data-area-progress");
+    const progressFill = areaRow.querySelector(".load-data-progress-fill");
+    const progressText = areaRow.querySelector(".load-data-area-progress-text");
+    const areaBtn = areaRow.querySelector(".load-data-area-btn");
+
+    if (progressEl) progressEl.style.display = "";
+    if (progressFill) progressFill.style.width = (info.percentage || 0) + "%";
+    if (progressText) progressText.textContent = info.step || `${info.percentage || 0}%`;
+    if (areaBtn) {
+      areaBtn.disabled = true;
+      areaBtn.innerHTML = `<span class="spinner-sm"></span> ${info.percentage || 0}%`;
+    }
+    return;
+  }
+
+  // Fallback: update trial-level element
   const itemEl = document.querySelector(`.load-data-trial-item[data-trial-id="${trialId}"]`);
   if (!itemEl) return;
 
   const statusEl = itemEl.querySelector(".load-data-status");
-  const progressEl = itemEl.querySelector(".load-data-trial-progress");
-  const progressFill = itemEl.querySelector(".load-data-progress-fill");
-  const progressText = itemEl.querySelector(".load-data-progress-text");
-  const trialBtn = itemEl.querySelector(".load-data-trial-btn");
-
-  if (info.status === "loading") {
-    if (statusEl) {
-      statusEl.className = "load-data-status loading hidden";
-      statusEl.innerHTML = '<span class="material-symbols-rounded">sync</span> Loading...';
-    }
-    if (progressEl) progressEl.style.display = "";
-    if (progressFill) progressFill.style.width = (info.percentage || 0) + "%";
-    if (progressText) progressText.textContent = info.total > 0 ? `${info.loaded}/${info.total}` : "-";
-    if (trialBtn) {
-      trialBtn.disabled = true;
-      trialBtn.innerHTML = `<span class="spinner-sm"></span> ${info.percentage || 0}%`;
-    }
+  if (info.status === "loading" && statusEl) {
+    statusEl.className = "load-data-status loading";
+    statusEl.innerHTML = '<span class="material-symbols-rounded">cached</span> Loading...';
   }
 }
 
@@ -2305,13 +3360,31 @@ function _updateLoadAllUI() {
   const btn = document.getElementById("loadAllTrialsBtn");
   if (!btn) return;
 
-  if (loadDataBgState.loadAllActive) {
+  const hasActiveLoading = loadDataBgState.loadAllActive
+    || Object.values(loadDataBgState.loadingTrials).some((info) => info?.status === "loading");
+
+  if (hasActiveLoading) {
     btn.disabled = true;
-    btn.innerHTML = `<span class="spinner-sm"></span> ${loadDataBgState.loadAllLoaded}/${loadDataBgState.loadAllTotal}`;
+    if (loadDataBgState.loadAllActive) {
+      btn.innerHTML = `<span class="spinner-sm"></span> ${loadDataBgState.loadAllLoaded}/${loadDataBgState.loadAllTotal}`;
+    } else {
+      btn.innerHTML = '<span class="spinner-sm"></span> Loading...';
+    }
   } else {
     btn.disabled = false;
     btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Load All';
   }
+}
+
+/** Helper: toggle loading animation on #loadDataBtn */
+function _updateLoadDataBtnAnimation() {
+  const btn = document.getElementById("loadDataBtn");
+  if (!btn) return;
+
+  const hasActiveLoading = loadDataBgState.loadAllActive ||
+    Object.values(loadDataBgState.loadingTrials).some(info => info.status === "loading");
+
+  btn.classList.toggle("loading", hasActiveLoading);
 }
 
 function openLoadDataPanel(activeTab = "trial") {
@@ -2338,6 +3411,9 @@ function openLoadDataPanel(activeTab = "trial") {
   renderLoadDataCategorySummary("parameters");
   renderLoadDataCategorySummary("agronomy");
   renderLoadDataLibrarySummary();
+
+  // Check if remote data changed after local load.
+  checkLoadedTrialUpdates({ silent: false }).catch(() => {});
 }
 
 function closeLoadDataPanel() {
@@ -2421,20 +3497,40 @@ function renderLoadDataTrialList() {
     return;
   }
 
+  // Preserve expanded state
+  const expandedTrials = new Set();
+  container.querySelectorAll(".load-data-trial-group.expanded").forEach(el => {
+    expandedTrials.add(el.dataset.trialId);
+  });
+
   container.innerHTML = trials.map(trial => {
-    const bgInfo = loadDataBgState.loadingTrials[trial.id];
-    const isCurrentlyLoading = bgInfo && bgInfo.status === "loading";
+    const trialLoadingInfo = loadDataBgState.loadingTrials[trial.id];
+    const isTrialLoading = !!(trialLoadingInfo && trialLoadingInfo.status === "loading");
     const isLoaded = !!trial._responsesLoaded;
+    const loadedAreas = Array.isArray(trial._loadedAreas) ? trial._loadedAreas : [];
+    const totalAreas = (trial.areas || []).length;
+    const loadedCount = loadedAreas.length;
+    const isPartial = !isLoaded && loadedCount > 0;
+
+    const hasTrialUpdate = _hasTrialUpdates(trial.id);
 
     let statusClass, statusIcon, statusLabel;
-    if (isCurrentlyLoading) {
+    if (isTrialLoading) {
       statusClass = "loading";
-      statusIcon = "sync";
-      statusLabel = "Loading...";
+      statusIcon = "cached";
+      statusLabel = trialLoadingInfo?.step || "Loading...";
+    } else if (hasTrialUpdate) {
+      statusClass = "partial";
+      statusIcon = "system_update_alt";
+      statusLabel = "Update available";
     } else if (isLoaded) {
       statusClass = "loaded";
       statusIcon = "check_circle";
-      statusLabel = "Loaded";
+      statusLabel = "All loaded";
+    } else if (isPartial) {
+      statusClass = "partial";
+      statusIcon = "downloading";
+      statusLabel = `${loadedCount}/${totalAreas}`;
     } else {
       statusClass = "not-loaded";
       statusIcon = "cloud_off";
@@ -2442,123 +3538,326 @@ function renderLoadDataTrialList() {
     }
 
     const cropName = trial.cropName || "";
-    const meta = [cropName, trial.trialType].filter(Boolean).join(" · ");
+    const meta = [cropName, trial.trialType, `${totalAreas} area${totalAreas !== 1 ? "s" : ""}`].filter(Boolean).join(" · ");
+    const isExpanded = expandedTrials.has(trial.id);
 
-    const progressDisplay = isCurrentlyLoading ? "" : "none";
-    const progressPct = isCurrentlyLoading ? (bgInfo.percentage || 0) : 0;
-    const progressLabel = isCurrentlyLoading && bgInfo.total > 0 ? `${bgInfo.loaded}/${bgInfo.total}` : "0%";
+    // Render area rows
+    const areaRows = (trial.areas || []).map((area, idx) => {
+      const areaIdxStr = String(idx);
+      const areaKey = `${trial.id}~${idx}`;
+      const areaLoaded = loadedAreas.includes(areaIdxStr);
+      const areaTypes = trial._loadedAreaTypes?.[areaIdxStr] || {};
+      const obsLoaded = !!areaTypes.observation;
+      const agroLoaded = !!areaTypes.agronomy;
+      const obsHasUpdate = _hasAreaTypeUpdate(trial.id, areaIdxStr, "observation");
+      const agroHasUpdate = _hasAreaTypeUpdate(trial.id, areaIdxStr, "agronomy");
+      const bgInfo = loadDataBgState.loadingTrials[trial.id];
+      const isAreaLoading = bgInfo && bgInfo.status === "loading" && bgInfo._areaKey === areaKey;
+      const loadingType = bgInfo?._loadType || null;
 
-    let buttonHtml;
-    if (isCurrentlyLoading) {
-      buttonHtml = `<button class="load-data-trial-btn" disabled><span class="spinner-sm"></span> ${progressPct}%</button>`;
-    } else if (isLoaded) {
-      buttonHtml = `<button class="load-data-trial-btn load-data-unload-btn" onclick="unloadSingleTrialFromPanel('${trial.id}', this)"><span class="material-symbols-rounded">cloud_off</span> Unload</button>`;
-    } else {
-      buttonHtml = `<button class="load-data-trial-btn" onclick="loadSingleTrialFromPanel('${trial.id}', this)"><span class="material-symbols-rounded">cloud_download</span> Load</button>`;
+      let areaStatusClass, areaIcon;
+      if (isAreaLoading) {
+        areaStatusClass = "loading";
+        areaIcon = "cached";
+      } else if (areaLoaded) {
+        areaStatusClass = "loaded";
+        areaIcon = "check_circle";
+      } else if (obsLoaded || agroLoaded) {
+        areaStatusClass = "partial";
+        areaIcon = "downloading";
+      } else {
+        areaStatusClass = "not-loaded";
+        areaIcon = "cloud_off";
+      }
+
+      const progressDisplay = isAreaLoading ? "" : "none";
+      const progressPct = isAreaLoading ? (bgInfo.percentage || 0) : 0;
+      const progressStep = isAreaLoading ? (bgInfo.step || "") : "";
+
+      // Per-type buttons
+      const obsLoadingNow = isAreaLoading && (loadingType === "observation" || loadingType === "all");
+      const agroLoadingNow = isAreaLoading && (loadingType === "agronomy" || loadingType === "all");
+
+      let obsBtnHtml, agroBtnHtml;
+      if (obsLoadingNow) {
+        obsBtnHtml = `<button class="load-data-type-btn" disabled><span class="spinner-sm"></span> Obs</button>`;
+      } else if (obsLoaded && obsHasUpdate) {
+        obsBtnHtml = `<button class="load-data-type-btn has-update" onclick="loadSingleAreaTypeFromPanel('${trial.id}', ${idx}, 'observation')" title="Update Observation"><span class="material-symbols-rounded">refresh</span> Update Obs</button>`;
+      } else if (obsLoaded) {
+        obsBtnHtml = `<button class="load-data-type-btn loaded" onclick="unloadSingleAreaTypeFromPanel('${trial.id}', ${idx}, 'observation')" title="Unload Observation"><span class="material-symbols-rounded">check_circle</span> Obs</button>`;
+      } else {
+        obsBtnHtml = `<button class="load-data-type-btn" onclick="loadSingleAreaTypeFromPanel('${trial.id}', ${idx}, 'observation')" title="Load Observation"><span class="material-symbols-rounded">cloud_download</span> Obs</button>`;
+      }
+
+      if (agroLoadingNow) {
+        agroBtnHtml = `<button class="load-data-type-btn" disabled><span class="spinner-sm"></span> Agro</button>`;
+      } else if (agroLoaded && agroHasUpdate) {
+        agroBtnHtml = `<button class="load-data-type-btn has-update" onclick="loadSingleAreaTypeFromPanel('${trial.id}', ${idx}, 'agronomy')" title="Update Agronomy"><span class="material-symbols-rounded">refresh</span> Update Agro</button>`;
+      } else if (agroLoaded) {
+        agroBtnHtml = `<button class="load-data-type-btn loaded" onclick="unloadSingleAreaTypeFromPanel('${trial.id}', ${idx}, 'agronomy')" title="Unload Agronomy"><span class="material-symbols-rounded">check_circle</span> Agro</button>`;
+      } else {
+        agroBtnHtml = `<button class="load-data-type-btn" onclick="loadSingleAreaTypeFromPanel('${trial.id}', ${idx}, 'agronomy')" title="Load Agronomy"><span class="material-symbols-rounded">cloud_download</span> Agro</button>`;
+      }
+
+      // Full area unload button (only when something is loaded)
+      const unloadAllBtn = (obsLoaded || agroLoaded) && !isAreaLoading
+        ? `<button class="load-data-area-btn load-data-unload-btn" onclick="unloadSingleAreaFromPanel('${trial.id}', ${idx}, this)" title="Unload All"><span class="material-symbols-rounded">cloud_off</span> Unload Both</button>`
+        : "";
+
+      return `
+        <div class="load-data-area-row ${areaStatusClass}" data-area-key="${areaKey}">
+          <span class="load-data-area-icon material-symbols-rounded ${areaStatusClass}">${areaIcon}</span>
+          <span class="load-data-area-name">${escapeHtml(area.name || `Area ${idx + 1}`)}</span>
+          <div class="load-data-area-progress" style="display:${progressDisplay}">
+            <div class="load-data-progress-bar"><div class="load-data-progress-fill" style="width:${progressPct}%"></div></div>
+            <span class="load-data-area-progress-text">${escapeHtml(progressStep)}</span>
+          </div>
+          <div class="load-data-type-btns">
+            ${obsBtnHtml}
+            ${agroBtnHtml}
+          </div>
+          ${unloadAllBtn}
+        </div>
+      `;
+    }).join("");
+
+    // Trial-level action buttons
+    let trialActions = "";
+    if (isLoaded) {
+      trialActions = `<button class="load-data-trial-btn load-data-unload-btn" onclick="event.stopPropagation(); unloadSingleTrialFromPanel('${trial.id}', this)"><span class="material-symbols-rounded">cloud_off</span> Unload All</button>`;
+    } else if (totalAreas > 0 && loadedCount < totalAreas) {
+      trialActions = `<button class="load-data-trial-btn" onclick="event.stopPropagation(); loadSingleTrialFromPanel('${trial.id}', this)"><span class="material-symbols-rounded">cloud_download</span> Load All</button>`;
     }
 
     return `
-      <div class="load-data-trial-item" data-trial-id="${trial.id}">
-        <div class="load-data-trial-info">
-          <div class="load-data-trial-name">${escapeHtml(trial.name)}</div>
-          <div class="load-data-trial-meta">${escapeHtml(meta)}</div>
+      <div class="load-data-trial-group ${isExpanded ? "expanded" : ""}" data-trial-id="${trial.id}">
+        <div class="load-data-trial-header" onclick="toggleTrialAreaList('${trial.id}')">
+          <span class="material-symbols-rounded load-data-expand-icon">expand_more</span>
+          <div class="load-data-trial-info">
+            <div class="load-data-trial-name">${escapeHtml(trial.name)}</div>
+            <div class="load-data-trial-meta">${escapeHtml(meta)}</div>
+          </div>
+          <span class="load-data-status ${statusClass}">
+            <span class="material-symbols-rounded">${statusIcon}</span>
+            ${statusLabel}
+          </span>
+          ${trialActions}
         </div>
-        <span class="load-data-status ${statusClass}">
-          <span class="material-symbols-rounded">${statusIcon}</span>
-          ${statusLabel}
-        </span>
-        <div class="load-data-trial-progress" style="display:${progressDisplay};">
-          <div class="load-data-progress-bar"><div class="load-data-progress-fill" style="width:${progressPct}%"></div></div>
-          <span class="load-data-progress-text">${progressLabel}</span>
+        <div class="load-data-area-list">
+          ${areaRows || '<div class="load-data-area-empty">No areas defined</div>'}
         </div>
-        ${buttonHtml}
       </div>
     `;
   }).join("");
 
-  // Also sync the Load All button state
   _updateLoadAllUI();
+}
+
+function toggleTrialAreaList(trialId) {
+  const group = document.querySelector(`.load-data-trial-group[data-trial-id="${trialId}"]`);
+  if (group) group.classList.toggle("expanded");
+}
+
+async function loadSingleAreaFromPanel(trialId, areaIndex, btnEl) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial) return;
+
+  const areaKey = `${trialId}~${areaIndex}`;
+  if (trial._loadedAreas?.includes(String(areaIndex))) return;
+
+  // Prevent duplicates
+  const bgInfo = loadDataBgState.loadingTrials[trialId];
+  if (bgInfo && bgInfo.status === "loading" && bgInfo._areaKey === areaKey) return;
+
+  _updateTrialLoadUI(trialId, { status: "loading", percentage: 0, _areaKey: areaKey, _loadType: "all", step: "Connecting..." });
+  _updateLoadDataBtnAnimation();
+
+  try {
+    await loadTrialAreaFromDrive(trialId, areaIndex, (info) => {
+      _updateTrialLoadUI(trialId, { status: "loading", ...info, _areaKey: areaKey, _loadType: "all" });
+    });
+
+    _setAreaTypeUpdateFlag(trialId, String(areaIndex), "observation", false);
+    _setAreaTypeUpdateFlag(trialId, String(areaIndex), "agronomy", false);
+
+    delete loadDataBgState.loadingTrials[trialId];
+    renderLoadDataTrialList();
+    _updateLoadDataBtnAnimation();
+
+    if (typeof updateDashboardCounts === "function") updateDashboardCounts();
+    if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
+    if (typeof renderTrials === "function") renderTrials();
+  } catch (err) {
+    console.error(`Error loading area ${areaIndex} for trial ${trialId}:`, err);
+    delete loadDataBgState.loadingTrials[trialId];
+    renderLoadDataTrialList();
+    _updateLoadDataBtnAnimation();
+    showToast(`Error loading area: ${err.message}`, "error");
+  }
+}
+
+function unloadSingleAreaFromPanel(trialId, areaIndex, btnEl) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial) return;
+
+  const areaIdxStr = String(areaIndex);
+  if (!trial._loadedAreas?.includes(areaIdxStr) && !trial._loadedAreaTypes?.[areaIdxStr]) return;
+
+  // Clear area data
+  if (trial.responses) delete trial.responses[areaIdxStr];
+  if (trial.agronomyResponses) delete trial.agronomyResponses[areaIdxStr];
+  trial._loadedAreas = (trial._loadedAreas || []).filter(a => a !== areaIdxStr);
+  if (trial._loadedAreaTypes) delete trial._loadedAreaTypes[areaIdxStr];
+  _setAreaTypeUpdateFlag(trialId, areaIdxStr, "observation", false);
+  _setAreaTypeUpdateFlag(trialId, areaIdxStr, "agronomy", false);
+  trial._responsesLoaded = false;
+
+  if (typeof saveLocalCache === "function") {
+    saveLocalCache("trials", { trials: trialState.trials });
+  }
+
+  renderLoadDataTrialList();
+  _updateLoadDataBtnAnimation();
+
+  if (typeof updateDashboardCounts === "function") updateDashboardCounts();
+  if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
+  if (typeof renderTrials === "function") renderTrials();
+}
+
+async function loadSingleAreaTypeFromPanel(trialId, areaIndex, type) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial) return;
+
+  const areaIdxStr = String(areaIndex);
+  const areaKey = `${trialId}~${areaIndex}`;
+
+  // Already loading same target
+  const hasPendingLoad = loadDataBgState.loadingTrials[trialId]?.status === "loading";
+  if (hasPendingLoad) return;
+
+  // Prevent duplicate loading
+  const bgInfo = loadDataBgState.loadingTrials[trialId];
+  if (bgInfo && bgInfo.status === "loading" && bgInfo._areaKey === areaKey) return;
+
+  _updateTrialLoadUI(trialId, { status: "loading", percentage: 0, _areaKey: areaKey, _loadType: type, step: "Connecting..." });
+  _updateLoadDataBtnAnimation();
+
+  try {
+    await loadTrialAreaFromDrive(trialId, areaIndex, (info) => {
+      _updateTrialLoadUI(trialId, { status: "loading", ...info, _areaKey: areaKey, _loadType: type });
+    }, { type });
+
+    _setAreaTypeUpdateFlag(trialId, areaIdxStr, type, false);
+
+    delete loadDataBgState.loadingTrials[trialId];
+    renderLoadDataTrialList();
+    _updateLoadDataBtnAnimation();
+
+    if (typeof updateDashboardCounts === "function") updateDashboardCounts();
+    if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
+    if (typeof renderTrials === "function") renderTrials();
+  } catch (err) {
+    console.error(`Error loading ${type} for area ${areaIndex} of trial ${trialId}:`, err);
+    delete loadDataBgState.loadingTrials[trialId];
+    renderLoadDataTrialList();
+    _updateLoadDataBtnAnimation();
+    showToast(`Error loading ${type}: ${err.message}`, "error");
+  }
+}
+
+function unloadSingleAreaTypeFromPanel(trialId, areaIndex, type) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial) return;
+
+  const areaIdxStr = String(areaIndex);
+  if (!trial._loadedAreaTypes?.[areaIdxStr]?.[type]) return;
+
+  // Clear type-specific data
+  if (type === "observation" && trial.responses) {
+    delete trial.responses[areaIdxStr];
+  } else if (type === "agronomy" && trial.agronomyResponses) {
+    delete trial.agronomyResponses[areaIdxStr];
+  }
+
+  _setAreaTypeUpdateFlag(trialId, areaIdxStr, type, false);
+
+  trial._loadedAreaTypes[areaIdxStr][type] = false;
+
+  // If neither type is loaded, remove from _loadedAreas
+  const types = trial._loadedAreaTypes[areaIdxStr];
+  if (!types.observation && !types.agronomy) {
+    trial._loadedAreas = (trial._loadedAreas || []).filter(a => a !== areaIdxStr);
+    delete trial._loadedAreaTypes[areaIdxStr];
+  }
+  trial._responsesLoaded = false;
+
+  if (typeof saveLocalCache === "function") {
+    saveLocalCache("trials", { trials: trialState.trials });
+  }
+
+  renderLoadDataTrialList();
+
+  if (typeof updateDashboardCounts === "function") updateDashboardCounts();
+  if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
+  if (typeof renderTrials === "function") renderTrials();
 }
 
 async function loadSingleTrialFromPanel(trialId, btnEl) {
   const trial = trialState.trials.find(t => t.id === trialId);
   if (!trial || trial._responsesLoaded) return;
-
-  // Prevent duplicate background loads
   if (loadDataBgState.loadingTrials[trialId]?.status === "loading") return;
 
-  // Register in background state
-  _updateTrialLoadUI(trialId, { status: "loading", percentage: 0, loaded: 0, total: 0 });
+  const totalAreas = (trial.areas || []).length;
+  if (!Array.isArray(trial._loadedAreas)) trial._loadedAreas = [];
 
-  const onProgress = ({ loaded, total, percentage }) => {
-    _updateTrialLoadUI(trialId, { status: "loading", percentage, loaded, total });
-  };
+  // Load each unloaded area sequentially
+  for (let i = 0; i < totalAreas; i++) {
+    if (trial._loadedAreas.includes(String(i))) continue;
+    const areaKey = `${trialId}~${i}`;
 
-  try {
-    await loadTrialResponsesFromDrive(trialId, onProgress);
+    _updateTrialLoadUI(trialId, { status: "loading", percentage: 0, _areaKey: areaKey, _loadType: "all", step: "Connecting..." });
+    _updateLoadDataBtnAnimation();
 
-    // Done — remove from loading state
-    delete loadDataBgState.loadingTrials[trialId];
-
-    // Re-render the trial list (panel may or may not be open)
-    renderLoadDataTrialList();
-
-    // Refresh dashboard indicators
-    if (typeof updateDashboardCounts === "function") updateDashboardCounts();
-    if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
-    if (typeof renderTrials === "function") renderTrials();
-  } catch (err) {
-    console.error("Error loading trial:", err);
-
-    // Mark error in background state
-    loadDataBgState.loadingTrials[trialId] = { status: "error", error: err.message };
-
-    // Try to update DOM if panel is open
-    const itemEl = document.querySelector(`.load-data-trial-item[data-trial-id="${trialId}"]`);
-    if (itemEl) {
-      const progressEl = itemEl.querySelector(".load-data-trial-progress");
-      const statusEl = itemEl.querySelector(".load-data-status");
-      const trialBtn = itemEl.querySelector(".load-data-trial-btn");
-      if (progressEl) progressEl.style.display = "none";
-      if (statusEl) {
-        statusEl.className = "load-data-status not-loaded";
-        statusEl.innerHTML = '<span class="material-symbols-rounded">error</span> Error';
-      }
-      if (trialBtn) {
-        trialBtn.disabled = false;
-        trialBtn.innerHTML = '<span class="material-symbols-rounded">cloud_download</span> Retry';
-      }
+    try {
+      await loadTrialAreaFromDrive(trialId, i, (info) => {
+        _updateTrialLoadUI(trialId, { status: "loading", ...info, _areaKey: areaKey, _loadType: "all" });
+      });
+    } catch (err) {
+      console.error(`Error loading area ${i}:`, err);
+      showToast(`Error loading area: ${err.message}`, "error");
+      break;
     }
 
-    // Clean up error state after a moment so next render shows "Not loaded"
-    setTimeout(() => {
-      if (loadDataBgState.loadingTrials[trialId]?.status === "error") {
-        delete loadDataBgState.loadingTrials[trialId];
-      }
-    }, 3000);
-
-    showToast("Error loading trial data: " + err.message, "error");
+    delete loadDataBgState.loadingTrials[trialId];
+    renderLoadDataTrialList();
   }
+
+  delete loadDataBgState.loadingTrials[trialId];
+  renderLoadDataTrialList();
+  _updateLoadDataBtnAnimation();
+
+  if (typeof updateDashboardCounts === "function") updateDashboardCounts();
+  if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
+  if (typeof renderTrials === "function") renderTrials();
 }
 
 async function unloadSingleTrialFromPanel(trialId, btnEl) {
   const trial = trialState.trials.find(t => t.id === trialId);
-  if (!trial || !trial._responsesLoaded) return;
+  if (!trial) return;
+  if (!trial._responsesLoaded && !(Array.isArray(trial._loadedAreas) && trial._loadedAreas.length > 0)) return;
 
-  // Clear in-memory responses
   trial.responses = {};
   trial.agronomyResponses = {};
   trial._responsesLoaded = false;
+  trial._loadedAreas = [];
+  trial._loadedAreaTypes = {};
 
-  // Update local cache (responses cleared, flag reset)
   if (typeof saveLocalCache === "function") {
     saveLocalCache("trials", { trials: trialState.trials });
   }
 
-  // Re-render the trial list to show Load button
   renderLoadDataTrialList();
 
-  // Refresh all dependent views
   if (typeof updateDashboardCounts === "function") updateDashboardCounts();
   if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
   if (typeof renderTrials === "function") renderTrials();
@@ -2567,10 +3866,9 @@ async function unloadSingleTrialFromPanel(trialId, btnEl) {
 }
 
 async function loadAllTrialResponses() {
-  if (loadDataBgState.loadAllActive) return; // Already running
+  if (loadDataBgState.loadAllActive) return;
 
-  const trials = (trialState.trials || []).filter(t => !t.archived && !t._responsesLoaded
-    && loadDataBgState.loadingTrials[t.id]?.status !== "loading");
+  const trials = (trialState.trials || []).filter(t => !t.archived && !t._responsesLoaded);
   if (trials.length === 0) {
     showToast("All trials are already loaded.", "info");
     return;
@@ -2580,10 +3878,10 @@ async function loadAllTrialResponses() {
   loadDataBgState.loadAllLoaded = 0;
   loadDataBgState.loadAllTotal = trials.length;
   _updateLoadAllUI();
+  _updateLoadDataBtnAnimation();
 
   let loaded = 0;
   for (const trial of trials) {
-    // Skip if it got loaded while we were iterating
     if (trial._responsesLoaded) {
       loaded++;
       loadDataBgState.loadAllLoaded = loaded;
@@ -2591,68 +3889,35 @@ async function loadAllTrialResponses() {
       continue;
     }
 
-    // Register in background state
-    _updateTrialLoadUI(trial.id, { status: "loading", percentage: 0, loaded: 0, total: 0 });
+    // Load each unloaded area
+    const totalAreas = (trial.areas || []).length;
+    if (!Array.isArray(trial._loadedAreas)) trial._loadedAreas = [];
 
-    const onProgress = ({ loaded: l, total: t, percentage: pct }) => {
-      _updateTrialLoadUI(trial.id, { status: "loading", percentage: pct, loaded: l, total: t });
-    };
-
-    try {
-      await loadTrialResponsesFromDrive(trial.id, onProgress);
-      loaded++;
-      delete loadDataBgState.loadingTrials[trial.id];
-
-      // Update per-trial UI if panel is open
-      const itemEl = document.querySelector(`.load-data-trial-item[data-trial-id="${trial.id}"]`);
-      if (itemEl) {
-        const statusEl = itemEl.querySelector(".load-data-status");
-        const progressEl = itemEl.querySelector(".load-data-trial-progress");
-        const trialBtn = itemEl.querySelector(".load-data-trial-btn");
-        if (statusEl) {
-          statusEl.className = "load-data-status loaded";
-          statusEl.innerHTML = '<span class="material-symbols-rounded">check_circle</span> Loaded';
-        }
-        if (progressEl) progressEl.style.display = "none";
-        if (trialBtn) {
-          trialBtn.disabled = true;
-          trialBtn.innerHTML = '<span class="material-symbols-rounded">check</span> Loaded';
-        }
+    for (let i = 0; i < totalAreas; i++) {
+      if (trial._loadedAreas.includes(String(i))) continue;
+      const areaKey = `${trial.id}~${i}`;
+      try {
+        _updateTrialLoadUI(trial.id, { status: "loading", percentage: 0, _areaKey: areaKey, step: "Connecting..." });
+        await loadTrialAreaFromDrive(trial.id, i, (info) => {
+          _updateTrialLoadUI(trial.id, { status: "loading", ...info, _areaKey: areaKey });
+        });
+        delete loadDataBgState.loadingTrials[trial.id];
+        renderLoadDataTrialList();
+      } catch (err) {
+        console.error(`Error loading area ${i} of trial ${trial.id}:`, err);
+        delete loadDataBgState.loadingTrials[trial.id];
+        renderLoadDataTrialList();
       }
-    } catch (err) {
-      console.error(`Error loading trial ${trial.id}:`, err);
-      loadDataBgState.loadingTrials[trial.id] = { status: "error", error: err.message };
-
-      const itemEl = document.querySelector(`.load-data-trial-item[data-trial-id="${trial.id}"]`);
-      if (itemEl) {
-        const progressEl = itemEl.querySelector(".load-data-trial-progress");
-        const statusEl = itemEl.querySelector(".load-data-status");
-        if (progressEl) progressEl.style.display = "none";
-        if (statusEl) {
-          statusEl.className = "load-data-status not-loaded";
-          statusEl.innerHTML = '<span class="material-symbols-rounded">error</span> Error';
-        }
-      }
-
-      // Clean up error state after a moment
-      const errTrialId = trial.id;
-      setTimeout(() => {
-        if (loadDataBgState.loadingTrials[errTrialId]?.status === "error") {
-          delete loadDataBgState.loadingTrials[errTrialId];
-        }
-      }, 3000);
     }
 
-    // Update Load All progress
+    if (trial._responsesLoaded) loaded++;
     loadDataBgState.loadAllLoaded = loaded;
     _updateLoadAllUI();
   }
 
-  // Finished
   loadDataBgState.loadAllActive = false;
   _updateLoadAllUI();
-
-  // Re-render trial list to show final state
+  _updateLoadDataBtnAnimation();
   renderLoadDataTrialList();
 
   if (typeof updateDashboardCounts === "function") updateDashboardCounts();
