@@ -516,6 +516,7 @@ function clearLocalCache() {
 
 const userSettingsState = {
   loaded: false,
+  superuserActive: false,
   data: {
     analysis: {
       visibleColumns: [],
@@ -523,6 +524,10 @@ const userSettingsState = {
       sectionFocus: "balanced",
       pathDiagramDefaults: {},
       ggeBiplotDefaults: {},
+    },
+    authority: {
+      hiddenSelectors: [],
+      superuserActive: false,
     },
   },
 };
@@ -544,6 +549,10 @@ function normalizeUserSettings(data) {
     ? rawFocus
     : "balanced";
 
+  const authority = safe.authority && typeof safe.authority === "object"
+    ? safe.authority
+    : {};
+
   return {
     analysis: {
       visibleColumns: Array.isArray(analysis.visibleColumns)
@@ -558,7 +567,17 @@ function normalizeUserSettings(data) {
         ? { ...analysis.ggeBiplotDefaults }
         : {},
     },
+    authority: {
+      hiddenSelectors: Array.isArray(authority.hiddenSelectors)
+        ? authority.hiddenSelectors.filter((s) => typeof s === "string" && s.trim())
+        : [],
+      superuserActive: authority.superuserActive === true,
+    },
   };
+}
+
+function syncAuthorityStateFromSettings() {
+  userSettingsState.superuserActive = userSettingsState.data?.authority?.superuserActive === true;
 }
 
 function getStoredAnalysisUserSettings() {
@@ -570,6 +589,7 @@ function applyUserSettingsToModules() {
   if (typeof applyAnalysisUserSettings === "function") {
     applyAnalysisUserSettings(analysisPrefs);
   }
+  applyAuthorityHiddenSelectors();
 }
 
 function saveUserSettingsLocalCache() {
@@ -605,6 +625,7 @@ async function loadUserSettingsForCurrentUser(options = {}) {
       : null;
     if (cached && typeof cached === "object") {
       userSettingsState.data = normalizeUserSettings(cached);
+      syncAuthorityStateFromSettings();
       applyUserSettingsToModules();
       hasApplied = true;
     }
@@ -626,6 +647,7 @@ async function loadUserSettingsForCurrentUser(options = {}) {
       const remote = await loadUserSettingsFromGoogleDrive();
       if (remote && typeof remote === "object") {
         userSettingsState.data = normalizeUserSettings(remote);
+        syncAuthorityStateFromSettings();
         applyUserSettingsToModules();
         saveUserSettingsLocalCache();
         hasApplied = true;
@@ -640,6 +662,7 @@ async function loadUserSettingsForCurrentUser(options = {}) {
 
   if (!hasApplied) {
     userSettingsState.data = normalizeUserSettings({});
+    syncAuthorityStateFromSettings();
     applyUserSettingsToModules();
   }
 
@@ -748,7 +771,7 @@ function renderUserSettingsAnalysisTab() {
 }
 
 function switchUserSettingsTab(tabKey = "analysis") {
-  const safeTabKey = ["analysis", "optimization"].includes(tabKey)
+  const safeTabKey = ["authority", "analysis", "optimization"].includes(tabKey)
     ? tabKey
     : "analysis";
 
@@ -766,6 +789,184 @@ function switchUserSettingsTab(tabKey = "analysis") {
 
   if (safeTabKey === "optimization") {
     renderOptimizationTab();
+  }
+
+  if (safeTabKey === "authority") {
+    renderAuthorityTab();
+  }
+}
+
+// ===========================
+// AUTHORITY / SUPERUSER MODE
+// ===========================
+const _AUTHORITY_KEY = "spectra123";
+let _authorityStyleEl = null;
+
+function renderAuthorityTab() {
+  const passwordSection = document.getElementById("authorityPasswordSection");
+  const superuserSection = document.getElementById("authoritySuperuserSection");
+  const passwordInput = document.getElementById("authorityPasswordInput");
+  const errorEl = document.getElementById("authorityPasswordError");
+  const textarea = document.getElementById("authorityHiddenSelectorsInput");
+
+  if (!passwordSection || !superuserSection) return;
+
+  if (errorEl) errorEl.style.display = "none";
+  if (passwordInput) passwordInput.value = "";
+
+  if (userSettingsState.superuserActive) {
+    passwordSection.style.display = "none";
+    superuserSection.style.display = "";
+    if (textarea) {
+      const selectors = userSettingsState.data?.authority?.hiddenSelectors || [];
+      textarea.value = selectors.join("\n");
+    }
+  } else {
+    passwordSection.style.display = "";
+    superuserSection.style.display = "none";
+  }
+}
+
+function attemptAuthorityUnlock() {
+  const passwordInput = document.getElementById("authorityPasswordInput");
+  const errorEl = document.getElementById("authorityPasswordError");
+  if (!passwordInput) return;
+
+  const value = passwordInput.value || "";
+  if (value === _AUTHORITY_KEY) {
+    userSettingsState.superuserActive = true;
+    userSettingsState.data = normalizeUserSettings({
+      ...userSettingsState.data,
+      authority: {
+        ...(userSettingsState.data?.authority || {}),
+        superuserActive: true,
+      },
+    });
+    if (errorEl) errorEl.style.display = "none";
+
+    // Reveal hidden elements while in superuser mode
+    _removeAuthorityHiddenStyles();
+
+    saveUserSettingsLocalCache();
+    enqueueUserSettingsSync();
+
+    renderAuthorityTab();
+    showToast("Superuser mode activated", "success");
+  } else {
+    if (errorEl) errorEl.style.display = "";
+    passwordInput.focus();
+  }
+}
+
+function exitSuperuserMode() {
+  userSettingsState.superuserActive = false;
+  userSettingsState.data = normalizeUserSettings({
+    ...userSettingsState.data,
+    authority: {
+      ...(userSettingsState.data?.authority || {}),
+      superuserActive: false,
+    },
+  });
+
+  // Re-apply hidden selectors
+  applyAuthorityHiddenSelectors();
+
+  saveUserSettingsLocalCache();
+  enqueueUserSettingsSync();
+
+  renderAuthorityTab();
+  showToast("Returned to normal mode", "info");
+}
+
+function saveAuthoritySelectors() {
+  const textarea = document.getElementById("authorityHiddenSelectorsInput");
+  if (!textarea) return;
+
+  const raw = textarea.value || "";
+  const selectors = raw
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  userSettingsState.data = normalizeUserSettings({
+    ...userSettingsState.data,
+    authority: {
+      ...(userSettingsState.data?.authority || {}),
+      hiddenSelectors: selectors,
+    },
+  });
+
+  saveUserSettingsLocalCache();
+  enqueueUserSettingsSync();
+  showToast("Hidden selectors saved", "success");
+}
+
+function applyAuthorityHiddenSelectors() {
+  // In superuser mode, don't hide anything
+  if (userSettingsState.superuserActive) {
+    _removeAuthorityHiddenStyles();
+    return;
+  }
+
+  const selectors = userSettingsState.data?.authority?.hiddenSelectors || [];
+  if (selectors.length === 0) {
+    _removeAuthorityHiddenStyles();
+    return;
+  }
+
+  // Build a single CSS rule that hides all matching selectors
+  const safeSelectors = selectors.filter((s) => {
+    try {
+      document.querySelector(s);
+      return true;
+    } catch (_e) {
+      return false;
+    }
+  });
+
+  if (safeSelectors.length === 0) {
+    _removeAuthorityHiddenStyles();
+    return;
+  }
+
+  const css = safeSelectors.join(",\n") + " { display: none !important; }";
+
+  if (!_authorityStyleEl) {
+    _authorityStyleEl = document.createElement("style");
+    _authorityStyleEl.id = "authority-hidden-styles";
+    document.head.appendChild(_authorityStyleEl);
+  }
+  _authorityStyleEl.textContent = css;
+}
+
+function _removeAuthorityHiddenStyles() {
+  if (_authorityStyleEl) {
+    _authorityStyleEl.textContent = "";
+  }
+}
+
+function setupAuthorityEvents() {
+  const unlockBtn = document.getElementById("authorityUnlockBtn");
+  const exitBtn = document.getElementById("authorityExitSuperuserBtn");
+  const saveBtn = document.getElementById("authoritySaveSelectorsBtn");
+  const passwordInput = document.getElementById("authorityPasswordInput");
+
+  if (unlockBtn) {
+    unlockBtn.addEventListener("click", attemptAuthorityUnlock);
+  }
+  if (exitBtn) {
+    exitBtn.addEventListener("click", exitSuperuserMode);
+  }
+  if (saveBtn) {
+    saveBtn.addEventListener("click", saveAuthoritySelectors);
+  }
+  if (passwordInput) {
+    passwordInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        attemptAuthorityUnlock();
+      }
+    });
   }
 }
 
@@ -1438,7 +1639,7 @@ function updateStoredAnalysisUserSettings(patch = {}, options = {}) {
   }
 }
 
-function openUserSettingsModal(activeTab = "analysis") {
+function openUserSettingsModal(activeTab = null) {
   const modal = document.getElementById("userSettingsModal");
   const dropdown = document.getElementById("userDropdown");
   const trigger = document.getElementById("userMenuTrigger");
@@ -1447,8 +1648,11 @@ function openUserSettingsModal(activeTab = "analysis") {
   if (dropdown) dropdown.classList.remove("active");
   if (trigger) trigger.classList.remove("active");
 
+  const firstNavTab = document.querySelector(".user-settings-nav .user-settings-nav-item")?.dataset.settingsTab;
+  const targetTab = activeTab || firstNavTab || "analysis";
+
   renderUserSettingsAnalysisTab();
-  switchUserSettingsTab(activeTab);
+  switchUserSettingsTab(targetTab);
   modal.classList.remove("hidden");
   modal.classList.add("active");
 }
@@ -2269,6 +2473,7 @@ async function initializeApp() {
     setupEventListeners();
     setupDataTransferEvents();
     setupSyncUI();
+    setupAuthorityEvents();
 
     // Hide sync button for guests
     const syncBtn = document.getElementById("syncStatusBtn");

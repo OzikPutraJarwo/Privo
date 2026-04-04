@@ -132,24 +132,25 @@
 - [x] `User Settings` Optimization for inventory's data and trials
 - [x] `User Settings` Data cache change from localStorage to IndexedDB
 - [x] `User Settings` Checking for new data mechanism
-- [ ] `User Settings` User authority (Field User, SuperUser)
+- [x] `User Settings` User authority (Field User, SuperUser)
 - [x] `Inventory` Find for every items
 - [x] `Inventory` Folders for every items
 - [x] `Inventory > Parameter` Formula type use DoO too
 - [x] `Trial` Load data per area/location
 - [x] `Trial` Save data per replication
-- [ ] `Trial` Report format as dataset (params on the right side per column)
-- [ ] `Trial > Observation` Remark for every answer
+- [x] `Trial` Report format as dataset (params on the right side per column)
+- [x] `Trial > Observation` Remark for every answer
 - [x] `Trial > Observation` Save image as separated binary file
 - [x] `Library` Submenu for trial photos
 - [x] `Database` Removed
 ### Bug Fixes, Redesign, etc
 - [x] `Inventory > Parameters` Delete button for DoO
 - [x] `Inventory > Parameters` Crop name with entry type
-- [ ] `Inventory > Parameters` Better UI/UX for formula list (find etc, on the left wing)
-- [ ] `Trial > Run` Units for every answer
-- [ ] `Trial > Run` .run-nav-area overflow bug on phone
-- [ ] `Trial > Report` Right toolbar bug
+- [x] `Inventory > Parameters` Better UI/UX for formula list (find etc, on the left wing)
+- [x] `Trial > Run` Units for every answer
+- [x] `Trial > Run` .run-nav-area overflow bug on phone
+- [x] `Trial > Report` Right toolbar bug
+- [x] `Trial > Report` Redesign
 - [ ] `Dataset` Load gradually with load more
 
 ## UPCOMING PLANS

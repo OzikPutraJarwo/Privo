@@ -11,7 +11,7 @@
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#ffffff">
-    <link rel="icon" type="image/png" href="icons/SPECTRA.png">
+    <link rel="icon" type="image/png" href="icons/SPECTRA Logo.png">
   </head>
 
   <body>
@@ -21,10 +21,10 @@
         <div class="login-content">
           <div class="login-header">
             <div class="logo-icon">
-              <img src="icons/SPECTRA.png" alt="SPECTRA logo" class="logo-image logo-image-login">
+              <img src="icons/SPECTRA%20Logo.png" alt="SPECTRA logo" class="logo-image logo-image-login">
             </div>
             <h1>SPECTRA</h1>
-            <p>Seed Production Evaluation and Comprehensive Trial Research Analytics</p>
+            <p>Smart Platform for Experimental Control, Trial Research & Analysis</p>
           </div>
           <div class="login-body">
             <p>Choose how you'd like to get started</p>
@@ -51,7 +51,7 @@
       <aside class="sidebar">
         <div class="sidebar-header">
           <div class="logo-container">
-            <img src="icons/SPECTRA.png" alt="SPECTRA logo" class="logo-image logo-image-sidebar">
+            <img src="icons/SPECTRA%20Logo.png" alt="SPECTRA logo" class="logo-image logo-image-sidebar">
             <span class="logo-text">SPECTRA</span>
           </div>
         </div>
@@ -1302,6 +1302,7 @@
                     <span class="material-symbols-rounded">upload</span>
                     <span>Upload</span>
                   </button>
+                  <div id="trialPhotoActionsContainer" class="hidden"></div>
                 </div>
               </div>
 
@@ -1733,6 +1734,10 @@
         </div>
         <div class="user-settings-body">
           <aside class="user-settings-nav">
+            <button type="button" class="user-settings-nav-item" data-settings-tab="authority">
+              <span class="material-symbols-rounded">admin_panel_settings</span>
+              <span>Authority</span>
+            </button>
             <button type="button" class="user-settings-nav-item active" data-settings-tab="analysis">
               <span class="material-symbols-rounded">analytics</span>
               <span>Analysis</span>
@@ -1743,6 +1748,39 @@
             </button>
           </aside>
           <section class="user-settings-content">
+            <!-- AUTHORITY TAB -->
+            <div class="user-settings-tab" id="userSettingsTabAuthority">
+              <h4>User Authority</h4>
+              <p class="user-settings-hint">Enter password to access Superuser mode and manage element visibility rules.</p>
+
+              <div id="authorityPasswordSection">
+                <div class="authority-password-group">
+                  <input type="password" id="authorityPasswordInput" class="authority-input" placeholder="Enter password..." autocomplete="off">
+                  <button type="button" class="btn btn-primary" id="authorityUnlockBtn">
+                    <span class="material-symbols-rounded" style="font-size:16px">lock_open</span> Unlock
+                  </button>
+                </div>
+                <p id="authorityPasswordError" class="authority-error" style="display:none">Incorrect password</p>
+              </div>
+
+              <div id="authoritySuperuserSection" style="display:none">
+                <div class="authority-mode-banner superuser">
+                  <span class="material-symbols-rounded">shield_person</span>
+                  <span>Superuser Mode Active</span>
+                  <button type="button" class="btn btn-secondary btn-sm" id="authorityExitSuperuserBtn">Exit Superuser</button>
+                </div>
+
+                <h4 class="user-settings-subtitle">Hidden Element Selectors</h4>
+                <p class="user-settings-hint">CSS selectors for elements to hide in normal mode (e.g. <code>.my-class</code>, <code>#my-id</code>). One selector per line.</p>
+                <textarea id="authorityHiddenSelectorsInput" class="authority-textarea" rows="8" placeholder=".example-class&#10;#example-id&#10;.another-element"></textarea>
+                <div class="authority-actions">
+                  <button type="button" class="btn btn-primary" id="authoritySaveSelectorsBtn">
+                    <span class="material-symbols-rounded" style="font-size:16px">save</span> Save Selectors
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div class="user-settings-tab active" id="userSettingsTabAnalysis">
               <h4>Analysis Dataset Columns</h4>
               <p class="user-settings-hint">Choose which columns are shown inside the Analysis dataset table.</p>

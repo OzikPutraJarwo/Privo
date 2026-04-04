@@ -2412,6 +2412,7 @@ function openEditModal(itemId) {
 
 // Close modal
 function closeModal() {
+  const modal = document.getElementById("itemModal");
   document.getElementById("itemModal").classList.remove("active");
   inventoryState.editingItemId = null;
   // If we were editing/adding entries, switch back to crops view
@@ -2486,7 +2487,6 @@ function closeModal() {
   // Reset DoO panel
   _dooTempData = {};
   const dooPanel = document.getElementById('modalDooPanel');
-  const modal = document.getElementById('itemModal');
   if (dooPanel) dooPanel.classList.add('hidden');
   if (modal) modal.classList.remove('has-doo-panel');
   const dooCropSelect = document.getElementById('dooCropSelect');

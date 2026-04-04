@@ -13,6 +13,15 @@ let libraryState = {
   uploading: {}, // Track upload progress by file name: { filename: { progress: 0-100 } }
   _driveLoaded: false, // Whether items have been loaded from Drive this session
   _trialPhotosLoaded: false,
+  // Background scanning/conversion tracking
+  _scanningInline: false,
+  _scanProgress: null,
+  _convertingInline: false,
+  _convertProgress: null,
+  _operationAbort: null,
+  // Bulk selection for trial photos
+  _selectedTrialPhotos: new Set(), // Track multiple selections
+  _bulkSelectionMode: false,
 };
 
 async function initializeLibrary(options = {}) {
@@ -194,19 +203,31 @@ async function switchLibrarySection(section = "files") {
   const uploadInput = document.getElementById("libraryUploadInput");
   const filterContainer = document.querySelector(".library-filter-container");
   const searchInput = document.getElementById("librarySearchInput");
+  const actionBarContainer = document.getElementById("trialPhotoActionsContainer");
 
   if (nextSection === "trial-photos") {
     if (uploadBtn) uploadBtn.classList.add("hidden");
     if (uploadInput) uploadInput.classList.add("hidden");
     if (filterContainer) filterContainer.classList.add("hidden");
+    if (actionBarContainer) actionBarContainer.classList.remove("hidden");
     libraryState.activeFilter = "all";
     if (searchInput) searchInput.placeholder = "Search trial photos...";
-    setLibraryStatus("Loading trial photos in background...", "loading");
+    
+    // Check if a scan/convert is in progress and show its status
+    if (libraryState._scanningInline) {
+      setLibraryStatus("Scanning inline photos in background...", "loading");
+    } else if (libraryState._convertingInline) {
+      setLibraryStatus("Converting inline photos in background...", "loading");
+    } else {
+      setLibraryStatus("Loading trial photos in background...", "loading");
+    }
+    
     loadTrialPhotoItems().catch(() => {});
   } else {
     if (uploadBtn) uploadBtn.classList.remove("hidden");
     if (uploadInput) uploadInput.classList.remove("hidden");
     if (filterContainer) filterContainer.classList.remove("hidden");
+    if (actionBarContainer) actionBarContainer.classList.add("hidden");
     if (searchInput) searchInput.placeholder = "Search files...";
     renderLibraryList();
     setLibraryStatus("Loading uploaded files in background...", "loading");
@@ -332,7 +353,7 @@ async function loadTrialPhotoItems(options = {}) {
     return;
   }
 
-  setLibraryStatus("Scanning trial photos in background...", "loading");
+  setTrialPhotoProgress(0, "Fetching trial folders...");
 
   try {
     const rootFolderId = await getTrialsFolderId();
@@ -343,17 +364,17 @@ async function loadTrialPhotoItems(options = {}) {
     });
     const trialFolders = trialFoldersResp.result.files || [];
     const allPhotos = [];
+    const total = trialFolders.length;
 
-    for (let i = 0; i < trialFolders.length; i++) {
+    for (let i = 0; i < total; i++) {
       const trialFolder = trialFolders[i];
-      if ((i + 1) % 5 === 0 || i === trialFolders.length - 1) {
-        setLibraryStatus(`Scanning trial photos (${i + 1}/${trialFolders.length})...`, "loading");
-      }
-
       const trialId = trialFolder.name;
       const trialName = trialState?.trials?.find((t) => t.id === trialId)?.name || trialId;
+      const pct = Math.round(((i + 1) / total) * 100);
 
-      // 1) Binary photos from /photos folder
+      setTrialPhotoProgress(pct, `Scanning photos: ${trialName} (${i + 1}/${total})`);
+
+      // Only scan binary photos from /photos folder
       const photosFolder = await findFolder("photos", trialFolder.id);
       if (photosFolder) {
         const photoFilesResp = await gapi.client.drive.files.list({
@@ -378,8 +399,82 @@ async function loadTrialPhotoItems(options = {}) {
           });
         });
       }
+    }
 
-      // 2) Inline photos inside JSON in responses/agronomy
+    libraryState.trialPhotos = allPhotos;
+    libraryState._trialPhotosLoaded = true;
+    renderLibraryList();
+    clearTrialPhotoProgress();
+    setLibraryStatus(`Trial photos loaded (${allPhotos.length} binary files).`, "success");
+    clearLibraryStatus(3000);
+  } catch (error) {
+    console.error("Error loading trial photos:", error);
+    clearTrialPhotoProgress();
+    setLibraryStatus("Failed to load trial photos.", "error");
+  }
+}
+
+function setTrialPhotoProgress(pct, message) {
+  const banner = document.getElementById("libraryStatusBanner");
+  if (!banner) return;
+  banner.classList.remove("hidden", "info", "success", "warning", "error", "loading");
+  banner.classList.add("loading");
+  banner.innerHTML = `
+    <div class="trial-photo-progress-text">${escapeHtml(message || "")}</div>
+    <div class="trial-photo-progress-bar">
+      <div class="trial-photo-progress-fill" style="width: ${Math.min(100, Math.max(0, pct))}%"></div>
+    </div>
+  `;
+}
+
+function clearTrialPhotoProgress() {
+  const banner = document.getElementById("libraryStatusBanner");
+  if (!banner) return;
+  banner.classList.add("hidden");
+  banner.classList.remove("loading");
+  banner.innerHTML = "";
+}
+
+async function scanInlineTrialPhotos() {
+  // If already scanning, don't start another
+  if (libraryState._scanningInline) {
+    showToast("Scan already in progress...", "info");
+    return;
+  }
+
+  // Create abort controller for this operation
+  libraryState._operationAbort = new AbortController();
+  libraryState._scanningInline = true;
+
+  try {
+    const rootFolderId = await getTrialsFolderId();
+    const trialFoldersResp = await gapi.client.drive.files.list({
+      q: `'${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: "files(id,name)",
+      pageSize: 1000,
+    });
+    const trialFolders = trialFoldersResp.result.files || [];
+    
+    // Resume from saved progress if available
+    let inlinePhotos = libraryState._scanProgress?.discoveredPhotos || [];
+    let startIndex = libraryState._scanProgress?.lastIndex || 0;
+    
+    const total = trialFolders.length;
+    setTrialPhotoProgress(Math.round((startIndex / total) * 100), `Scanning inline: resuming from trial ${startIndex + 1}/${total}`);
+
+    for (let i = startIndex; i < total; i++) {
+      // Check if operation was cancelled
+      if (libraryState._operationAbort?.signal.aborted) {
+        console.log("Scan cancelled by user");
+        break;
+      }
+
+      const trialFolder = trialFolders[i];
+      const trialId = trialFolder.name;
+      const trialName = trialState?.trials?.find((t) => t.id === trialId)?.name || trialId;
+      const pct = Math.round(((i + 1) / total) * 100);
+      setTrialPhotoProgress(pct, `Scanning inline: ${trialName} (${i + 1}/${total})`);
+
       const [responsesFolder, agronomyFolder] = await Promise.all([
         findFolder("responses", trialFolder.id),
         findFolder("agronomy", trialFolder.id),
@@ -407,14 +502,13 @@ async function loadTrialPhotoItems(options = {}) {
         let data;
         try {
           data = await getFileContent(file.id);
-        } catch (error) {
+        } catch (_) {
           continue;
         }
         if (!data || typeof data !== "object") continue;
 
         const areaMatch = String(file.name || "").match(/^(\d+)[~_]/);
         const areaIndex = areaMatch ? areaMatch[1] : null;
-        const inlineItems = [];
         collectInlinePhotosFromJson(data, {
           trialId,
           trialName,
@@ -424,20 +518,365 @@ async function loadTrialPhotoItems(options = {}) {
           sourceScope: file.scope,
           areaIndex,
           modifiedTime: file.modifiedTime,
-        }, inlineItems);
-        allPhotos.push(...inlineItems);
+        }, inlinePhotos);
+      }
+
+      // Save progress in case user navigates away
+      libraryState._scanProgress = {
+        lastIndex: i + 1,
+        total: total,
+        discoveredPhotos: inlinePhotos,
+      };
+    }
+
+    // Merge with existing binary photos (avoid duplicates)
+    const existingIds = new Set((libraryState.trialPhotos || []).map((p) => p.id));
+    const newInline = inlinePhotos.filter((p) => !existingIds.has(p.id));
+    libraryState.trialPhotos = [...(libraryState.trialPhotos || []), ...newInline];
+
+    clearTrialPhotoProgress();
+    libraryState._scanningInline = false;
+    libraryState._scanProgress = null;
+    libraryState._operationAbort = null;
+    
+    renderLibraryList();
+
+    if (newInline.length > 0) {
+      setLibraryStatus(`Found ${newInline.length} inline photo(s) not yet stored as binary.`, "warning");
+    } else {
+      setLibraryStatus("All photos are already stored as binary files.", "success");
+      clearLibraryStatus(3000);
+    }
+  } catch (error) {
+    console.error("Error scanning inline photos:", error);
+    clearTrialPhotoProgress();
+    libraryState._scanningInline = false;
+    libraryState._scanProgress = null;
+    libraryState._operationAbort = null;
+    setLibraryStatus("Failed to scan inline photos.", "error");
+  }
+}
+
+async function convertAllInlinePhotosToBinary() {
+  // If already converting, don't start another
+  if (libraryState._convertingInline) {
+    showToast("Conversion already in progress...", "info");
+    return;
+  }
+
+  const inlineItems = (libraryState.trialPhotos || []).filter((p) => p.storageType === "inline-json");
+  if (inlineItems.length === 0) {
+    showToast("No inline photos to convert.", "info");
+    return;
+  }
+
+  // Create abort controller for this operation
+  libraryState._operationAbort = new AbortController();
+  libraryState._convertingInline = true;
+
+  const total = inlineItems.length;
+  let converted = libraryState._convertProgress?.converted || 0;
+  let failed = libraryState._convertProgress?.failed || 0;
+  let sourceIndex = libraryState._convertProgress?.sourceIndex || 0;
+  let itemIndex = libraryState._convertProgress?.itemIndex || 0;
+  
+  setTrialPhotoProgress(Math.round(((converted + failed) / total) * 100), `Converting ${converted + failed}/${total}...`);
+
+  // Group inline photos by sourceFileId to batch updates
+  const bySource = new Map();
+  for (const item of inlineItems) {
+    if (!bySource.has(item.sourceFileId)) bySource.set(item.sourceFileId, []);
+    bySource.get(item.sourceFileId).push(item);
+  }
+
+  const sourceEntries = Array.from(bySource.entries());
+
+  for (let si = sourceIndex; si < sourceEntries.length; si++) {
+    const [sourceFileId, items] = sourceEntries[si];
+    let sourceData;
+    try {
+      sourceData = await getFileContent(sourceFileId);
+    } catch (_) {
+      failed += items.length;
+      continue;
+    }
+    if (!sourceData || typeof sourceData !== "object") {
+      failed += items.length;
+      continue;
+    }
+
+    let sourceModified = false;
+    const firstItem = items[0];
+
+    for (let ii = (si === sourceIndex ? itemIndex : 0); ii < items.length; ii++) {
+      // Check if operation was cancelled
+      if (libraryState._operationAbort?.signal.aborted) {
+        console.log("Conversion cancelled by user");
+        libraryState._convertingInline = false;
+        libraryState._convertProgress = null;
+        libraryState._operationAbort = null;
+        clearTrialPhotoProgress();
+        showToast("Conversion paused. Will resume when you return.", "info");
+        return;
+      }
+
+      const item = items[ii];
+      const pct = Math.round(((converted + failed) / total) * 100);
+      setTrialPhotoProgress(pct, `Converting ${converted + failed}/${total}...`);
+
+      try {
+        let node = sourceData;
+        for (const key of (item.pointerPath || [])) {
+          node = node?.[key];
+          if (!node) break;
+        }
+        if (!node || !Array.isArray(node.photos)) { failed++; continue; }
+
+        const rawPhoto = node.photos[item.photoIndex];
+        if (typeof rawPhoto !== "string" || !rawPhoto.startsWith("data:")) { converted++; continue; }
+
+        const { blob, width, height } = await compressPhotoToWebP(rawPhoto, 1000, 0.7);
+        const photosFolderId = await getOrCreateFolder("photos", item.trialFolderId);
+        const photoIdValue = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const fileName = `${photoIdValue}.webp`;
+        const newFileId = await uploadBinaryFileToDrive(fileName, photosFolderId, blob, "image/webp");
+
+        node.photos[item.photoIndex] = {
+          photoId: photoIdValue,
+          fileId: newFileId,
+          width,
+          height,
+          timestamp: node.timestamp || new Date().toISOString(),
+        };
+        sourceModified = true;
+        converted++;
+      } catch (err) {
+        console.warn("Convert failed for", item.id, err);
+        failed++;
+      }
+
+      // Save progress in case user navigates away
+      libraryState._convertProgress = {
+        sourceIndex: si,
+        itemIndex: ii + 1,
+        converted: converted,
+        failed: failed,
+        total: total,
+      };
+    }
+
+    if (sourceModified) {
+      try {
+        await updateJsonFileById(sourceFileId, firstItem.sourceFileName || "responses.json", sourceData);
+      } catch (err) {
+        console.warn("Failed to update source JSON:", err);
+      }
+    }
+  }
+
+  clearTrialPhotoProgress();
+  libraryState._convertingInline = false;
+  libraryState._convertProgress = null;
+  libraryState._operationAbort = null;
+  
+  showToast(`Conversion complete: ${converted} converted, ${failed} failed.`, converted > 0 ? "success" : "warning");
+  await loadTrialPhotoItems({ force: true });
+}
+
+function clearBulkSelection() {
+  libraryState._selectedTrialPhotos.clear();
+  libraryState._bulkSelectionMode = false;
+  renderBulkActionBar();
+  renderLibraryList();
+}
+
+async function bulkConvertSelected() {
+  const selectedIds = Array.from(libraryState._selectedTrialPhotos);
+  const selectedItems = (libraryState.trialPhotos || []).filter((p) => selectedIds.includes(p.id));
+  const inlineItems = selectedItems.filter((p) => p.storageType === "inline-json");
+  
+  if (inlineItems.length === 0) {
+    showToast("No inline photos to convert in selection.", "info");
+    return;
+  }
+
+  libraryState._operationAbort = new AbortController();
+  libraryState._convertingInline = true;
+
+  const total = inlineItems.length;
+  let converted = 0;
+  let failed = 0;
+  setTrialPhotoProgress(0, `Converting selected: 0/${total}...`);
+
+  // Group by sourceFileId
+  const bySource = new Map();
+  for (const item of inlineItems) {
+    if (!bySource.has(item.sourceFileId)) bySource.set(item.sourceFileId, []);
+    bySource.get(item.sourceFileId).push(item);
+  }
+
+  for (const [sourceFileId, items] of bySource) {
+    if (libraryState._operationAbort?.signal.aborted) break;
+
+    let sourceData;
+    try {
+      sourceData = await getFileContent(sourceFileId);
+    } catch (_) {
+      failed += items.length;
+      continue;
+    }
+    if (!sourceData || typeof sourceData !== "object") {
+      failed += items.length;
+      continue;
+    }
+
+    let sourceModified = false;
+    const firstItem = items[0];
+
+    for (const item of items) {
+      if (libraryState._operationAbort?.signal.aborted) break;
+
+      const pct = Math.round(((converted + failed) / total) * 100);
+      setTrialPhotoProgress(pct, `Converting selected: ${converted + failed}/${total}...`);
+
+      try {
+        let node = sourceData;
+        for (const key of (item.pointerPath || [])) {
+          node = node?.[key];
+          if (!node) break;
+        }
+        if (!node || !Array.isArray(node.photos)) { failed++; continue; }
+
+        const rawPhoto = node.photos[item.photoIndex];
+        if (typeof rawPhoto !== "string" || !rawPhoto.startsWith("data:")) { converted++; continue; }
+
+        const { blob, width, height } = await compressPhotoToWebP(rawPhoto, 1000, 0.7);
+        const photosFolderId = await getOrCreateFolder("photos", item.trialFolderId);
+        const photoIdValue = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const fileName = `${photoIdValue}.webp`;
+        const newFileId = await uploadBinaryFileToDrive(fileName, photosFolderId, blob, "image/webp");
+
+        node.photos[item.photoIndex] = {
+          photoId: photoIdValue,
+          fileId: newFileId,
+          width,
+          height,
+          timestamp: node.timestamp || new Date().toISOString(),
+        };
+        sourceModified = true;
+        converted++;
+      } catch (err) {
+        console.warn("Convert failed for", item.id, err);
+        failed++;
       }
     }
 
-    libraryState.trialPhotos = allPhotos;
-    libraryState._trialPhotosLoaded = true;
-    renderLibraryList();
-    setLibraryStatus(`Trial photos indexed (${allPhotos.length} items).`, "success");
-    clearLibraryStatus(3000);
-  } catch (error) {
-    console.error("Error loading trial photos:", error);
-    setLibraryStatus("Failed to load trial photos.", "error");
+    if (sourceModified) {
+      try {
+        await updateJsonFileById(sourceFileId, firstItem.sourceFileName || "responses.json", sourceData);
+      } catch (err) {
+        console.warn("Failed to update source JSON:", err);
+      }
+    }
   }
+
+  clearTrialPhotoProgress();
+  libraryState._convertingInline = false;
+  libraryState._operationAbort = null;
+  clearBulkSelection();
+  
+  showToast(`Conversion complete: ${converted} converted, ${failed} failed.`, converted > 0 ? "success" : "warning");
+  await loadTrialPhotoItems({ force: true });
+}
+
+async function bulkDeleteSelected() {
+  const selectedIds = Array.from(libraryState._selectedTrialPhotos);
+  const selectedItems = (libraryState.trialPhotos || []).filter((p) => selectedIds.includes(p.id));
+  
+  if (selectedItems.length === 0) return;
+
+  const confirmed = confirm(`Delete ${selectedItems.length} photo(s)?\n\nThis will remove them from the library. Inline photos will be removed from their source files, and binary photos will be deleted from Drive.`);
+  if (!confirmed) return;
+
+  let deleted = 0;
+  let failed = 0;
+  setTrialPhotoProgress(0, `Deleting: 0/${selectedItems.length}...`);
+
+  // For inline photos, remove from source
+  const inlineBySource = new Map();
+  const binaryIds = [];
+  
+  for (const item of selectedItems) {
+    if (item.storageType === "inline-json") {
+      if (!inlineBySource.has(item.sourceFileId)) {
+        inlineBySource.set(item.sourceFileId, []);
+      }
+      inlineBySource.get(item.sourceFileId).push(item);
+    } else {
+      binaryIds.push(item.driveFileId);
+    }
+  }
+
+  // Delete inline photos from source
+  for (const [sourceFileId, items] of inlineBySource) {
+    let sourceData;
+    try {
+      sourceData = await getFileContent(sourceFileId);
+    } catch (_) {
+      failed += items.length;
+      continue;
+    }
+    if (!sourceData || typeof sourceData !== "object") {
+      failed += items.length;
+      continue;
+    }
+
+    let sourceModified = false;
+    const firstItem = items[0];
+
+    for (const item of items) {
+      try {
+        let node = sourceData;
+        for (const key of (item.pointerPath || [])) {
+          node = node?.[key];
+          if (!node) break;
+        }
+        if (node && Array.isArray(node.photos)) {
+          node.photos.splice(item.photoIndex, 1);
+          sourceModified = true;
+          deleted++;
+        }
+      } catch (err) {
+        console.warn("Delete failed for", item.id, err);
+        failed++;
+      }
+    }
+
+    if (sourceModified) {
+      try {
+        await updateJsonFileById(sourceFileId, firstItem.sourceFileName || "responses.json", sourceData);
+      } catch (err) {
+        console.warn("Failed to update source JSON:", err);
+      }
+    }
+  }
+
+  // Delete binary photos from Drive
+  for (const fileId of binaryIds) {
+    try {
+      await gapi.client.drive.files.delete({ fileId });
+      deleted++;
+    } catch (err) {
+      console.warn("Failed to delete binary photo:", err);
+      failed++;
+    }
+  }
+
+  clearTrialPhotoProgress();
+  clearBulkSelection();
+  
+  showToast(`Deleted: ${deleted} photo(s)${failed > 0 ? `, ${failed} failed` : ""}.`, deleted > 0 ? "success" : "warning");
+  await loadTrialPhotoItems({ force: true });
 }
 
 function collectInlinePhotosFromJson(node, baseMeta, output, path = []) {
@@ -514,9 +953,121 @@ function getFileIconColor(mimeType) {
 
 function getTrialPhotoStorageBadge(storageType) {
   if (storageType === "binary") {
-    return '<span class="library-photo-badge binary"><span class="material-symbols-rounded">check_circle</span> Binary</span>';
+    return ''; // No badge for binary photos
   }
   return '<span class="library-photo-badge inline"><span class="material-symbols-rounded">warning</span> Inline JSON</span>';
+}
+
+async function getInlinePhotoDataUrl(item) {
+  try {
+    const sourceData = await getFileContent(item.sourceFileId);
+    if (!sourceData || typeof sourceData !== "object") return null;
+    
+    let node = sourceData;
+    for (const key of (item.pointerPath || [])) {
+      node = node?.[key];
+      if (!node) return null;
+    }
+    
+    if (!node || !Array.isArray(node.photos)) return null;
+    const photo = node.photos[item.photoIndex];
+    if (typeof photo === "string" && photo.startsWith("data:")) {
+      return photo;
+    }
+    return null;
+  } catch (err) {
+    console.warn("Error fetching inline photo:", err);
+    return null;
+  }
+}
+
+function renderTrialPhotoPreview(item) {
+  const previewId = `trial-photo-preview-${item.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  
+  if (item.storageType === "binary") {
+    const imgHtml = `<img 
+      id="${previewId}"
+      class="library-item-preview"
+      data-photo-fileid="${item.driveFileId}"
+      data-loading="true"
+      alt="${escapeHtml(item.name)}"
+      onerror="this.dataset.loading='false'; this.alt='Failed to load'; this.classList.add('error')"
+      onload="this.dataset.loading='false'"
+    />`;
+    return imgHtml;
+  } else {
+    // Inline photo - load async and update once available
+    const imgHtml = `<img 
+      id="${previewId}"
+      class="library-item-preview"
+      data-loading="true"
+      alt="${escapeHtml(item.name)}"
+      onerror="this.dataset.loading='false'; this.alt='Failed to load'; this.classList.add('error')"
+      onload="this.dataset.loading='false'"
+    />`;
+    
+    // Schedule async load
+    setTimeout(() => {
+      getInlinePhotoDataUrl(item).then(dataUrl => {
+        const img = document.getElementById(previewId);
+        if (!img) return;
+        if (dataUrl) {
+          img.src = dataUrl;
+        } else {
+          img.dataset.loading = "false";
+          img.classList.add("error");
+        }
+      });
+    }, 0);
+    
+    return imgHtml;
+  }
+}
+
+function renderTrialPhotoActionBar() {
+  const container = document.getElementById("trialPhotoActionsContainer");
+  if (!container) return;
+
+  const allItems = libraryState.trialPhotos || [];
+  const inlineCount = allItems.filter((p) => p.storageType === "inline-json").length;
+  const binaryCount = allItems.filter((p) => p.storageType === "binary").length;
+
+  let actionBarHtml = `<div class="trial-photo-action-bar">`;
+  actionBarHtml += `<button class="btn btn-secondary btn-sm" onclick="scanInlineTrialPhotos()"><span class="material-symbols-rounded">search</span> Scan Inline Photos</button>`;
+  if (inlineCount > 0) {
+    actionBarHtml += `<button class="btn btn-primary btn-sm" onclick="convertAllInlinePhotosToBinary()"><span class="material-symbols-rounded">conversion_path</span> Convert All to Binary (${inlineCount})</button>`;
+  }
+  actionBarHtml += `<span class="trial-photo-summary">${binaryCount} binary${inlineCount > 0 ? ` · ${inlineCount} inline` : ""}</span>`;
+  actionBarHtml += `</div>`;
+
+  container.innerHTML = actionBarHtml;
+}
+
+function renderBulkActionBar() {
+  const container = document.getElementById("trialPhotoActionsContainer");
+  if (!container) return;
+
+  if (!libraryState._bulkSelectionMode || libraryState._selectedTrialPhotos.size === 0) {
+    renderTrialPhotoActionBar();
+    return;
+  }
+
+  const selectedIds = Array.from(libraryState._selectedTrialPhotos);
+  const selectedItems = (libraryState.trialPhotos || []).filter((p) => selectedIds.includes(p.id));
+  const inlineSelected = selectedItems.filter((p) => p.storageType === "inline-json");
+  
+  let actionBarHtml = `<div class="trial-photo-action-bar bulk-action-bar">`;
+  actionBarHtml += `<span class="bulk-selection-info">${selectedIds.length} selected</span>`;
+  
+  if (inlineSelected.length > 0) {
+    actionBarHtml += `<button class="btn btn-primary btn-sm" onclick="bulkConvertSelected()"><span class="material-symbols-rounded">conversion_path</span> Convert to Binary (${inlineSelected.length})</button>`;
+  }
+  
+  actionBarHtml += `<button class="btn btn-danger btn-sm" onclick="bulkDeleteSelected()"><span class="material-symbols-rounded">delete</span> Delete</button>`;
+  actionBarHtml += `<button class="btn btn-secondary btn-sm" onclick="clearBulkSelection()"><span class="material-symbols-rounded">close</span> Cancel</button>`;
+  actionBarHtml += `</div>`;
+
+  container.innerHTML = actionBarHtml;
 }
 
 function renderTrialPhotoList(container) {
@@ -577,11 +1128,15 @@ function renderTrialPhotoList(container) {
     const metaRight = item.storageType === "binary"
       ? `${formatFileSize(Number(item.size || 0))} · ${dateLabel}`
       : `${item.sourceScope || "json"} · ${item.sourceFileName || "source"}`;
+    const isSelected = libraryState._selectedTrialPhotos.has(item.id);
 
     return `
-      <div class="library-item ${libraryState.selectedId === item.id ? "selected" : ""}" data-trial-photo-id="${item.id}">
-        <div class="library-item-icon" style="color: var(--warning)">
-          <span class="material-symbols-rounded">photo</span>
+      <div class="library-item ${isSelected ? "selected" : ""}" data-trial-photo-id="${item.id}">
+        <div class="library-item-checkbox">
+          <input type="checkbox" class="trial-photo-checkbox" data-trial-photo-id="${item.id}" ${isSelected ? "checked" : ""}>
+        </div>
+        <div class="library-item-icon">
+          ${renderTrialPhotoPreview(item)}
         </div>
         <div class="library-item-info">
           <div class="library-item-name">${escapeHtml(item.trialName || item.trialId || "Trial")}</div>
@@ -597,6 +1152,24 @@ function renderTrialPhotoList(container) {
     `;
   }).join("");
 
+  // Load binary photos from Drive
+  loadExternalPhotos(container);
+
+  // Checkbox event handlers
+  container.querySelectorAll(".trial-photo-checkbox").forEach((checkbox) => {
+    checkbox.addEventListener("change", (e) => {
+      const itemId = checkbox.dataset.trialPhotoId;
+      if (checkbox.checked) {
+        libraryState._selectedTrialPhotos.add(itemId);
+      } else {
+        libraryState._selectedTrialPhotos.delete(itemId);
+      }
+      libraryState._bulkSelectionMode = libraryState._selectedTrialPhotos.size > 0;
+      renderBulkActionBar();
+      renderLibraryList();
+    });
+  });
+
   container.querySelectorAll(".view-trial-photo-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -604,9 +1177,15 @@ function renderTrialPhotoList(container) {
     });
   });
 
-  container.querySelectorAll(".library-item[data-trial-photo-id]").forEach((row) => {
-    row.addEventListener("click", () => openTrialPhotoDetail(row.dataset.trialPhotoId));
-  });
+  // Item preview click only if not in bulk selection mode
+  if (!libraryState._bulkSelectionMode) {
+    container.querySelectorAll(".library-item[data-trial-photo-id]").forEach((row) => {
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".trial-photo-checkbox")) return;
+        openTrialPhotoDetail(row.dataset.trialPhotoId);
+      });
+    });
+  }
 }
 
 function renderLibraryList() {
@@ -615,6 +1194,7 @@ function renderLibraryList() {
 
   if (libraryState.section === "trial-photos") {
     renderTrialPhotoList(container);
+    renderBulkActionBar();
     return;
   }
 

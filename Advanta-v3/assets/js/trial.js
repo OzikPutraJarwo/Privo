@@ -8629,6 +8629,7 @@ function renderQuestionCard() {
   // Get existing response for this sample
   const existingResponse = runTrialState.responses[areaIndex]?.[paramId]?.[lineKey] || {};
   const existingValue = existingResponse.value ?? "";
+  const existingRemark = existingResponse.remark ?? "";
   
   // Get photos from photoKey (not lineKey)
   const photoMode = param.photoMode || "per-sample";
@@ -8640,6 +8641,7 @@ function renderQuestionCard() {
   // Store current state for change detection
   runTrialState.lastSavedValue = existingValue;
   runTrialState.lastSavedPhotosCount = existingPhotos.length;
+  runTrialState.lastSavedRemark = existingRemark;
 
   let inputHTML = "";
 
@@ -8648,10 +8650,11 @@ function renderQuestionCard() {
     case "text":
       inputHTML = `
         <div class="run-input-group">
-          <label class="run-input-label">
-            Enter value ${param.unit ? `<span class="run-input-hint">(${param.unit})</span>` : ""}
-          </label>
-          <input type="text" class="run-input-text" id="runInputValue" value="${escapeHtml(existingValue)}" placeholder="Enter your answer...">
+          <label class="run-input-label">Enter value</label>
+          <div class="run-input-with-unit">
+            <input type="text" class="run-input-text" id="runInputValue" value="${escapeHtml(existingValue)}" placeholder="Enter your answer...">
+            ${param.unit ? `<span class="run-input-unit">${escapeHtml(param.unit)}</span>` : ""}
+          </div>
         </div>
       `;
       break;
@@ -8659,10 +8662,11 @@ function renderQuestionCard() {
     case "number":
       inputHTML = `
         <div class="run-input-group">
-          <label class="run-input-label">
-            Enter number ${param.unit ? `<span class="run-input-hint">(${param.unit})</span>` : ""}
-          </label>
-          <input type="number" class="run-input-number" id="runInputValue" value="${existingValue}" placeholder="0">
+          <label class="run-input-label">Enter number</label>
+          <div class="run-input-with-unit">
+            <input type="number" class="run-input-number" id="runInputValue" value="${existingValue}" placeholder="0">
+            ${param.unit ? `<span class="run-input-unit">${escapeHtml(param.unit)}</span>` : ""}
+          </div>
         </div>
       `;
       break;
@@ -8748,6 +8752,16 @@ function renderQuestionCard() {
       `;
   }
 
+  // Remark section (per sample)
+  const remarkHTML = `
+    <div class="run-remark-group">
+      <label class="run-remark-label">
+        <span class="material-symbols-rounded">note</span> Remark
+      </label>
+      <textarea class="run-remark-textarea" id="runRemarkValue" placeholder="Add a note for this sample (optional)...">${escapeHtml(existingRemark)}</textarea>
+    </div>
+  `;
+
   // Photo upload section
   let photoHTML = "";
   if (param.requirePhoto) {
@@ -8801,6 +8815,7 @@ function renderQuestionCard() {
     <div class="run-question-body">
       ${inputHTML}
       ${photoHTML}
+      ${remarkHTML}
     </div>
     <div class="run-question-footer">
       <div class="run-nav-buttons">
@@ -9059,7 +9074,7 @@ function handlePhotoUpload(event) {
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     const photoData = e.target.result;
     
     // Get current context
@@ -9094,19 +9109,56 @@ function handlePhotoUpload(event) {
         timestamp: new Date().toISOString(),
       };
     }
-    
-    // Add photo to response
+
+    // Compress to WebP and upload as binary file to Drive
+    const trial = runTrialState.currentTrial;
+    const photoId = (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `photo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const fileName = `${photoId}.webp`;
+
+    // Insert a temporary placeholder so the UI shows a spinner immediately
+    const placeholderIdx = runTrialState.responses[areaIndex][paramId][photoKey].photos.length;
     runTrialState.responses[areaIndex][paramId][photoKey].photos.push(photoData);
     runTrialState.responses[areaIndex][paramId][photoKey].timestamp = new Date().toISOString();
-    
+
     // Save current input value to lineKey to prevent data loss
     saveCurrentResponseSilent();
-    
-    // Trigger auto-save to sync queue
-    autoSaveProgress();
-    
-    // Re-render to show the new photo
     renderQuestionCard();
+
+    // Upload binary in background, then replace inline with reference
+    try {
+      const { blob, width, height } = await compressPhotoToWebP(photoData, 1000, 0.7);
+      const rootFolderId = await getTrialsFolderId();
+      const trialFolderId = await getOrCreateFolder(trial.id, rootFolderId);
+      const photosFolderId = await getOrCreateFolder("photos", trialFolderId);
+      const newFileId = await uploadBinaryFileToDrive(fileName, photosFolderId, blob, "image/webp");
+
+      // Replace inline base64 with reference object
+      const photoRef = {
+        photoId,
+        fileId: newFileId,
+        width,
+        height,
+        timestamp: new Date().toISOString(),
+      };
+
+      const photos = runTrialState.responses[areaIndex]?.[paramId]?.[photoKey]?.photos;
+      if (photos && placeholderIdx < photos.length) {
+        photos[placeholderIdx] = photoRef;
+      }
+
+      // Cache blob URL for immediate display
+      const blobUrl = URL.createObjectURL(blob);
+      _photoBlobCache[newFileId] = blobUrl;
+
+      autoSaveProgress();
+      renderQuestionCard();
+    } catch (err) {
+      console.warn("Binary photo upload failed, keeping inline:", err);
+      // Photo stays as inline base64 — will auto-save with JSON
+      autoSaveProgress();
+    }
   };
   
   reader.readAsDataURL(file);
@@ -9286,11 +9338,16 @@ function hasResponseChanges() {
     : `${lineId}_${repIndex}_${sampleIndex}`;
   const currentPhotosCount = runTrialState.responses[areaIndex]?.[paramId]?.[photoKey]?.photos?.length || 0;
   
+  // Get current remark
+  const remarkInput = document.getElementById("runRemarkValue");
+  const currentRemark = remarkInput ? remarkInput.value : "";
+  
   // Compare with last saved state
   const valueChanged = currentValue !== (runTrialState.lastSavedValue || "");
   const photosChanged = currentPhotosCount !== (runTrialState.lastSavedPhotosCount || 0);
+  const remarkChanged = currentRemark !== (runTrialState.lastSavedRemark || "");
   
-  return valueChanged || photosChanged;
+  return valueChanged || photosChanged || remarkChanged;
 }
 
 // Save current response silently (for auto-save)
@@ -9355,16 +9412,22 @@ function saveCurrentResponseSilent() {
     runTrialState.responses[areaIndex][paramId] = {};
   }
   
+  // Get remark value
+  const remarkInput = document.getElementById("runRemarkValue");
+  const remark = remarkInput ? remarkInput.value : "";
+
   // Preserve existing lineKey response or create new one
   const existingLineResponse = runTrialState.responses[areaIndex][paramId][lineKey] || {};
   
   // IMPORTANT: When photoKey === lineKey (per-sample mode), preserve existing photos
   const existingPhotos = existingLineResponse.photos || [];
-  runTrialState.responses[areaIndex][paramId][lineKey] = {
+  const responseObj = {
     value,
     photos: existingPhotos, // Preserve photos that may have been saved by handlePhotoUpload
     timestamp: new Date().toISOString(),
   };
+  if (remark) responseObj.remark = remark;
+  runTrialState.responses[areaIndex][paramId][lineKey] = responseObj;
 
   return true;
 }
@@ -10093,6 +10156,7 @@ let trialReportState = {
   activeSheetName: "",
   filters: {},
   sort: {},
+  freeze: {},
   columnMenusBound: false,
 };
 
@@ -10114,6 +10178,7 @@ async function showTrialReport(trialId) {
   trialReportState.activeSheetName = reportData.sheets[0]?.name || "";
   trialReportState.filters = {};
   trialReportState.sort = {};
+  trialReportState.freeze = {};
 
   renderTrialReportSheetSelect();
   renderTrialReportPreview();
@@ -10129,6 +10194,7 @@ function toggleTrialReportInterface(show, title) {
   const reportInterface = document.getElementById("trialReportInterface");
   const panel = document.getElementById("trialManagementPanel");
   const archive = document.getElementById("archivedTrialManagementPanel");
+  const sectionNav = document.querySelector(".trial-section-nav");
 
   if (!reportInterface || !panel) return;
 
@@ -10140,12 +10206,15 @@ function toggleTrialReportInterface(show, title) {
       title: title || trialReportState.trialName || "Trial",
       onClose: closeTrialReportModal,
     });
+    // Report mode should not show trial editor section navigation.
+    if (sectionNav) sectionNav.style.display = "none";
     setTrialReportTopbarControls(true);
   } else {
     reportInterface.classList.remove("active");
     panel.classList.remove("hidden");
     if (archive) archive.classList.remove("hidden");
     setTrialReportTopbarControls(false);
+    if (sectionNav) sectionNav.style.display = "";
     exitTrialFullscreenMode();
   }
 }
@@ -10249,15 +10318,8 @@ function getTrialReportFilterLabel(filterValue) {
 }
 
 function getTrialReportColumnFilterSetting(sheetName, colIndex) {
-  if (!trialReportState.filters[sheetName]) {
-    trialReportState.filters[sheetName] = {};
-  }
-  if (!trialReportState.filters[sheetName][colIndex]) {
-    trialReportState.filters[sheetName][colIndex] = {
-      mode: "default",
-      selectedValues: [],
-    };
-  }
+  if (!trialReportState.filters[sheetName]) trialReportState.filters[sheetName] = {};
+  if (!trialReportState.filters[sheetName][colIndex]) trialReportState.filters[sheetName][colIndex] = { excluded: [] };
   return trialReportState.filters[sheetName][colIndex];
 }
 
@@ -10273,26 +10335,22 @@ function getTrialReportUniqueColumnValues(rows, colIndex) {
 
 function applyTrialReportFilters(rows, sheetName) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
-
   const sheetFilters = trialReportState.filters?.[sheetName] || {};
-  const hasCustomFilter = Object.values(sheetFilters).some((setting) => setting?.mode === "custom");
-  if (!hasCustomFilter) return rows;
+  if (!sheetFilters || Object.keys(sheetFilters).length === 0) return rows;
 
-  return rows.filter((row) => {
-    return Object.entries(sheetFilters).every(([colIdxText, setting]) => {
-      if (!setting || setting.mode !== "custom") return true;
-      const selected = Array.isArray(setting.selectedValues) ? setting.selectedValues : [];
-      if (selected.length === 0) return false;
+  return rows.filter((row) =>
+    Object.entries(sheetFilters).every(([colIdxText, setting]) => {
+      if (!setting || !Array.isArray(setting.excluded) || setting.excluded.length === 0) return true;
       const colIdx = Number(colIdxText);
       const value = normalizeTrialReportFilterValue(row?.[colIdx]);
-      return selected.includes(value);
-    });
-  });
+      return !setting.excluded.includes(value);
+    }),
+  );
 }
 
 function applyTrialReportSort(rows, sheetName) {
   const sortSetting = trialReportState.sort?.[sheetName];
-  if (!sortSetting || sortSetting.mode === "default") return rows;
+  if (!sortSetting || !sortSetting.mode || sortSetting.mode === "default") return rows;
 
   const colIndex = Number(sortSetting.colIndex);
   const direction = sortSetting.mode === "desc" ? -1 : 1;
@@ -10323,12 +10381,9 @@ function setTrialReportColumnSort(colIndex, mode) {
   renderTrialReportPreview();
 }
 
-function resetTrialReportColumnSetting(colIndex) {
+function clearTrialReportColumnSort(colIndex) {
   const sheetName = trialReportState.activeSheetName;
   if (!sheetName) return;
-  const setting = getTrialReportColumnFilterSetting(sheetName, colIndex);
-  setting.mode = "default";
-  setting.selectedValues = [];
 
   const sortSetting = trialReportState.sort?.[sheetName];
   if (sortSetting && Number(sortSetting.colIndex) === Number(colIndex)) {
@@ -10339,62 +10394,75 @@ function resetTrialReportColumnSetting(colIndex) {
   renderTrialReportPreview();
 }
 
-function setTrialReportColumnCustomMode(colIndex) {
+function toggleTrialReportFreeze(colIndex) {
   const { sheet, bodyRows } = getTrialReportSheetData();
   if (!sheet) return;
 
-  const setting = getTrialReportColumnFilterSetting(sheet.name, colIndex);
-  const allValues = getTrialReportUniqueColumnValues(bodyRows, colIndex);
-  setting.mode = "custom";
-  if (!Array.isArray(setting.selectedValues) || setting.selectedValues.length === 0) {
-    setting.selectedValues = [...allValues];
+  const current = Number(trialReportState.freeze?.[sheet.name]);
+  if (!Number.isNaN(current) && current === Number(colIndex)) {
+    delete trialReportState.freeze[sheet.name];
+  } else {
+    trialReportState.freeze[sheet.name] = Number(colIndex);
   }
+
+  closeTrialReportColumnMenus();
   renderTrialReportPreview();
-  openTrialReportColumnMenuByIndex(colIndex, true);
 }
 
-function clearAllTrialReportCustomValues(colIndex) {
+function setTrialReportFilterAll(colIndex) {
   const sheetName = trialReportState.activeSheetName;
   if (!sheetName) return;
   const setting = getTrialReportColumnFilterSetting(sheetName, colIndex);
-  setting.mode = "custom";
-  setting.selectedValues = [];
+  setting.excluded = [];
+
+  closeTrialReportColumnMenus();
   renderTrialReportPreview();
   openTrialReportColumnMenuByIndex(colIndex, true);
 }
 
-function toggleTrialReportCustomValue(colIndex, value, checked) {
+function setTrialReportFilterNone(colIndex) {
+  const { sheet, bodyRows } = getTrialReportSheetData();
+  if (!sheet) return;
+  const setting = getTrialReportColumnFilterSetting(sheet.name, colIndex);
+  setting.excluded = getTrialReportUniqueColumnValues(bodyRows, colIndex);
+
+  closeTrialReportColumnMenus();
+  renderTrialReportPreview();
+  openTrialReportColumnMenuByIndex(colIndex, true);
+}
+
+function toggleTrialReportFilterValue(colIndex, value, checked) {
   const sheetName = trialReportState.activeSheetName;
   if (!sheetName) return;
 
   const setting = getTrialReportColumnFilterSetting(sheetName, colIndex);
-  setting.mode = "custom";
-  const selectedSet = new Set(Array.isArray(setting.selectedValues) ? setting.selectedValues : []);
-  if (checked) selectedSet.add(value);
-  else selectedSet.delete(value);
-  setting.selectedValues = Array.from(selectedSet);
+  const excluded = new Set(Array.isArray(setting.excluded) ? setting.excluded : []);
+  if (checked) excluded.delete(value);
+  else excluded.add(value);
+  setting.excluded = Array.from(excluded);
 
   renderTrialReportPreview();
   openTrialReportColumnMenuByIndex(colIndex, true);
 }
 
-function toggleTrialReportCustomValueEncoded(colIndex, encodedValue, checked) {
+function toggleTrialReportFilterValueEncoded(colIndex, encodedValue, checked) {
   const decoded = decodeURIComponent(String(encodedValue || ""));
-  toggleTrialReportCustomValue(colIndex, decoded, checked);
+  toggleTrialReportFilterValue(colIndex, decoded, checked);
 }
 
 function closeTrialReportColumnMenus() {
   document.querySelectorAll(".trial-report-column-menu-container").forEach((el) => el.remove());
+  trialReportState._openColumnIndex = null;
 }
 
-function openTrialReportColumnMenuByIndex(colIndex, forceCustom) {
+function openTrialReportColumnMenuByIndex(colIndex, keepOpen = false) {
   const headerButton = document.querySelector(`.trial-report-th-btn[data-col-index="${colIndex}"]`);
   if (!headerButton) return;
   const fakeEvent = { currentTarget: headerButton, stopPropagation: () => {} };
-  openTrialReportColumnMenu(fakeEvent, colIndex, !!forceCustom);
+  openTrialReportColumnMenu(fakeEvent, colIndex, !!keepOpen);
 }
 
-function openTrialReportColumnMenu(event, colIndex, openCustomSubmenu = false) {
+function openTrialReportColumnMenu(event, colIndex, keepOpen = false) {
   event.stopPropagation();
   bindTrialReportMenuGlobalClose();
 
@@ -10404,39 +10472,66 @@ function openTrialReportColumnMenu(event, colIndex, openCustomSubmenu = false) {
   const target = event.currentTarget;
   if (!target) return;
 
+  const wasOpen = trialReportState._openColumnIndex === Number(colIndex);
   closeTrialReportColumnMenus();
+  if (wasOpen && !keepOpen) {
+    trialReportState._openColumnIndex = null;
+    return;
+  }
+  trialReportState._openColumnIndex = Number(colIndex);
 
   const setting = getTrialReportColumnFilterSetting(sheet.name, colIndex);
   const sortSetting = trialReportState.sort?.[sheet.name];
   const currentSort = sortSetting && Number(sortSetting.colIndex) === Number(colIndex) ? sortSetting.mode : "default";
+  const isFrozen = Number(trialReportState.freeze?.[sheet.name]) === Number(colIndex);
+  const excluded = Array.isArray(setting.excluded) ? setting.excluded : [];
+  const sortedValues = getTrialReportUniqueColumnValues(bodyRows, colIndex);
 
   const menu = document.createElement("div");
   menu.className = "trial-report-column-menu-container";
   menu.innerHTML = `
-    <div class="trial-report-column-menu" onclick="event.stopPropagation()">
-      <button type="button" class="trial-report-menu-item ${currentSort === "asc" ? "active" : ""}" onclick="setTrialReportColumnSort(${colIndex}, 'asc')">Ascending</button>
-      <button type="button" class="trial-report-menu-item ${currentSort === "desc" ? "active" : ""}" onclick="setTrialReportColumnSort(${colIndex}, 'desc')">Descending</button>
-      <button type="button" class="trial-report-menu-item ${setting.mode === "custom" ? "active" : ""}" onclick="setTrialReportColumnCustomMode(${colIndex})">Custom</button>
-      <button type="button" class="trial-report-menu-item" onclick="resetTrialReportColumnSetting(${colIndex})">Default</button>
-      <div class="trial-report-custom-submenu ${openCustomSubmenu || setting.mode === "custom" ? "active" : ""}">
-        <div class="trial-report-custom-actions">
-          <button type="button" class="trial-report-menu-item subtle" onclick="clearAllTrialReportCustomValues(${colIndex})">Clear all</button>
+    <div class="analysis-col-menu trial-report-column-menu" onclick="event.stopPropagation()">
+      <div class="trial-report-column-menu-section">
+        <button class="trial-report-column-menu-btn ${currentSort === "asc" ? "active" : ""}" onclick="setTrialReportColumnSort(${colIndex}, 'asc')">
+          <span class="material-symbols-rounded">arrow_upward</span>
+          <span>Sort A-Z</span>
+        </button>
+        <button class="trial-report-column-menu-btn ${currentSort === "desc" ? "active" : ""}" onclick="setTrialReportColumnSort(${colIndex}, 'desc')">
+          <span class="material-symbols-rounded">arrow_downward</span>
+          <span>Sort Z-A</span>
+        </button>
+        ${currentSort !== "default" ? `<button class="trial-report-column-menu-btn" onclick="clearTrialReportColumnSort(${colIndex})">
+          <span class="material-symbols-rounded">close</span>
+          <span>Clear Sort</span>
+        </button>` : ""}
+        <button class="trial-report-column-menu-btn ${isFrozen ? "active" : ""}" onclick="toggleTrialReportFreeze(${colIndex})">
+          <span class="material-symbols-rounded">${isFrozen ? "lock_open" : "push_pin"}</span>
+          <span>${isFrozen ? "Unfreeze" : "Freeze Here"}</span>
+        </button>
+      </div>
+      ${colIndex > 0 ? `<div class="trial-report-column-menu-section trial-report-column-menu-filter">
+        <div class="trial-report-column-menu-filter-header">
+          <strong>Filter</strong>
+          <div>
+            <button class="trial-report-column-menu-link" onclick="setTrialReportFilterAll(${colIndex})">All</button>
+            <button class="trial-report-column-menu-link" onclick="setTrialReportFilterNone(${colIndex})">None</button>
+          </div>
         </div>
-        <div class="trial-report-custom-list">
-          ${getTrialReportUniqueColumnValues(bodyRows, colIndex)
+        <div class="trial-report-column-menu-filter-list">
+          ${sortedValues
             .map((value) => {
-              const selected = Array.isArray(setting.selectedValues) && setting.selectedValues.includes(value);
+              const selected = !excluded.includes(value);
               const encodedValue = encodeURIComponent(value);
               return `
-                <label class="trial-report-custom-item">
-                  <input type="checkbox" ${selected ? "checked" : ""} onchange="toggleTrialReportCustomValueEncoded(${colIndex}, '${encodedValue}', this.checked)">
+                <label class="trial-report-column-menu-filter-item">
+                  <input type="checkbox" ${selected ? "checked" : ""} onchange="toggleTrialReportFilterValueEncoded(${colIndex}, '${encodedValue}', this.checked)">
                   <span>${escapeHtml(getTrialReportFilterLabel(value))}</span>
                 </label>
               `;
             })
             .join("")}
         </div>
-      </div>
+      </div>` : ""}
     </div>
   `;
 
@@ -10450,12 +10545,20 @@ function openTrialReportColumnMenu(event, colIndex, openCustomSubmenu = false) {
 }
 
 function getTrialReportColumnMode(sheetName, colIndex) {
-  const setting = trialReportState.filters?.[sheetName]?.[colIndex];
+  const filterSetting = trialReportState.filters?.[sheetName]?.[colIndex];
   const sortSetting = trialReportState.sort?.[sheetName];
+  const freezeSetting = Number(trialReportState.freeze?.[sheetName]);
+
   if (sortSetting && Number(sortSetting.colIndex) === Number(colIndex)) {
-    return sortSetting.mode;
+    return "sort";
   }
-  return setting?.mode || "default";
+  if (!Number.isNaN(freezeSetting) && freezeSetting === Number(colIndex)) {
+    return "freeze";
+  }
+  if (colIndex > 0 && filterSetting && Array.isArray(filterSetting.excluded) && filterSetting.excluded.length > 0) {
+    return "filter";
+  }
+  return "default";
 }
 
 function renderTrialReportPreview() {
@@ -10479,20 +10582,11 @@ function renderTrialReportPreview() {
         ${header
           .map((cell, colIdx) => {
             const mode = getTrialReportColumnMode(sheet.name, colIdx);
-            const marker = mode === "asc"
-              ? "▲"
-              : mode === "desc"
-                ? "▼"
-                : mode === "custom"
-                  ? "●"
-                  : "";
-            const isFirstCol = colIdx === 0;
-            const displayText = isFirstCol ? "" : String(cell ?? "");
             return `
-              <th class="${isFirstCol ? "trial-report-col-first" : ""}">
-                <button type="button" class="trial-report-th-btn ${isFirstCol ? "trial-report-th-btn-first" : ""}" data-col-index="${colIdx}" onclick="openTrialReportColumnMenu(event, ${colIdx})">
-                  <span class="trial-report-th-text">${escapeHtml(displayText)}</span>
-                  <span class="material-symbols-rounded trial-report-th-marker ">filter_alt</span>
+              <th>
+                <button type="button" class="trial-report-th-btn analysis-th-btn" data-col-index="${colIdx}" onclick="openTrialReportColumnMenu(event, ${colIdx})">
+                  <span class="trial-report-th-text">${escapeHtml(String(cell ?? ""))}</span>
+                  <span class="material-symbols-rounded trial-report-th-marker ${mode !== "default" ? "active" : ""}">filter_alt</span>
                 </button>
               </th>
             `;
@@ -10503,11 +10597,41 @@ function renderTrialReportPreview() {
   `;
   const bodyHtml = finalRows.length > 0
     ? `<tbody>${finalRows
-      .map((row) => `<tr>${header.map((_, idx) => `<td class="${idx === 0 ? "trial-report-col-first" : ""}">${escapeHtml(String(row[idx] ?? ""))}</td>`).join("")}</tr>`)
+      .map((row) => `<tr>${header.map((_, idx) => `<td>${escapeHtml(String(row[idx] ?? ""))}</td>`).join("")}</tr>`)
       .join("")}</tbody>`
     : `<tbody><tr><td colspan="${Math.max(header.length, 1)}" class="trial-report-empty">No rows</td></tr></tbody>`;
 
   tableEl.innerHTML = `${headHtml}${bodyHtml}`;
+
+  const freezeIdx = Number(trialReportState.freeze?.[sheet.name]);
+  if (!Number.isNaN(freezeIdx) && freezeIdx >= 0) {
+    let left = 0;
+    const tableHeaders = tableEl.querySelectorAll("thead th");
+    const tableRows = tableEl.querySelectorAll("tbody tr");
+
+    for (let index = 0; index <= freezeIdx; index += 1) {
+      const headerCell = tableHeaders[index];
+      if (!headerCell) continue;
+
+      const width = headerCell.offsetWidth;
+      headerCell.style.position = "sticky";
+      headerCell.style.top = "-1px";
+      headerCell.style.left = `${left}px`;
+      headerCell.style.zIndex = "6";
+      headerCell.style.background = "#f3f3f3";
+
+      tableRows.forEach((row) => {
+        const bodyCell = row.children[index];
+        if (!bodyCell) return;
+        bodyCell.style.position = "sticky";
+        bodyCell.style.left = `${left}px`;
+        bodyCell.style.zIndex = "1";
+        bodyCell.style.background = "#fff";
+      });
+
+      left += width;
+    }
+  }
 }
 
 function downloadTrialReportExcel() {
@@ -10695,15 +10819,19 @@ function handleTrialReportImportFile(file) {
 }
 
 function _isObservationSheetHeader(header) {
-  // Observation sheets have: Nomor, Area, Replication, Entry, Sample, Parameter, Value, Unit, Timestamp
+  // Supports both legacy vertical and new horizontal observation report formats.
   const lower = header.map((h) => h.toLowerCase());
-  return lower.includes("entry") && lower.includes("parameter") && lower.includes("value") && lower.includes("sample");
+  const legacy = lower.includes("entry") && lower.includes("parameter") && lower.includes("value") && lower.includes("sample");
+  const horizontal = lower.includes("entry") && lower.includes("replication") && lower.includes("sample");
+  return legacy || horizontal;
 }
 
 function _isAgronomySheetHeader(header) {
-  // Agronomy sheets have: Area, Activity, DAP Min, DAP Max, Chemical, Dose, Remark, Application Date, Timestamp
+  // Supports both legacy vertical and new horizontal agronomy report formats.
   const lower = header.map((h) => h.toLowerCase());
-  return lower.includes("activity") && lower.includes("application date") && lower.includes("area");
+  const legacy = lower.includes("activity") && lower.includes("application date") && lower.includes("area");
+  const horizontal = lower.includes("area") && lower.includes("no") && !lower.includes("activity");
+  return legacy || horizontal;
 }
 
 function _importObservationSheet(trial, header, bodyRows, nonFormulaParams) {
@@ -10718,7 +10846,10 @@ function _importObservationSheet(trial, header, bodyRows, nonFormulaParams) {
     else if (key === "value") colIdx.value = i;
   });
 
-  if (colIdx.entry === undefined || colIdx.param === undefined || colIdx.value === undefined) return 0;
+  const isLegacy = colIdx.entry !== undefined && colIdx.param !== undefined && colIdx.value !== undefined;
+  if (!isLegacy) {
+    return _importObservationSheetHorizontal(trial, header, bodyRows, nonFormulaParams);
+  }
 
   // Build lookup maps
   const paramByName = new Map();
@@ -10777,6 +10908,73 @@ function _importObservationSheet(trial, header, bodyRows, nonFormulaParams) {
   return updated;
 }
 
+function _importObservationSheetHorizontal(trial, header, bodyRows, nonFormulaParams) {
+  const fixedCols = {};
+  header.forEach((h, i) => {
+    const key = String(h || "").toLowerCase().trim();
+    if (key === "area") fixedCols.area = i;
+    else if (key === "replication") fixedCols.rep = i;
+    else if (key === "entry") fixedCols.entry = i;
+    else if (key === "sample") fixedCols.sample = i;
+  });
+
+  if (fixedCols.entry === undefined) return 0;
+
+  const paramByHeaderIndex = new Map();
+  const paramByName = new Map();
+  nonFormulaParams.forEach((p) => {
+    paramByName.set((p.name || "").toLowerCase().trim(), p);
+  });
+
+  header.forEach((h, i) => {
+    if ([fixedCols.area, fixedCols.rep, fixedCols.entry, fixedCols.sample].includes(i)) return;
+    const param = paramByName.get(String(h || "").toLowerCase().trim());
+    if (param) paramByHeaderIndex.set(i, param);
+  });
+
+  const areaIndexByName = new Map();
+  (trial.areas || []).forEach((area, idx) => {
+    const name = (area.name || `Area ${idx + 1}`).toLowerCase().trim();
+    areaIndexByName.set(name, idx);
+  });
+
+  const lineLookup = _buildLineLookup(trial);
+  let updated = 0;
+
+  bodyRows.forEach((row) => {
+    const areaName = String(row[fixedCols.area] ?? "").trim();
+    const repStr = String(row[fixedCols.rep] ?? "").trim();
+    const entryName = String(row[fixedCols.entry] ?? "").trim();
+    const sampleStr = String(row[fixedCols.sample] ?? "").trim();
+    if (!entryName) return;
+
+    const areaIndex = areaIndexByName.get(areaName.toLowerCase()) ?? 0;
+    const repIndex = Math.max(0, parseInt(repStr, 10) - 1) || 0;
+    const sampleIndex = Math.max(0, parseInt(sampleStr, 10) - 1) || 0;
+    const lineId = lineLookup.get(_lineKey(areaIndex, repIndex, entryName.toLowerCase()));
+    if (!lineId) return;
+
+    paramByHeaderIndex.forEach((param, colIndex) => {
+      const value = row[colIndex];
+      if (value === "" || value === null || value === undefined) return;
+
+      if (!trial.responses[areaIndex]) trial.responses[areaIndex] = {};
+      if (!trial.responses[areaIndex][param.id]) trial.responses[areaIndex][param.id] = {};
+
+      const sampleKey = `${lineId}_${repIndex}_${sampleIndex}`;
+      const existing = trial.responses[areaIndex][param.id][sampleKey] || {};
+      trial.responses[areaIndex][param.id][sampleKey] = {
+        ...existing,
+        value,
+        timestamp: new Date().toISOString(),
+      };
+      updated++;
+    });
+  });
+
+  return updated;
+}
+
 function _importAgronomySheet(trial, header, bodyRows, agronomyItems) {
   const colIdx = {};
   header.forEach((h, i) => {
@@ -10786,7 +10984,9 @@ function _importAgronomySheet(trial, header, bodyRows, agronomyItems) {
     else if (key === "application date") colIdx.appDate = i;
   });
 
-  if (colIdx.activity === undefined) return 0;
+  if (colIdx.activity === undefined) {
+    return _importAgronomySheetHorizontal(trial, header, bodyRows, agronomyItems);
+  }
 
   const areaIndexByName = new Map();
   (trial.areas || []).forEach((area, idx) => {
@@ -10827,6 +11027,57 @@ function _importAgronomySheet(trial, header, bodyRows, agronomyItems) {
     };
 
     updated++;
+  });
+
+  return updated;
+}
+
+function _importAgronomySheetHorizontal(trial, header, bodyRows, agronomyItems) {
+  const fixedCols = {};
+  header.forEach((h, i) => {
+    const key = String(h || "").toLowerCase().trim();
+    if (key === "area") fixedCols.area = i;
+    else if (key === "no") fixedCols.no = i;
+  });
+
+  if (fixedCols.area === undefined) return 0;
+
+  const areaIndexByName = new Map();
+  (trial.areas || []).forEach((area, idx) => {
+    const name = (area.name || `Area ${idx + 1}`).toLowerCase().trim();
+    areaIndexByName.set(name, idx);
+  });
+
+  const itemByName = new Map();
+  agronomyItems.forEach((item) => {
+    itemByName.set((item.activity || item.name || "").toLowerCase().trim(), item);
+  });
+
+  const activityColumns = [];
+  header.forEach((h, i) => {
+    if ([fixedCols.area, fixedCols.no].includes(i)) return;
+    const item = itemByName.get(String(h || "").toLowerCase().trim());
+    if (item) activityColumns.push({ colIndex: i, item });
+  });
+
+  let updated = 0;
+  bodyRows.forEach((row) => {
+    const areaName = String(row[fixedCols.area] ?? "").trim();
+    const areaIndex = areaIndexByName.get(areaName.toLowerCase()) ?? 0;
+    if (!trial.agronomyResponses[areaIndex]) trial.agronomyResponses[areaIndex] = {};
+
+    activityColumns.forEach(({ colIndex, item }) => {
+      const rawDate = row[colIndex];
+      if (rawDate === "" || rawDate === null || rawDate === undefined) return;
+      const parsedDate = _parseImportDate(rawDate);
+      const existing = trial.agronomyResponses[areaIndex][item.id] || {};
+      trial.agronomyResponses[areaIndex][item.id] = {
+        ...existing,
+        applicationDate: parsedDate || existing.applicationDate || "",
+        timestamp: new Date().toISOString(),
+      };
+      updated++;
+    });
   });
 
   return updated;
@@ -11015,26 +11266,149 @@ function buildTrialGeneralSheetRows(trial) {
   return rows;
 }
 
+function buildDatabaseDataset() {
+  const trials =
+    typeof trialState !== "undefined" && Array.isArray(trialState.trials)
+      ? trialState.trials.filter((t) => !t.archived)
+      : [];
+
+  const allParameters =
+    typeof inventoryState !== "undefined" && Array.isArray(inventoryState.items?.parameters)
+      ? inventoryState.items.parameters
+      : [];
+
+  // Collect all unique parameter IDs across all non-archived trials
+  const allParamIds = [];
+  const seenParamIds = new Set();
+  trials.forEach((trial) => {
+    (trial.parameters || []).forEach((paramId) => {
+      if (!seenParamIds.has(paramId)) {
+        seenParamIds.add(paramId);
+        allParamIds.push(paramId);
+      }
+    });
+  });
+
+  // Resolve parameter objects; separate formula vs non-formula, formulas go last
+  const resolvedParams = allParamIds
+    .map((id) => allParameters.find((p) => p.id === id))
+    .filter(Boolean);
+  const nonFormulaParams = resolvedParams.filter((p) => (p.type || "").toLowerCase() !== "formula");
+  const formulaParams = resolvedParams.filter((p) => (p.type || "").toLowerCase() === "formula");
+  const orderedParams = [...nonFormulaParams, ...formulaParams];
+
+  const fixedColumns = [
+    { key: "trial_name", label: "Trial", source: "fixed" },
+    { key: "area_name", label: "Area", source: "fixed" },
+    { key: "replication", label: "Replication", source: "fixed" },
+    { key: "entry_name", label: "Entry", source: "fixed" },
+    { key: "sample", label: "Sample", source: "fixed" },
+  ];
+
+  const rows = [];
+
+  trials.forEach((trial) => {
+    const trialParamIds = new Set(trial.parameters || []);
+    const trialNonFormula = orderedParams.filter(
+      (p) => trialParamIds.has(p.id) && (p.type || "").toLowerCase() !== "formula",
+    );
+
+    (trial.areas || []).forEach((area, areaIndex) => {
+      if (!area?.layout?.result) return;
+
+      const areaName = area.name || "Area " + (areaIndex + 1);
+
+      area.layout.result.forEach((rep, repIndex) => {
+        rep.forEach((row) => {
+          row.forEach((cell) => {
+            if (!cell) return;
+
+            const maxSamples = Math.max(
+              1,
+              ...trialNonFormula.map((p) => Math.max(1, Number(p.numberOfSamples || 1))),
+            );
+
+            for (let sampleIndex = 0; sampleIndex < maxSamples; sampleIndex++) {
+              const rowObj = {
+                trial_name: trial.name || "",
+                area_name: areaName,
+                replication: String(repIndex + 1),
+                entry_name: cell.name || "",
+                sample: String(sampleIndex + 1),
+              };
+
+              const formulaContext = buildFormulaObservationContext(
+                trial,
+                areaIndex,
+                cell.id,
+                repIndex,
+                trialNonFormula,
+              );
+
+              orderedParams.forEach((param) => {
+                const colKey = "param_" + param.id;
+
+                if (!trialParamIds.has(param.id)) {
+                  rowObj[colKey] = "";
+                  return;
+                }
+
+                if ((param.type || "").toLowerCase() === "formula") {
+                  const result = evaluateFormulaForReport(param.formula, formulaContext.values);
+                  rowObj[colKey] = result.ok ? String(result.value) : "";
+                } else {
+                  const sampleCount = Math.max(1, Number(param.numberOfSamples || 1));
+                  if (sampleIndex >= sampleCount) {
+                    rowObj[colKey] = "";
+                  } else {
+                    const obs = getObservationReportEntry(
+                      trial,
+                      areaIndex,
+                      param,
+                      cell.id,
+                      repIndex,
+                      sampleIndex,
+                    );
+                    rowObj[colKey] = obs.value;
+                  }
+                }
+              });
+
+              rows.push(rowObj);
+            }
+          });
+        });
+      });
+    });
+  });
+
+  return {
+    fixedColumns: fixedColumns,
+    extraColumns: [],
+    parameterColumns: orderedParams.map((p) => ({ id: p.id, name: p.name })),
+    rows: rows,
+  };
+}
+
 function buildTrialObservationSheetRows(trial, area, areaIndex, trialParameters) {
+  const formulaParams = (trialParameters || []).filter((p) => (p.type || "").toLowerCase() === "formula");
+  const nonFormulaParams = (trialParameters || []).filter((p) => (p.type || "").toLowerCase() !== "formula");
+  const allParams = [...nonFormulaParams, ...formulaParams];
+
   const rows = [[
-    "Nomor",
+    "No",
     "Area",
     "Replication",
     "Entry",
     "Sample",
-    "Parameter",
-    "Value",
-    "Unit",
-    "Timestamp",
+    ...allParams.map((param) => String(param.name || "Parameter")),
   ]];
 
-  if (!area?.layout?.result || !Array.isArray(trialParameters) || trialParameters.length === 0) {
+  if (!area?.layout?.result || allParams.length === 0) {
     return rows;
   }
 
   const areaName = area.name || `Area ${areaIndex + 1}`;
-  const formulaParams = trialParameters.filter((p) => (p.type || "").toLowerCase() === "formula");
-  const nonFormulaParams = trialParameters.filter((p) => (p.type || "").toLowerCase() !== "formula");
   let rowNumber = 1;
 
   area.layout.result.forEach((rep, repIndex) => {
@@ -11042,33 +11416,20 @@ function buildTrialObservationSheetRows(trial, area, areaIndex, trialParameters)
       row.forEach((cell) => {
         if (!cell) return;
 
-        nonFormulaParams.forEach((param) => {
-          const sampleCount = Math.max(1, Number(param.numberOfSamples || 1));
-          for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
-            const observation = getObservationReportEntry(
-              trial,
-              areaIndex,
-              param,
-              cell.id,
-              repIndex,
-              sampleIndex,
-            );
+        const maxSamples = Math.max(
+          1,
+          ...nonFormulaParams.map((param) => Math.max(1, Number(param.numberOfSamples || 1))),
+        );
 
-            rows.push([
-              rowNumber++,
-              areaName,
-              repIndex + 1,
-              cell.name || "",
-              sampleIndex + 1,
-              param.name || "",
-              observation.value,
-              param.unit || "",
-              formatReportTimestamp(observation.timestamp),
-            ]);
-          }
-        });
+        for (let sampleIndex = 0; sampleIndex < maxSamples; sampleIndex++) {
+          const rowValues = [
+            rowNumber++,
+            areaName,
+            repIndex + 1,
+            cell.name || "",
+            sampleIndex + 1,
+          ];
 
-        if (formulaParams.length > 0) {
           const formulaContext = buildFormulaObservationContext(
             trial,
             areaIndex,
@@ -11077,22 +11438,29 @@ function buildTrialObservationSheetRows(trial, area, areaIndex, trialParameters)
             nonFormulaParams,
           );
 
-          formulaParams.forEach((formulaParam) => {
-            const formulaResult = evaluateFormulaForReport(formulaParam.formula, formulaContext.values);
-            const value = formulaResult.ok ? formulaResult.value : "";
-
-            rows.push([
-              rowNumber++,
-              areaName,
-              repIndex + 1,
-              cell.name || "",
-              1,
-              formulaParam.name || "",
-              value,
-              formulaParam.unit || "",
-              "",
-            ]);
+          allParams.forEach((param) => {
+            if ((param.type || "").toLowerCase() === "formula") {
+              const formulaResult = evaluateFormulaForReport(param.formula, formulaContext.values);
+              rowValues.push(formulaResult.ok ? formulaResult.value : "");
+            } else {
+              const sampleCount = Math.max(1, Number(param.numberOfSamples || 1));
+              if (sampleIndex >= sampleCount) {
+                rowValues.push("");
+              } else {
+                const observation = getObservationReportEntry(
+                  trial,
+                  areaIndex,
+                  param,
+                  cell.id,
+                  repIndex,
+                  sampleIndex,
+                );
+                rowValues.push(observation.value);
+              }
+            }
           });
+
+          rows.push(rowValues);
         }
       });
     });
@@ -11102,38 +11470,23 @@ function buildTrialObservationSheetRows(trial, area, areaIndex, trialParameters)
 }
 
 function buildTrialAgronomySheetRows(trial, area, areaIndex) {
+  const items = getTrialAgronomyItems(trial);
   const rows = [[
+    "No",
     "Area",
-    "Activity",
-    "DAP Min",
-    "DAP Max",
-    "Chemical",
-    "Dose",
-    "Remark",
-    "Application Date",
-    "Timestamp",
+    ...items.map((item) => String(item.activity || item.name || "Activity")),
   ]];
 
-  const items = getTrialAgronomyItems(trial);
   const areaName = area?.name || `Area ${areaIndex + 1}`;
 
   if (items.length === 0) return rows;
 
-  items.forEach((item) => {
+  const values = items.map((item) => {
     const response = trial.agronomyResponses?.[areaIndex]?.[item.id] || {};
-
-    rows.push([
-      areaName,
-      item.activity || item.name || "",
-      item.dapMin ?? "",
-      item.dapMax ?? "",
-      item.chemical || "",
-      item.dose || "",
-      item.remark || "",
-      formatReportTimestamp(response.applicationDate),
-      formatReportTimestamp(response.timestamp),
-    ]);
+    return formatReportTimestamp(response.applicationDate);
   });
+
+  rows.push([areaIndex + 1, areaName, ...values]);
 
   return rows;
 }
