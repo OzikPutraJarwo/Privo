@@ -8,10 +8,11 @@ branches:
 jobs:
 trigger:
 runs-on: ubuntu-latest
+
 steps:
-- name: Send repository_dispatch to App
-run: |
-curl -X POST https://api.github.com/repos/OzikPutraJarwo/App/dispatches 
--H "Accept: application/vnd.github+json" 
--H "Authorization: token ${{ secrets.REPO_B_TOKEN }}" 
--d '{"event_type":"sync-advanta"}'
+  - name: Trigger repo App
+    run: |
+      curl -X POST https://api.github.com/repos/OzikPutraJarwo/App/dispatches \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: token ${{ secrets.REPO_B_TOKEN }}" \
+        -d '{"event_type":"sync-advanta"}'
