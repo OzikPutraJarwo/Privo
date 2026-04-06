@@ -486,7 +486,7 @@ function renderStorageHealthCard() {
           <span class="material-symbols-rounded">lock</span> Enable Persistent
         </button>
         <button type="button" class="btn btn-secondary btn-sm storage-btn-compact" onclick="compactLocalCacheFromUi()">
-          <span class="material-symbols-rounded">compression</span> Compact Local Cache
+          <span class="material-symbols-rounded">compress</span> Compact Local Cache
         </button>
       </div>
     </div>
