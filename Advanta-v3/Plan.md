@@ -66,7 +66,6 @@
 - [x] Toast redesign
 - [x] Missing preview map on `Trial > Edit/New`
 - [x] Days of Observation on import and export in `Inventory > Parameters`
-- [ ] Grid and list layout
 - [x] Remove .modal-header from Create and Edit Trial
 - [x] Edit trial selected parameters bug (now showing all, only with DoO)
 
@@ -144,6 +143,7 @@
 - [x] `Library` Submenu for trial photos
 - [x] `Database` Removed
 ### Bug Fixes, Redesign, etc
+- [x] `Inventory` Grid and list layout
 - [x] `Inventory > Parameters` Delete button for DoO
 - [x] `Inventory > Parameters` Crop name with entry type
 - [x] `Inventory > Parameters` Better UI/UX for formula list (find etc, on the left wing)
@@ -151,9 +151,9 @@
 - [x] `Trial > Run` .run-nav-area overflow bug on phone
 - [x] `Trial > Report` Right toolbar bug
 - [x] `Trial > Report` Redesign
-- [ ] `Dataset` Load gradually with load more
 
 ## UPCOMING PLANS
+- [ ] `Dataset` Load gradually with load more
 - [ ] Resize/reformat uploaded image dashboard
 - [ ] Reminder > checkbox > run only shows the checked
 - [ ] Notification on phone

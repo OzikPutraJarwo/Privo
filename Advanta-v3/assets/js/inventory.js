@@ -3,6 +3,15 @@ let _currentEntryType = "parental";
 
 let inventoryState = {
   currentCategory: "crops",
+  viewMode: {
+    global: "grid",
+    byCategory: {
+      crops: "default",
+      locations: "default",
+      parameters: "default",
+      agronomy: "default",
+    },
+  },
   items: {
     crops: [],
     entries: [],
@@ -22,7 +31,42 @@ let inventoryState = {
   searchQuery: "",
   currentFolderId: null,
   parametersSortInitialized: false,
+  listColumnWidths: {},
 };
+
+function normalizeInventoryCategoryView(value) {
+  if (value === "grid" || value === "list") return value;
+  return "default";
+}
+
+function getEffectiveInventoryViewMode(category) {
+  const perCategory = inventoryState.viewMode?.byCategory?.[category];
+  if (perCategory === "grid" || perCategory === "list") {
+    return perCategory;
+  }
+  return inventoryState.viewMode?.global === "list" ? "list" : "grid";
+}
+
+function applyInventoryUserSettings(appearanceSettings = {}) {
+  const safe = appearanceSettings && typeof appearanceSettings === "object"
+    ? appearanceSettings
+    : {};
+  const byCategory = safe.inventoryCategoryViews && typeof safe.inventoryCategoryViews === "object"
+    ? safe.inventoryCategoryViews
+    : {};
+
+  inventoryState.viewMode.global = safe.inventoryViewMode === "list" ? "list" : "grid";
+  inventoryState.viewMode.byCategory = {
+    crops: normalizeInventoryCategoryView(byCategory.crops),
+    locations: normalizeInventoryCategoryView(byCategory.locations),
+    parameters: normalizeInventoryCategoryView(byCategory.parameters),
+    agronomy: normalizeInventoryCategoryView(byCategory.agronomy),
+  };
+
+  if (document.getElementById("inventoryList")) {
+    renderInventoryItems();
+  }
+}
 
 function toggleCropFields(show) {
   const group = document.getElementById("cropTypeGroup");
@@ -649,9 +693,10 @@ function populateAgronomyCropPicklist(selectedCropIds = []) {
       availableList.innerHTML = '<div style="padding:0.5rem;text-align:center;font-size:0.75rem;color:var(--text-tertiary)">' +
         (crops.length === 0 ? 'No crops' : 'None') + '</div>';
     } else {
-      availableList.innerHTML = available.map(c =>
-        `<div class="agro-crop-item" draggable="true" data-id="${c.id}">${escapeHtml(c.name)}</div>`
-      ).join('');
+      availableList.innerHTML = available.map(c => {
+        const typeLabel = c.entryType === "hybrid" ? "Hybrid" : "Parental";
+        return `<div class="agro-crop-item" draggable="true" data-id="${c.id}">${escapeHtml(c.name)} <span class="crop-type-badge">${typeLabel}</span></div>`;
+      }).join('');
     }
 
     // Attach drag + click on available items
@@ -681,7 +726,8 @@ function populateAgronomyCropPicklist(selectedCropIds = []) {
       selectedList.innerHTML = _agroCropSelected.map(id => {
         const crop = crops.find(c => c.id === id);
         if (!crop) return '';
-        return `<div class="agro-crop-item" draggable="true" data-id="${id}">${escapeHtml(crop.name)}</div>`;
+        const typeLabel = crop.entryType === "hybrid" ? "Hybrid" : "Parental";
+        return `<div class="agro-crop-item" draggable="true" data-id="${id}">${escapeHtml(crop.name)} <span class="crop-type-badge">${typeLabel}</span></div>`;
       }).join('');
     }
 
@@ -1234,9 +1280,273 @@ function switchCategory(category) {
   renderInventoryItems();
 }
 
+function getInventoryListColumns(category) {
+  if (category === "crops") {
+    return [
+      { key: "name", label: "Name", min: 180, width: 260 },
+      { key: "cropType", label: "Crop Type", min: 140, width: 180 },
+      { key: "entryType", label: "Entry Type", min: 120, width: 140 },
+      { key: "entries", label: "Entries", min: 90, width: 110 },
+      { key: "updated", label: "Updated", min: 130, width: 150 },
+      { key: "actions", label: "Actions", min: 150, width: 170, fixed: true },
+    ];
+  }
+
+  if (category === "locations") {
+    return [
+      { key: "name", label: "Name", min: 180, width: 260 },
+      { key: "coordinates", label: "Coordinates", min: 200, width: 280 },
+      { key: "updated", label: "Updated", min: 130, width: 150 },
+      { key: "actions", label: "Actions", min: 150, width: 170, fixed: true },
+    ];
+  }
+
+  if (category === "parameters") {
+    return [
+      { key: "name", label: "Name", min: 170, width: 240 },
+      { key: "initial", label: "Initial", min: 80, width: 100 },
+      { key: "type", label: "Type", min: 100, width: 120 },
+      { key: "unit", label: "Unit", min: 90, width: 110 },
+      { key: "samples", label: "Samples", min: 90, width: 110 },
+      { key: "updated", label: "Updated", min: 130, width: 150 },
+      { key: "actions", label: "Actions", min: 150, width: 170, fixed: true },
+    ];
+  }
+
+  return [
+    { key: "activity", label: "Activity", min: 180, width: 220 },
+    { key: "crops", label: "Crops", min: 220, width: 300 },
+    { key: "dap", label: "DAP", min: 80, width: 90 },
+    { key: "chemical", label: "Chemical", min: 140, width: 170 },
+    { key: "dose", label: "Dose", min: 110, width: 130 },
+    { key: "remark", label: "Remark", min: 180, width: 240 },
+    { key: "updated", label: "Updated", min: 130, width: 150 },
+    { key: "actions", label: "Actions", min: 150, width: 170, fixed: true },
+  ];
+}
+
+function getInventoryListTemplate(widths) {
+  return widths.map((w) => `${Math.max(60, Number(w) || 60)}px`).join(" ");
+}
+
+function getInventoryListWidths(category, columns) {
+  const saved = Array.isArray(inventoryState.listColumnWidths?.[category])
+    ? inventoryState.listColumnWidths[category]
+    : [];
+
+  const widths = columns.map((col, idx) => {
+    const fallback = col.width || 140;
+    const raw = Number(saved[idx]);
+    return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+  });
+
+  if (!inventoryState.listColumnWidths) inventoryState.listColumnWidths = {};
+  inventoryState.listColumnWidths[category] = widths;
+  return widths;
+}
+
+function formatInventoryItemDate(item) {
+  if (!item?.updatedAt) return "-";
+  return new Date(item.updatedAt).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function resolveAgronomyCropNamesWithType(cropIds) {
+  if (!Array.isArray(cropIds) || cropIds.length === 0) return "-";
+  return cropIds
+    .map((id) => {
+      const crop = inventoryState.items.crops.find((c) => c.id === id);
+      if (!crop) return "Unknown";
+      const typeLabel = crop.entryType === "hybrid" ? "(Hybrid)" : "(Parental)";
+      return `${escapeHtml(crop.name)} ${typeLabel}`;
+    })
+    .join(", ");
+}
+
+function formatAgronomyDap(item) {
+  if (item.dapMin != null && item.dapMax != null && item.dapMax !== "" && item.dapMax !== item.dapMin) {
+    return `${item.dapMin}-${item.dapMax}`;
+  }
+  return item.dapMin != null ? `${item.dapMin}` : "-";
+}
+
+function renderInventoryListCell(item, col, category) {
+  if (col.key === "actions") {
+    const cropAction = category === "crops"
+      ? `<button class="expand-crop-btn" data-crop-id="${item.id}" title="View Entries"><span class="material-symbols-rounded">visibility</span></button>`
+      : "";
+    return `
+      <div class="inventory-list-cell inventory-list-cell-actions">
+        <div class="item-actions">
+          ${cropAction}
+          <button class="move-folder-btn" data-id="${item.id}" title="Move to Folder"><span class="material-symbols-rounded">drive_file_move</span></button>
+          <button class="edit-btn" data-id="${item.id}" title="Edit"><span class="material-symbols-rounded">edit</span></button>
+          <button class="delete-btn" data-id="${item.id}" title="Delete"><span class="material-symbols-rounded">delete</span></button>
+        </div>
+      </div>
+    `;
+  }
+
+  if (category === "crops") {
+    const entryCount = inventoryState.items.entries.filter((line) => line.cropId === item.id || line.crop === item.id).length;
+    const entryType = item.entryType === "hybrid" ? "Hybrid" : "Parental";
+    const cropValues = {
+      name: escapeHtml(item.name || "-"),
+      cropType: escapeHtml(item.cropType || "-"),
+      entryType,
+      entries: entryCount > 0 ? String(entryCount) : "0",
+      updated: formatInventoryItemDate(item),
+    };
+    return `<div class="inventory-list-cell" title="${cropValues[col.key] || "-"}">${cropValues[col.key] || "-"}</div>`;
+  }
+
+  if (category === "locations") {
+    const values = {
+      name: escapeHtml(item.name || "-"),
+      coordinates: escapeHtml(item.coordinates || "-"),
+      updated: formatInventoryItemDate(item),
+    };
+    return `<div class="inventory-list-cell" title="${values[col.key] || "-"}">${values[col.key] || "-"}</div>`;
+  }
+
+  if (category === "parameters") {
+    const values = {
+      name: escapeHtml(item.name || "-"),
+      initial: escapeHtml(item.initial || "-"),
+      type: escapeHtml(item.type || "-"),
+      unit: escapeHtml(item.unit || "-"),
+      samples: String(item.numberOfSamples ?? item.quantity ?? "-"),
+      updated: formatInventoryItemDate(item),
+    };
+    return `<div class="inventory-list-cell" title="${values[col.key] || "-"}">${values[col.key] || "-"}</div>`;
+  }
+
+  const agronomyValues = {
+    activity: escapeHtml(item.activity || item.name || "-"),
+    crops: resolveAgronomyCropNamesWithType(item.cropIds),
+    dap: formatAgronomyDap(item),
+    chemical: escapeHtml(item.chemical || "-"),
+    dose: escapeHtml(item.dose || "-"),
+    remark: escapeHtml(item.remark || "-"),
+    updated: formatInventoryItemDate(item),
+  };
+  return `<div class="inventory-list-cell" title="${agronomyValues[col.key] || "-"}">${agronomyValues[col.key] || "-"}</div>`;
+}
+
+function applyInventoryListTemplate(container, template) {
+  container.querySelectorAll(".inventory-list-grid").forEach((row) => {
+    row.style.gridTemplateColumns = template;
+  });
+}
+
+function setupInventoryListColumnResize(container, category, columns, widths) {
+  const header = container.querySelector(".inventory-list-header");
+  if (!header) return;
+
+  header.querySelectorAll(".inventory-col-resizer").forEach((handle) => {
+    handle.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      const idx = Number(handle.dataset.colIndex);
+      if (!Number.isFinite(idx)) return;
+
+      const minWidth = columns[idx]?.min || 80;
+      const startX = event.clientX;
+      const startWidth = widths[idx];
+
+      const onMouseMove = (moveEvent) => {
+        const next = Math.max(minWidth, startWidth + (moveEvent.clientX - startX));
+        widths[idx] = next;
+        inventoryState.listColumnWidths[category] = [...widths];
+        applyInventoryListTemplate(container, getInventoryListTemplate(widths));
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+      };
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+  });
+}
+
+function attachInventoryListActionListeners(container, category) {
+  if (category === "crops") {
+    container.querySelectorAll(".expand-crop-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showCropLinesPopup(btn.dataset.cropId);
+      });
+    });
+  }
+
+  container.querySelectorAll(".edit-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openEditModal(btn.dataset.id);
+    });
+  });
+
+  container.querySelectorAll(".delete-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteItem(btn.dataset.id);
+    });
+  });
+
+  container.querySelectorAll(".move-folder-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openMoveToFolderModal(btn.dataset.id);
+    });
+  });
+}
+
+function renderInventoryListMode(container, items, folderCardsHtml) {
+  const category = inventoryState.currentCategory;
+  const columns = getInventoryListColumns(category);
+  const widths = getInventoryListWidths(category, columns);
+  const template = getInventoryListTemplate(widths);
+
+  const headerHtml = `
+    <div class="inventory-list-header inventory-list-grid" style="grid-template-columns:${template}">
+      ${columns.map((col, idx) => `
+        <div class="inventory-list-head-cell">
+          <span>${escapeHtml(col.label)}</span>
+          ${idx < columns.length - 1 && !col.fixed
+            ? `<span class="inventory-col-resizer" data-col-index="${idx}" aria-hidden="true"></span>`
+            : ""}
+        </div>
+      `).join("")}
+    </div>
+  `;
+
+  const rowsHtml = items.map((item) => `
+    <div class="inventory-list-row inventory-list-grid" data-id="${item.id}" style="grid-template-columns:${template}">
+      ${columns.map((col) => renderInventoryListCell(item, col, category)).join("")}
+    </div>
+  `).join("");
+
+  container.innerHTML = folderCardsHtml + `<div class="inventory-list-table">${headerHtml}${rowsHtml}</div>`;
+
+  attachFolderCardListeners(container);
+  attachInventoryListActionListeners(container, category);
+  setupInventoryListColumnResize(container, category, columns, widths);
+}
+
 // Render inventory items
 function renderInventoryItems() {
   const container = document.getElementById("inventoryList");
+  if (!container) return;
+
+  const activeViewMode = getEffectiveInventoryViewMode(inventoryState.currentCategory);
+  container.classList.remove("inventory-view-grid", "inventory-view-list");
+  container.classList.add(activeViewMode === "list" ? "inventory-view-list" : "inventory-view-grid");
+
   let items = [...(inventoryState.items[inventoryState.currentCategory] || [])];
   const isCrops = inventoryState.currentCategory === "crops";
   const isLocations = inventoryState.currentCategory === "locations";
@@ -1298,9 +1608,6 @@ function renderInventoryItems() {
 
   // Get folders for current category
   const categoryFolders = inventoryState.folders[inventoryState.currentCategory] || [];
-
-  // Toggle agronomy-view class for full-width table layout
-  container.classList.toggle("agronomy-view", isAgronomy);
 
   // Update folder navigation UI
   const folderBackBtn = document.getElementById("folderBackBtn");
@@ -1365,6 +1672,11 @@ function renderInventoryItems() {
     return;
   } else {
     container.classList.remove("empty-grid");
+  }
+
+  if (activeViewMode === "list") {
+    renderInventoryListMode(container, items, folderCardsHtml);
+    return;
   }
 
   // Special rendering for Crops with nested Entries
@@ -1469,7 +1781,9 @@ function renderInventoryItems() {
       if (!cropIds || !Array.isArray(cropIds)) return "-";
       return cropIds.map(id => {
         const crop = inventoryState.items.crops.find(c => c.id === id);
-        return crop ? escapeHtml(crop.name) : "Unknown";
+        if (!crop) return "Unknown";
+        const typeLabel = crop.entryType === "hybrid" ? "(Hybrid)" : "(Parental)";
+        return `${escapeHtml(crop.name)} ${typeLabel}`;
       }).join(", ") || "-";
     };
 
@@ -1480,48 +1794,38 @@ function renderInventoryItems() {
       return item.dapMin != null ? `${item.dapMin}` : "-";
     };
 
-    const agronomyTableHtml = items.length > 0 ? `
-      <div class="agronomy-table-wrapper">
-        <table class="agronomy-table">
-          <thead>
-            <tr>
-              <th>Activity</th>
-              <th>Crops</th>
-              <th>DAP</th>
-              <th>Chemical</th>
-              <th>Dose</th>
-              <th>Remark</th>
-              <th class="agronomy-table-actions">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${items.map(item => `
-              <tr>
-                <td class="agronomy-cell-activity">${escapeHtml(item.activity || item.name || "-")}</td>
-                <td>${resolveCropNames(item.cropIds)}</td>
-                <td class="agronomy-cell-dap">${formatDap(item)}</td>
-                <td>${escapeHtml(item.chemical || "-")}</td>
-                <td>${escapeHtml(item.dose || "-")}</td>
-                <td class="agronomy-cell-remark">${escapeHtml(item.remark || "-")}</td>
-                <td class="agronomy-table-actions">
-                  <button class="move-folder-btn" data-id="${item.id}" title="Move to Folder">
-                    <span class="material-symbols-rounded">drive_file_move</span>
-                  </button>
-                  <button class="edit-btn" data-id="${item.id}" title="Edit">
-                    <span class="material-symbols-rounded">edit</span>
-                  </button>
-                  <button class="delete-btn" data-id="${item.id}" title="Delete">
-                    <span class="material-symbols-rounded">delete</span>
-                  </button>
-                </td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>
-    ` : "";
+    const agronomyCardsHtml = items
+      .map((item) => {
+        const cropNames = resolveCropNames(item.cropIds);
+        const dapDisplay = formatDap(item);
+        
+        return `
+          <div class="inventory-item agronomy-item">
+            <div class="item-meta">
+              <div class="item-name">${escapeHtml(item.activity || item.name || "-")}</div>
+              <div class="item-subtext">Crops: ${cropNames}</div>
+              <div class="item-subtext">DAP: ${dapDisplay}</div>
+              <div class="item-subtext">Chemical: ${escapeHtml(item.chemical || "-")}</div>
+              <div class="item-subtext">Dose: ${escapeHtml(item.dose || "-")}</div>
+              ${item.remark ? `<div class="item-subtext">Remark: ${escapeHtml(item.remark)}</div>` : ''}
+            </div>
+            <div class="item-actions">
+              <button class="move-folder-btn" data-id="${item.id}" title="Move to Folder">
+                <span class="material-symbols-rounded">drive_file_move</span>
+              </button>
+              <button class="edit-btn" data-id="${item.id}" title="Edit">
+                <span class="material-symbols-rounded">edit</span>
+              </button>
+              <button class="delete-btn" data-id="${item.id}" title="Delete">
+                <span class="material-symbols-rounded">delete</span>
+              </button>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
 
-    container.innerHTML = folderCardsHtml + agronomyTableHtml;
+    container.innerHTML = folderCardsHtml + agronomyCardsHtml;
 
     // Add folder card event listeners
     attachFolderCardListeners(container);

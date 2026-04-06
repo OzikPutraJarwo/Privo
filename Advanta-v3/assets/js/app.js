@@ -518,6 +518,15 @@ const userSettingsState = {
   loaded: false,
   superuserActive: false,
   data: {
+    appearance: {
+      inventoryViewMode: "grid",
+      inventoryCategoryViews: {
+        crops: "default",
+        locations: "default",
+        parameters: "default",
+        agronomy: "default",
+      },
+    },
     analysis: {
       visibleColumns: [],
       sectionLayout: "horizontal",
@@ -534,6 +543,23 @@ const userSettingsState = {
 
 function normalizeUserSettings(data) {
   const safe = data && typeof data === "object" ? data : {};
+  const appearance = safe.appearance && typeof safe.appearance === "object"
+    ? safe.appearance
+    : {};
+
+  const normalizedInventoryViewMode = appearance.inventoryViewMode === "list"
+    ? "list"
+    : "grid";
+
+  const rawCategoryViews = appearance.inventoryCategoryViews && typeof appearance.inventoryCategoryViews === "object"
+    ? appearance.inventoryCategoryViews
+    : {};
+
+  const normalizeCategoryView = (value) => {
+    if (value === "grid" || value === "list") return value;
+    return "default";
+  };
+
   const analysis = safe.analysis && typeof safe.analysis === "object"
     ? safe.analysis
     : {};
@@ -554,6 +580,15 @@ function normalizeUserSettings(data) {
     : {};
 
   return {
+    appearance: {
+      inventoryViewMode: normalizedInventoryViewMode,
+      inventoryCategoryViews: {
+        crops: normalizeCategoryView(rawCategoryViews.crops),
+        locations: normalizeCategoryView(rawCategoryViews.locations),
+        parameters: normalizeCategoryView(rawCategoryViews.parameters),
+        agronomy: normalizeCategoryView(rawCategoryViews.agronomy),
+      },
+    },
     analysis: {
       visibleColumns: Array.isArray(analysis.visibleColumns)
         ? analysis.visibleColumns.map((key) => String(key))
@@ -585,7 +620,11 @@ function getStoredAnalysisUserSettings() {
 }
 
 function applyUserSettingsToModules() {
+  const appearancePrefs = userSettingsState.data?.appearance || {};
   const analysisPrefs = userSettingsState.data?.analysis || {};
+  if (typeof applyInventoryUserSettings === "function") {
+    applyInventoryUserSettings(appearancePrefs);
+  }
   if (typeof applyAnalysisUserSettings === "function") {
     applyAnalysisUserSettings(analysisPrefs);
   }
@@ -604,7 +643,14 @@ function enqueueUserSettingsSync() {
   if (typeof enqueueSync !== "function") return;
   if (typeof saveUserSettingsToGoogleDrive !== "function") return;
 
-  const payload = normalizeUserSettings(userSettingsState.data);
+  // Superuser mode is device-local only and must never be synced to Drive.
+  const payload = normalizeUserSettings({
+    ...userSettingsState.data,
+    authority: {
+      ...(userSettingsState.data?.authority || {}),
+      superuserActive: false,
+    },
+  });
   enqueueSync({
     label: "Sync user settings",
     fileKey: "user_settings",
@@ -646,7 +692,10 @@ async function loadUserSettingsForCurrentUser(options = {}) {
     try {
       const remote = await loadUserSettingsFromGoogleDrive();
       if (remote && typeof remote === "object") {
+        const localSuperuserActive = userSettingsState.data?.authority?.superuserActive === true;
         userSettingsState.data = normalizeUserSettings(remote);
+        // Keep superuser mode local per-device even after remote settings are loaded.
+        userSettingsState.data.authority.superuserActive = localSuperuserActive;
         syncAuthorityStateFromSettings();
         applyUserSettingsToModules();
         saveUserSettingsLocalCache();
@@ -770,8 +819,32 @@ function renderUserSettingsAnalysisTab() {
   }
 }
 
+function renderUserSettingsAppearanceTab() {
+  const globalMode = userSettingsState.data?.appearance?.inventoryViewMode === "list"
+    ? "list"
+    : "grid";
+
+  const categoryViews = userSettingsState.data?.appearance?.inventoryCategoryViews || {};
+  const categoryKeys = ["crops", "locations", "parameters", "agronomy"];
+
+  const globalInput = document.querySelector(
+    `input[name="userSettingsInventoryGlobalView"][value="${globalMode}"]`,
+  );
+  if (globalInput) globalInput.checked = true;
+
+  categoryKeys.forEach((key) => {
+    const savedValue = categoryViews[key] === "grid" || categoryViews[key] === "list"
+      ? categoryViews[key]
+      : "default";
+    const input = document.querySelector(
+      `input[name="userSettingsInventoryView${key.charAt(0).toUpperCase() + key.slice(1)}"][value="${savedValue}"]`,
+    );
+    if (input) input.checked = true;
+  });
+}
+
 function switchUserSettingsTab(tabKey = "analysis") {
-  const safeTabKey = ["authority", "analysis", "optimization"].includes(tabKey)
+  const safeTabKey = ["authority", "analysis", "appearance", "optimization"].includes(tabKey)
     ? tabKey
     : "analysis";
 
@@ -793,6 +866,10 @@ function switchUserSettingsTab(tabKey = "analysis") {
 
   if (safeTabKey === "authority") {
     renderAuthorityTab();
+  }
+
+  if (safeTabKey === "appearance") {
+    renderUserSettingsAppearanceTab();
   }
 }
 
@@ -848,7 +925,6 @@ function attemptAuthorityUnlock() {
     _removeAuthorityHiddenStyles();
 
     saveUserSettingsLocalCache();
-    enqueueUserSettingsSync();
 
     renderAuthorityTab();
     showToast("Superuser mode activated", "success");
@@ -872,7 +948,6 @@ function exitSuperuserMode() {
   applyAuthorityHiddenSelectors();
 
   saveUserSettingsLocalCache();
-  enqueueUserSettingsSync();
 
   renderAuthorityTab();
   showToast("Returned to normal mode", "info");
@@ -1651,6 +1726,7 @@ function openUserSettingsModal(activeTab = null) {
   const firstNavTab = document.querySelector(".user-settings-nav .user-settings-nav-item")?.dataset.settingsTab;
   const targetTab = activeTab || firstNavTab || "analysis";
 
+  renderUserSettingsAppearanceTab();
   renderUserSettingsAnalysisTab();
   switchUserSettingsTab(targetTab);
   modal.classList.remove("hidden");
@@ -1712,8 +1788,31 @@ async function saveUserSettingsFromModal() {
     );
   }
 
+  const selectedInventoryGlobalView = document.querySelector(
+    'input[name="userSettingsInventoryGlobalView"]:checked',
+  )?.value;
+  const inventoryViewMode = selectedInventoryGlobalView === "list" ? "list" : "grid";
+
+  const readCategoryInventoryView = (inputName) => {
+    const value = document.querySelector(`input[name="${inputName}"]:checked`)?.value;
+    if (value === "grid" || value === "list") return value;
+    return "default";
+  };
+
+  const inventoryCategoryViews = {
+    crops: readCategoryInventoryView("userSettingsInventoryViewCrops"),
+    locations: readCategoryInventoryView("userSettingsInventoryViewLocations"),
+    parameters: readCategoryInventoryView("userSettingsInventoryViewParameters"),
+    agronomy: readCategoryInventoryView("userSettingsInventoryViewAgronomy"),
+  };
+
   userSettingsState.data = normalizeUserSettings({
     ...userSettingsState.data,
+    appearance: {
+      ...(userSettingsState.data?.appearance || {}),
+      inventoryViewMode,
+      inventoryCategoryViews,
+    },
     analysis: {
       ...(userSettingsState.data?.analysis || {}),
       visibleColumns: selectedAnalysisKeys,
@@ -1726,6 +1825,9 @@ async function saveUserSettingsFromModal() {
 
   if (typeof applyAnalysisUserSettings === "function") {
     applyAnalysisUserSettings(userSettingsState.data.analysis);
+  }
+  if (typeof applyInventoryUserSettings === "function") {
+    applyInventoryUserSettings(userSettingsState.data.appearance || {});
   }
 
   saveUserSettingsLocalCache();

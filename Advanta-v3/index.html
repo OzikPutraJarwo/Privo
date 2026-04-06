@@ -1742,6 +1742,10 @@
               <span class="material-symbols-rounded">analytics</span>
               <span>Analysis</span>
             </button>
+            <button type="button" class="user-settings-nav-item" data-settings-tab="appearance">
+              <span class="material-symbols-rounded">view_quilt</span>
+              <span>Appearance</span>
+            </button>
             <button type="button" class="user-settings-nav-item" data-settings-tab="optimization">
               <span class="material-symbols-rounded">bolt</span>
               <span>Optimization</span>
@@ -1844,6 +1848,99 @@
               <p class="user-settings-hint">All GGE Biplot preview customizations are stored here and reused automatically.</p>
               <div id="userSettingsGgeBiplotDefaultsUi" class="user-settings-path-diagram-ui"></div>
             </div>
+
+            <div class="user-settings-tab" id="userSettingsTabAppearance">
+              <h4>Inventory View Mode</h4>
+              <p class="user-settings-hint">Choose default layout for Inventory, then override per section if needed.</p>
+
+              <div class="user-settings-layout-panel">
+                <div class="user-settings-layout-block">
+                  <div class="user-settings-layout-label">Global Default</div>
+                  <div class="user-settings-choice-grid user-settings-choice-grid-2">
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryGlobalView" value="grid" checked>
+                      <span class="material-symbols-rounded">grid_view</span>
+                      <span>Grid</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryGlobalView" value="list">
+                      <span class="material-symbols-rounded">view_list</span>
+                      <span>List</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="user-settings-layout-block">
+                  <div class="user-settings-layout-label">Per Section Override</div>
+                  <div class="user-settings-hint" style="margin-top:0">Set to Default to follow global mode.</div>
+
+                  <div class="user-settings-subtitle" style="margin-top:1rem">Crops</div>
+                  <div class="user-settings-choice-grid user-settings-choice-grid-3">
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewCrops" value="default" checked>
+                      <span>Default</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewCrops" value="grid">
+                      <span>Grid</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewCrops" value="list">
+                      <span>List</span>
+                    </label>
+                  </div>
+
+                  <div class="user-settings-subtitle" style="margin-top:1rem">Locations</div>
+                  <div class="user-settings-choice-grid user-settings-choice-grid-3">
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewLocations" value="default" checked>
+                      <span>Default</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewLocations" value="grid">
+                      <span>Grid</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewLocations" value="list">
+                      <span>List</span>
+                    </label>
+                  </div>
+
+                  <div class="user-settings-subtitle" style="margin-top:1rem">Parameters</div>
+                  <div class="user-settings-choice-grid user-settings-choice-grid-3">
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewParameters" value="default" checked>
+                      <span>Default</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewParameters" value="grid">
+                      <span>Grid</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewParameters" value="list">
+                      <span>List</span>
+                    </label>
+                  </div>
+
+                  <div class="user-settings-subtitle" style="margin-top:1rem">Agronomy</div>
+                  <div class="user-settings-choice-grid user-settings-choice-grid-3">
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewAgronomy" value="default" checked>
+                      <span>Default</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewAgronomy" value="grid">
+                      <span>Grid</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsInventoryViewAgronomy" value="list">
+                      <span>List</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="user-settings-tab" id="userSettingsTabOptimization">
               <h4>Storage Health</h4>
               <p class="user-settings-hint">Monitor local storage usage and persistent storage status for long-term offline data.</p>

@@ -5027,6 +5027,13 @@ async function ensureTrialResponsesLoaded(trialId) {
 
   const loadedCount = Array.isArray(trial._loadedAreas) ? trial._loadedAreas.length : 0;
   const totalAreas = (trial.areas || []).length;
+
+  // Allow partial-load workflows: if at least one area is loaded, trial can still run
+  // but navigation will be limited to loaded areas only.
+  if (loadedCount > 0) {
+    return true;
+  }
+
   const partialMsg = loadedCount > 0
     ? `<p style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-secondary)">${loadedCount} of ${totalAreas} areas already loaded.</p>`
     : "";
@@ -5042,7 +5049,7 @@ async function ensureTrialResponsesLoaded(trialId) {
           <h3>Trial Data Not Loaded</h3>
         </div>
         <div class="confirm-modal-body">
-          <p>Response data for <b>${escapeHtml(trial.name)}</b> has not been fully loaded from Google Drive yet. You need to load all areas before continuing.</p>
+          <p>Response data for <b>${escapeHtml(trial.name)}</b> belum dimuat. Muat minimal satu area dulu untuk mulai menjalankan trial.</p>
           ${partialMsg}
         </div>
         <div class="confirm-modal-footer">
@@ -7144,6 +7151,46 @@ let agronomyMonitoringState = {
 
 let agronomyAutoSaveInProgress = false;
 
+function getTrialAvailableAreaIndexes(trial) {
+  const totalAreas = Array.isArray(trial?.areas) ? trial.areas.length : 0;
+  const allIndexes = Array.from({ length: totalAreas }, (_, idx) => idx);
+  if (!trial || totalAreas === 0) return [];
+
+  if (trial._responsesLoaded) {
+    return allIndexes;
+  }
+
+  const loadedAreas = Array.isArray(trial._loadedAreas) ? trial._loadedAreas : [];
+  const normalized = [...new Set(
+    loadedAreas
+      .map((v) => Number(v))
+      .filter((n) => Number.isInteger(n) && n >= 0 && n < totalAreas),
+  )].sort((a, b) => a - b);
+
+  // If no partial-load marker exists, keep default behavior (all areas available).
+  return normalized.length > 0 ? normalized : allIndexes;
+}
+
+function isTrialAreaAvailableForRun(trial, areaIndex) {
+  return getTrialAvailableAreaIndexes(trial).includes(Number(areaIndex));
+}
+
+function getAreaUnavailableMessage(trial, areaIndex) {
+  const areaName = trial?.areas?.[areaIndex]?.name || `Area ${Number(areaIndex) + 1}`;
+  return `${areaName} belum dimuat. Silakan load area ini dulu di Load Data.`;
+}
+
+function getNextAvailableAreaIndex(trial, currentAreaIndex) {
+  const available = getTrialAvailableAreaIndexes(trial);
+  return available.find((idx) => idx > currentAreaIndex) ?? null;
+}
+
+function getPrevAvailableAreaIndex(trial, currentAreaIndex) {
+  const available = getTrialAvailableAreaIndexes(trial);
+  const reversed = [...available].reverse();
+  return reversed.find((idx) => idx < currentAreaIndex) ?? null;
+}
+
 // Get agronomy items for a trial, sorted by dapMin
 function getTrialAgronomyItems(trial) {
   if (!trial || !trial.agronomyItems || !trial.agronomyItems.length) return [];
@@ -7158,8 +7205,10 @@ function getAllAgronomyNavPositions() {
   const trial = agronomyMonitoringState.currentTrial;
   if (!trial) return [];
   const items = getTrialAgronomyItems(trial);
+  const availableAreas = new Set(getTrialAvailableAreaIndexes(trial));
   const positions = [];
   (trial.areas || []).forEach((area, areaIndex) => {
+    if (!availableAreas.has(areaIndex)) return;
     items.forEach(item => {
       positions.push({
         areaIndex,
@@ -7173,12 +7222,16 @@ function getAllAgronomyNavPositions() {
 }
 
 // Calculate agronomy monitoring progress
-function calculateAgronomyProgress(trial) {
+function calculateAgronomyProgress(trial, availableAreaIndexes = null) {
   const items = getTrialAgronomyItems(trial);
   const areas = trial.areas || [];
   const responses = trial.agronomyResponses || {};
+  const allowed = Array.isArray(availableAreaIndexes)
+    ? new Set(availableAreaIndexes)
+    : null;
   let total = 0, completed = 0;
   areas.forEach((_, areaIndex) => {
+    if (allowed && !allowed.has(areaIndex)) return;
     items.forEach(item => {
       total++;
       const resp = responses[areaIndex]?.[item.id];
@@ -7356,7 +7409,9 @@ function renderAgronomyNavTree() {
 
   const items = getTrialAgronomyItems(trial);
   const areas = trial.areas || [];
-  const progress = calculateAgronomyProgress(trial);
+  const availableAreaIndexes = getTrialAvailableAreaIndexes(trial);
+  const progress = calculateAgronomyProgress(trial, availableAreaIndexes);
+  const availableAreas = new Set(availableAreaIndexes);
 
   let html = `
     <div class="run-nav-progress">
@@ -7368,20 +7423,36 @@ function renderAgronomyNavTree() {
   `;
 
   areas.forEach((area, areaIndex) => {
+    const isAreaAvailable = availableAreas.has(areaIndex);
     const areaCompleted = items.filter(item => isAgronomyItemComplete(areaIndex, item.id)).length;
     const areaTotal = items.length;
     const isAreaActive = agronomyMonitoringState.currentAreaIndex === areaIndex;
+    const areaClass = `${isAreaActive ? 'active' : ''} ${isAreaAvailable ? '' : 'disabled'}`.trim();
 
     html += `
-      <div class="run-nav-area ${isAreaActive ? 'active' : ''}">
+      <div class="run-nav-area ${areaClass}">
         <div class="run-nav-area-header" onclick="toggleAgronomyNavArea(${areaIndex})">
           <span class="material-symbols-rounded run-nav-area-icon">location_on</span>
           <span class="run-nav-area-name">${escapeHtml(area.name || `Area ${areaIndex + 1}`)}</span>
-          <span class="run-nav-area-count">${areaCompleted}/${areaTotal}</span>
+          <span class="run-nav-area-count">${isAreaAvailable ? `${areaCompleted}/${areaTotal}` : 'Not Loaded'}</span>
           <span class="material-symbols-rounded run-nav-toggle-icon">expand_more</span>
         </div>
         <div class="run-nav-area-children ${isAreaActive ? '' : 'collapsed'}">
     `;
+
+    if (!isAreaAvailable) {
+      html += `
+        <div class="run-nav-line disabled" onclick="selectAgronomyItem(${areaIndex}, '')">
+          <span class="material-symbols-rounded run-nav-line-icon">lock</span>
+          <div class="run-nav-line-text">
+            <span class="run-nav-line-name">Area belum dimuat</span>
+            <span class="run-nav-line-meta">Load area ini untuk menjalankan agronomy</span>
+          </div>
+        </div>
+      `;
+      html += `</div></div>`;
+      return;
+    }
 
     items.forEach(item => {
       const isActive = agronomyMonitoringState.currentAreaIndex === areaIndex &&
@@ -7427,6 +7498,11 @@ function renderAgronomyNavTree() {
 }
 
 function toggleAgronomyNavArea(areaIndex) {
+  const trial = agronomyMonitoringState.currentTrial;
+  if (trial && !isTrialAreaAvailableForRun(trial, areaIndex)) {
+    showToast(getAreaUnavailableMessage(trial, areaIndex), "warning");
+    return;
+  }
   const container = document.getElementById("agronomyNavTree");
   const areas = container?.querySelectorAll(".run-nav-area");
   if (!areas || !areas[areaIndex]) return;
@@ -7436,6 +7512,13 @@ function toggleAgronomyNavArea(areaIndex) {
 
 // Select agronomy item
 function selectAgronomyItem(areaIndex, itemId) {
+  const trial = agronomyMonitoringState.currentTrial;
+  if (trial && !isTrialAreaAvailableForRun(trial, areaIndex)) {
+    showToast(getAreaUnavailableMessage(trial, areaIndex), "warning");
+    return;
+  }
+  if (!itemId) return;
+
   // Auto-save previous response
   saveAgronomyResponseSilent();
 
@@ -7875,7 +7958,7 @@ function finishAgronomyMonitoring() {
   autoSaveAgronomyProgress();
 
   const trial = agronomyMonitoringState.currentTrial;
-  const progress = calculateAgronomyProgress(trial);
+  const progress = calculateAgronomyProgress(trial, getTrialAvailableAreaIndexes(trial));
 
   const existing = document.querySelector('.finish-trial-overlay');
   if (existing) existing.remove();
@@ -8217,11 +8300,13 @@ function renderRunTrialNavTree() {
 
   // Get runnable parameters (exclude formula type)
   const parameters = getRunnableTrialParameters(trial);
+  const availableAreas = new Set(getTrialAvailableAreaIndexes(trial));
 
   // Calculate overall progress
   let overallTotal = 0;
   let overallCompleted = 0;
   trial.areas.forEach((area, areaIndex) => {
+    if (!availableAreas.has(areaIndex)) return;
     if (!area.layout?.result) return;
     parameters.forEach(param => {
       const numSamples = param.numberOfSamples || 1;
@@ -8253,9 +8338,10 @@ function renderRunTrialNavTree() {
 
   trial.areas.forEach((area, areaIndex) => {
     if (!area.layout?.result) return;
+    const isAreaAvailable = availableAreas.has(areaIndex);
 
     const isAreaOpen = areaIndex === runTrialState.currentAreaIndex;
-    const areaClass = isAreaOpen ? "" : "collapsed";
+    const areaClass = `${isAreaOpen ? "" : "collapsed"} ${isAreaAvailable ? "" : "disabled"}`.trim();
 
     html += `
       <div class="run-nav-area ${areaClass}" data-area-index="${areaIndex}">
@@ -8266,6 +8352,22 @@ function renderRunTrialNavTree() {
         </div>
         <div class="run-nav-area-content">
     `;
+
+    if (!isAreaAvailable) {
+      html += `
+        <div class="run-nav-line disabled" onclick="selectLine(${areaIndex}, '', '', 0, 0)">
+          <div class="run-nav-line-header">
+            <span class="material-symbols-rounded">lock</span>
+            <span>Area belum dimuat. Load area ini dulu.</span>
+          </div>
+        </div>
+      `;
+      html += `
+        </div>
+      </div>
+      `;
+      return;
+    }
 
     parameters.forEach((param) => {
       const isParamOpen =
@@ -8438,6 +8540,11 @@ function renderRunTrialNavTree() {
 
 // Toggle area collapse
 function toggleNavArea(areaIndex) {
+  const trial = runTrialState.currentTrial;
+  if (trial && !isTrialAreaAvailableForRun(trial, areaIndex)) {
+    showToast(getAreaUnavailableMessage(trial, areaIndex), "warning");
+    return;
+  }
   const area = document.querySelector(`.run-nav-area[data-area-index="${areaIndex}"]`);
   if (area) area.classList.toggle("collapsed");
 }
@@ -8508,6 +8615,16 @@ function hasResponse(areaIndex, paramId, lineKey) {
 
 // Select a line to answer
 function selectLine(areaIndex, paramId, lineId, repIndex, sampleIndex = 0) {
+  const trial = runTrialState.currentTrial;
+  if (trial && !isTrialAreaAvailableForRun(trial, areaIndex)) {
+    showToast(getAreaUnavailableMessage(trial, areaIndex), "warning");
+    return;
+  }
+  if (!paramId || !lineId) {
+    if (trial) showToast(getAreaUnavailableMessage(trial, areaIndex), "warning");
+    return;
+  }
+
   const isLineChange =
     runTrialState.currentAreaIndex !== null &&
     (runTrialState.currentAreaIndex !== areaIndex ||
@@ -8858,15 +8975,17 @@ function renderQuestionCard() {
   const nextLineBtn = document.getElementById("runNextLineBtn");
   const prevAreaBtn = document.getElementById("runPrevAreaBtn");
   const nextAreaBtn = document.getElementById("runNextAreaBtn");
+  const prevAvailableArea = getPrevAvailableAreaIndex(trial, areaIndex);
+  const nextAvailableArea = getNextAvailableAreaIndex(trial, areaIndex);
   
   if (isFirstInArea) {
     if (prevLineBtn) prevLineBtn.disabled = true;
-    if (prevAreaBtn && areaIndex > 0) prevAreaBtn.style.display = "flex";
+    if (prevAreaBtn && prevAvailableArea !== null) prevAreaBtn.style.display = "flex";
   }
   
   if (isLastInArea) {
     if (nextLineBtn && !isLastOverall) nextLineBtn.disabled = true;
-    if (nextAreaBtn && areaIndex < trial.areas.length - 1) nextAreaBtn.style.display = "flex";
+    if (nextAreaBtn && nextAvailableArea !== null) nextAreaBtn.style.display = "flex";
   }
 
   // Load external photo references
@@ -9527,9 +9646,11 @@ function navigatePrevArea() {
   
   const currentAreaIndex = runTrialState.currentAreaIndex;
   if (currentAreaIndex <= 0) return;
+  const prevAreaIndex = getPrevAvailableAreaIndex(runTrialState.currentTrial, currentAreaIndex);
+  if (prevAreaIndex === null) return;
   
   const lines = getAllLinesList();
-  const prevAreaLines = lines.filter(l => l.areaIndex === currentAreaIndex - 1);
+  const prevAreaLines = lines.filter(l => l.areaIndex === prevAreaIndex);
   
   if (prevAreaLines.length > 0) {
     const lastLine = prevAreaLines[prevAreaLines.length - 1];
@@ -9548,9 +9669,11 @@ function navigateNextArea() {
   const trial = runTrialState.currentTrial;
   const currentAreaIndex = runTrialState.currentAreaIndex;
   if (currentAreaIndex >= trial.areas.length - 1) return;
+  const nextAreaIndex = getNextAvailableAreaIndex(trial, currentAreaIndex);
+  if (nextAreaIndex === null) return;
   
   const lines = getAllLinesList();
-  const nextAreaLines = lines.filter(l => l.areaIndex === currentAreaIndex + 1);
+  const nextAreaLines = lines.filter(l => l.areaIndex === nextAreaIndex);
   
   if (nextAreaLines.length > 0) {
     const firstLine = nextAreaLines[0];
@@ -9656,10 +9779,12 @@ function navigateToFirstLine() {
 function getAllLinesList() {
   const trial = runTrialState.currentTrial;
   const lines = [];
+  const availableAreas = new Set(getTrialAvailableAreaIndexes(trial));
 
   const parameters = getRunnableTrialParameters(trial);
 
   trial.areas.forEach((area, areaIndex) => {
+    if (!availableAreas.has(areaIndex)) return;
     if (!area.layout?.result) return;
 
     parameters.forEach((param) => {
