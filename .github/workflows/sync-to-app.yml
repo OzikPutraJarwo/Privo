@@ -1,0 +1,39 @@
+name: Sync Advanta-v3 to App/SPECTRA
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Advanta-v3/**'  # hanya trigger jika ada perubahan di folder ini
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Privo
+        uses: actions/checkout@v4
+
+      - name: Checkout App
+        uses: actions/checkout@v4
+        with:
+          repository: OzikPutraJarwo/App
+          token: ${{ secrets.PAT_TOKEN }}
+          path: app-repo
+
+      - name: Copy Advanta-v3 ke App/SPECTRA
+        run: |
+          mkdir -p app-repo/SPECTRA
+          rsync -av --delete Advanta-v3/ app-repo/SPECTRA/
+
+      - name: Commit & Push ke App
+        run: |
+          cd app-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet && git diff --staged --quiet || (
+            git add SPECTRA
+            git commit -m "chore: sync Advanta-v3 to SPECTRA"
+            git push
+          )
