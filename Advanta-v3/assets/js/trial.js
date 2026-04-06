@@ -136,6 +136,68 @@ async function initializeTrials(options = {}) {
   }
 }
 
+// ─── Trial list mode helpers ───
+function getTrialListColumns() {
+  return [
+    { key: "name", label: "Name", min: 120, flex: true },
+    { key: "crop", label: "Crop", min: 80, width: 120 },
+    { key: "type", label: "Type", min: 70, width: 100 },
+    { key: "progress", label: "Progress", min: 80, width: 90 },
+    { key: "status", label: "Status", min: 80, width: 110 },
+  ];
+}
+
+function getTrialListTemplate(columns) {
+  return columns.map((col) => {
+    if (col.flex) return `minmax(${col.min || 80}px, 1fr)`;
+    if (col.auto) return "auto";
+    return `${col.width || 100}px`;
+  }).join(" ");
+}
+
+function renderTrialListCell(trial, col) {
+  const progress = getTrialProgress(trial);
+  const isLoaded = !!trial._responsesLoaded;
+  const hasProgressSummary = !!trial.progressSummary;
+  const showProgress = isLoaded || hasProgressSummary;
+  const progressPercent = showProgress ? progress.percentage : 0;
+  const canRun = canRunTrialActivities(trial);
+
+  const values = {
+    name: escapeHtml(trial.name),
+    crop: escapeHtml(trial.cropName || "-"),
+    type: escapeHtml(trial.trialType || "-"),
+    progress: showProgress ? `${progressPercent}%` : "—",
+    status: isLoaded
+      ? '<span class="trial-card-load-badge loaded"><span class="material-symbols-rounded" style="font-size:14px">check_circle</span> Loaded</span>'
+      : (!canRun
+        ? '<span style="color:var(--text-tertiary);font-size:0.75rem">Incomplete</span>'
+        : '<span class="trial-card-load-badge not-loaded"><span class="material-symbols-rounded" style="font-size:14px">cloud_off</span> Not loaded</span>'),
+  };
+  return `<div class="inventory-list-cell" title="${col.key === 'status' ? '' : (values[col.key] || '-')}">${values[col.key] || "-"}</div>`;
+}
+
+function renderTrialListMode(container, trials, isArchived) {
+  const columns = getTrialListColumns();
+  const template = getTrialListTemplate(columns);
+
+  const headerHtml = `
+    <div class="inventory-list-header">
+      ${columns.map((col) => `
+        <div class="inventory-list-head-cell"><span>${escapeHtml(col.label)}</span></div>
+      `).join("")}
+    </div>
+  `;
+
+  const rowsHtml = trials.map((trial) => `
+    <div class="inventory-list-row${isArchived ? ' trial-card-archived' : ''}" data-trial-id="${trial.id}" style="cursor:pointer" onclick="showTrialActionPopup(event, '${trial.id}')">
+      ${columns.map((col) => renderTrialListCell(trial, col)).join("")}
+    </div>
+  `).join("");
+
+  container.innerHTML = `<div class="inventory-list-table" style="grid-template-columns:${template}">${headerHtml}${rowsHtml}</div>`;
+}
+
 // Render trials list
 function renderTrials() {
   const activeContainer = document.getElementById("trialList");
@@ -10112,8 +10174,15 @@ function renderDashboardTrialSummary() {
     container.classList.remove("empty-grid");
   }
 
-  container.innerHTML = activeTrials.map((trial) => {
-    // Use smart progress (denormalized summary or live calculation)
+  // Group by trialType
+  const groups = {};
+  activeTrials.forEach((trial) => {
+    const type = trial.trialType || "Other";
+    if (!groups[type]) groups[type] = [];
+    groups[type].push(trial);
+  });
+
+  function buildTrialCard(trial) {
     const progress = getTrialProgress(trial);
     const isLoaded = !!trial._responsesLoaded;
     const hasProgressSummary = !!trial.progressSummary;
@@ -10124,7 +10193,6 @@ function renderDashboardTrialSummary() {
       : obs.percentage > 0 ? 'var(--warning)'
       : 'var(--text-tertiary)';
 
-    // Agronomy progress
     const hasAgronomy = trial.agronomyMonitoring && trial.agronomyItems && trial.agronomyItems.length > 0;
     const agro = hasAgronomy ? progress.agro : null;
     const agroColor = agro
@@ -10134,7 +10202,6 @@ function renderDashboardTrialSummary() {
         : 'var(--text-tertiary)')
       : 'var(--text-tertiary)';
 
-    // Overall status badge
     const overallPct = showProgress ? progress.percentage : 0;
     const badgeClass = !showProgress ? 'not-started' : overallPct === 100 ? 'complete' : overallPct > 0 ? 'in-progress' : 'not-started';
     const badgeText = !showProgress ? 'Not loaded' : overallPct === 100 ? 'Complete' : overallPct > 0 ? 'In Progress' : 'Not Started';
@@ -10179,14 +10246,35 @@ function renderDashboardTrialSummary() {
         ${notLoadedNote}
       </div>
     `;
+  }
+
+  const typeIcons = {
+    "Parent Test": "genetics",
+    "Process Research": "biotech",
+    "Micropilot": "experiment",
+  };
+
+  container.innerHTML = Object.keys(groups).map((type) => {
+    const trials = groups[type];
+    const icon = typeIcons[type] || "science";
+    return `
+      <div class="dash-trial-type-group">
+        <div class="dash-trial-type-header">
+          <span class="material-symbols-rounded">${icon}</span>
+          <span>${escapeHtml(type)}</span>
+          <span class="dash-trial-type-count">${trials.length}</span>
+        </div>
+        <div class="dash-trial-type-cards">
+          ${trials.map(buildTrialCard).join('')}
+        </div>
+      </div>
+    `;
   }).join('');
 
-  // Click handler – navigate to trial page
   container.querySelectorAll('.dash-trial-card[data-trial-id]').forEach(card => {
     card.addEventListener('click', () => {
       const trialId = card.dataset.trialId;
       if (typeof switchPage === 'function') switchPage('trial');
-      // Small delay so the page switches first
       setTimeout(() => {
         if (typeof showTrialActionPopup === 'function') {
           showTrialActionPopup(new Event('click'), trialId);
@@ -11423,6 +11511,7 @@ function buildDatabaseDataset() {
   const orderedParams = [...nonFormulaParams, ...formulaParams];
 
   const fixedColumns = [
+    { key: "row_no", label: "No.", source: "fixed" },
     { key: "trial_name", label: "Trial", source: "fixed" },
     { key: "area_name", label: "Area", source: "fixed" },
     { key: "replication", label: "Replication", source: "fixed" },
@@ -11431,6 +11520,7 @@ function buildDatabaseDataset() {
   ];
 
   const rows = [];
+  let rowCounter = 0;
 
   trials.forEach((trial) => {
     const trialParamIds = new Set(trial.parameters || []);
@@ -11454,7 +11544,9 @@ function buildDatabaseDataset() {
             );
 
             for (let sampleIndex = 0; sampleIndex < maxSamples; sampleIndex++) {
+              rowCounter++;
               const rowObj = {
+                row_no: String(rowCounter),
                 trial_name: trial.name || "",
                 area_name: areaName,
                 replication: String(repIndex + 1),
@@ -12295,7 +12387,7 @@ function showTrialDetail(trialId) {
           </div>
           <div class='td-area-size'>
             <span class="material-symbols-rounded"> straighten </span>
-            <p>${area.areaSize.hectares.toFixed(2)} ha</p>
+            <p>~${area.areaSize.hectares.toFixed(2)} ha</p>
           </div>
           <div class='td-area-address'>
             <span class="material-symbols-rounded"> location_on </span>

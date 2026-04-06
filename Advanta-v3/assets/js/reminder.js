@@ -247,6 +247,31 @@ function sortReminderItems(items) {
 // ===========================
 // RENDER: Observation Tab
 // ===========================
+function renderObservationRemindersGrid(container, groups) {
+  const cards = [];
+  groups.forEach(({ trial, areaGroups }) => {
+    areaGroups.forEach(({ area, items }) => {
+      sortReminderItems(items).forEach(item => {
+        cards.push(`
+          <div class="reminder-grid-card reminder-status-${item.status}" data-trial-id="${trial.id}" data-action="observation">
+            <div class="reminder-item-icon"><span class="material-symbols-rounded">${statusIcon(item.status)}</span></div>
+            <div class="reminder-grid-card-body">
+              <div class="reminder-item-name">${escapeHtml(item.param.name)}</div>
+              <div class="reminder-grid-card-meta">${escapeHtml(trial.name)} · ${escapeHtml(area.name || "General")}</div>
+              <div class="reminder-item-detail">
+                <span class="reminder-item-date">${formatDateRange(item.dateMin, item.dateMax)}</span>
+                <span class="reminder-item-doo">DoO ${item.dooMin === item.dooMax ? item.dooMin : item.dooMin + '–' + item.dooMax}</span>
+              </div>
+            </div>
+            <div class="reminder-item-status">${statusLabel(item.status)}</div>
+          </div>`);
+      });
+    });
+  });
+  container.innerHTML = `<div class="reminder-grid">${cards.join("")}</div>`;
+  attachReminderItemClickHandlers(container, "observation");
+}
+
 function renderObservationReminders() {
   const container = document.getElementById("reminderObservationContent");
   if (!container) return;
@@ -260,6 +285,12 @@ function renderObservationReminders() {
         <h3>No Observation Reminders</h3>
         <p>Create trials with parameters and set Days of Observation to see reminders here</p>
       </div>`;
+    return;
+  }
+
+  const viewMode = typeof getEffectiveViewMode === "function" ? getEffectiveViewMode("reminders") : "list";
+  if (viewMode === "grid") {
+    renderObservationRemindersGrid(container, groups);
     return;
   }
 
@@ -323,6 +354,32 @@ function renderObservationReminders() {
 // ===========================
 // RENDER: Agronomy Tab
 // ===========================
+function renderAgronomyRemindersGrid(container, groups) {
+  const cards = [];
+  groups.forEach(({ trial, areaGroups }) => {
+    areaGroups.forEach(({ area, items }) => {
+      sortReminderItems(items).forEach(item => {
+        cards.push(`
+          <div class="reminder-grid-card reminder-status-${item.status}" data-trial-id="${trial.id}" data-action="agronomy">
+            <div class="reminder-item-icon"><span class="material-symbols-rounded">${statusIcon(item.status)}</span></div>
+            <div class="reminder-grid-card-body">
+              <div class="reminder-item-name">${escapeHtml(item.agItem.activity || item.agItem.name)}</div>
+              <div class="reminder-grid-card-meta">${escapeHtml(trial.name)} · ${escapeHtml(area.name || "General")}</div>
+              <div class="reminder-item-detail">
+                <span class="reminder-item-date">${formatDateRange(item.dateMin, item.dateMax)}</span>
+                <span class="reminder-item-doo">DAP ${item.dapMin === item.dapMax ? item.dapMin : item.dapMin + '–' + item.dapMax}</span>
+                ${item.agItem.chemical ? `<span class="reminder-item-chem">${escapeHtml(item.agItem.chemical)}</span>` : ""}
+              </div>
+            </div>
+            <div class="reminder-item-status">${statusLabel(item.status)}</div>
+          </div>`);
+      });
+    });
+  });
+  container.innerHTML = `<div class="reminder-grid">${cards.join("")}</div>`;
+  attachReminderItemClickHandlers(container, "agronomy");
+}
+
 function renderAgronomyReminders() {
   const container = document.getElementById("reminderAgronomyContent");
   if (!container) return;
@@ -336,6 +393,12 @@ function renderAgronomyReminders() {
         <h3>No Agronomy Reminders</h3>
         <p>Create trials with agronomy monitoring enabled to see reminders here</p>
       </div>`;
+    return;
+  }
+
+  const viewMode = typeof getEffectiveViewMode === "function" ? getEffectiveViewMode("reminders") : "list";
+  if (viewMode === "grid") {
+    renderAgronomyRemindersGrid(container, groups);
     return;
   }
 
@@ -482,13 +545,13 @@ function _renderDashReminderSection(type) {
   if (!container) return;
 
   const groups = type === "observation" ? buildObservationReminders() : buildAgronomyReminders();
-  const items = [];
+  const allItems = [];
 
   groups.forEach(({ trial, areaGroups }) => {
     areaGroups.forEach(({ area, items: rawItems }) => {
       rawItems.forEach(item => {
-        if (item.status === "done" || item.status === "no-date") return;
-        items.push({
+        if (item.status !== "today" && item.status !== "overdue") return;
+        allItems.push({
           type,
           trialId: trial.id,
           trialName: trial.name,
@@ -502,42 +565,37 @@ function _renderDashReminderSection(type) {
     });
   });
 
-  // Sort: overdue → today → upcoming, then by date
-  const prio = { overdue: 0, today: 1, upcoming: 2 };
-  items.sort((a, b) => {
-    const sp = (prio[a.status] ?? 9) - (prio[b.status] ?? 9);
-    if (sp !== 0) return sp;
+  const overdueItems = allItems.filter(i => i.status === "overdue").sort((a, b) => {
+    const da = a.dateMin ? a.dateMin.getTime() : Infinity;
+    const db = b.dateMin ? b.dateMin.getTime() : Infinity;
+    return da - db;
+  });
+  const todayItems = allItems.filter(i => i.status === "today").sort((a, b) => {
     const da = a.dateMin ? a.dateMin.getTime() : Infinity;
     const db = b.dateMin ? b.dateMin.getTime() : Infinity;
     return da - db;
   });
 
-  const MAX_ITEMS = 6;
-  const shown = items.slice(0, MAX_ITEMS);
-
-  if (shown.length === 0) {
+  if (overdueItems.length === 0 && todayItems.length === 0) {
     const label = type === "observation" ? "observation" : "agronomy";
     container.classList.add("empty-grid");
     container.innerHTML = `
       <div class="empty-state-small">
         <span class="material-symbols-rounded">event_available</span>
-        <p>No pending ${label} reminders</p>
+        <p>No pending ${label} reminders for today</p>
       </div>`;
     return;
   } else {
     container.classList.remove("empty-grid");
   }
 
-  const iconMap = { overdue: "error", today: "today", upcoming: "schedule", "not-loaded": "cloud_off" };
-  const labelMap = { overdue: "Overdue", today: "Today", upcoming: "Upcoming", "not-loaded": "Not loaded" };
+  const MAX_PREVIEW = 4;
 
-  container.innerHTML = shown.map(item => {
+  function buildItemHtml(item) {
+    const iconMap = { overdue: "error", today: "today" };
+    const labelMap = { overdue: "Overdue", today: "Today" };
     const icon = iconMap[item.status] || "schedule";
     const badge = labelMap[item.status] || "";
-    const dateStr = item.dateMin
-      ? item.dateMin.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-      : "";
-
     return `
       <div class="dash-reminder-item ${item.status}" data-trial-id="${item.trialId}" data-action="${item.type}">
         <div class="dash-reminder-icon">
@@ -545,46 +603,133 @@ function _renderDashReminderSection(type) {
         </div>
         <div class="dash-reminder-body">
           <div class="dash-reminder-title">${escapeHtml(item.name)}</div>
-          <div class="dash-reminder-sub">${escapeHtml(item.trialName)}</div>
+          <div class="dash-reminder-sub">${escapeHtml(item.trialName)} · ${escapeHtml(item.areaName)}</div>
+        </div>
+        <span class="dash-reminder-badge ${item.status}">${badge}</span>
+      </div>`;
+  }
+
+  function buildGroup(items, label, statusClass) {
+    if (items.length === 0) return "";
+    const shown = items.slice(0, MAX_PREVIEW);
+    const remaining = items.length - MAX_PREVIEW;
+    return `
+      <div class="dash-reminder-group">
+        <div class="dash-reminder-group-label ${statusClass}">
+          <span>${label}</span>
+          <span class="dash-reminder-group-count">${items.length}</span>
+        </div>
+        <div class="dash-reminder-group-items">
+          ${shown.map(buildItemHtml).join("")}
+          ${remaining > 0 ? `<button class="dash-reminder-see-more" data-status="${statusClass}" data-type="${type}">See ${remaining} more</button>` : ""}
+        </div>
+      </div>
+    `;
+  }
+
+  container.innerHTML =
+    buildGroup(overdueItems, "Overdue", "overdue") +
+    buildGroup(todayItems, "Today", "today");
+
+  // Click handlers for reminder items
+  container.querySelectorAll(".dash-reminder-item[data-trial-id]").forEach(el => {
+    el.addEventListener("click", () => {
+      _handleDashReminderClick(el);
+    });
+  });
+
+  // See more buttons
+  container.querySelectorAll(".dash-reminder-see-more").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const status = btn.dataset.status;
+      const items = status === "overdue" ? overdueItems : todayItems;
+      const label = status === "overdue" ? "Overdue" : "Today";
+      const typeLabel = type === "observation" ? "Observation" : "Agronomy";
+      _showReminderListPopup(`${label} ${typeLabel} Reminders`, items, status);
+    });
+  });
+}
+
+function _handleDashReminderClick(el) {
+  const trialId = el.dataset.trialId;
+  const action = el.dataset.action;
+  const trial = (trialState.trials || []).find(t => t.id === trialId);
+  if (!trial) return;
+
+  const actionLabel = action === "observation" ? "Run Observation" : "Agronomy Monitoring";
+  const trialName = trial.name || "this trial";
+
+  if (typeof showConfirmModal === "function") {
+    showConfirmModal(
+      actionLabel,
+      `Go to ${actionLabel} for "${trialName}"?`,
+      () => {
+        if (typeof switchPage === "function") switchPage("trial");
+        if (action === "observation" && typeof startRunTrial === "function") {
+          startRunTrial(trialId);
+        } else if (action === "agronomy" && typeof startAgronomyMonitoring === "function") {
+          startAgronomyMonitoring(trialId);
+        }
+      },
+      "Go",
+      "btn-primary"
+    );
+  }
+}
+
+function _showReminderListPopup(title, items, statusClass) {
+  // Remove existing
+  const existing = document.querySelector(".reminder-list-popup-overlay");
+  if (existing) existing.remove();
+
+  const iconMap = { overdue: "error", today: "today" };
+  const labelMap = { overdue: "Overdue", today: "Today" };
+
+  const listHtml = items.map(item => {
+    const icon = iconMap[item.status] || "schedule";
+    const badge = labelMap[item.status] || "";
+    const dateStr = item.dateMin
+      ? item.dateMin.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      : "";
+    return `
+      <div class="dash-reminder-item ${item.status}" data-trial-id="${item.trialId}" data-action="${item.type}" style="cursor:pointer">
+        <div class="dash-reminder-icon">
+          <span class="material-symbols-rounded">${icon}</span>
+        </div>
+        <div class="dash-reminder-body">
+          <div class="dash-reminder-title">${escapeHtml(item.name)}</div>
+          <div class="dash-reminder-sub">${escapeHtml(item.trialName)} · ${escapeHtml(item.areaName)}${dateStr ? ` · ${dateStr}` : ''}</div>
         </div>
         <span class="dash-reminder-badge ${item.status}">${badge}</span>
       </div>`;
   }).join("");
 
-  if (items.length > MAX_ITEMS) {
-    container.insertAdjacentHTML("beforeend", `
-      <div style="text-align:center; padding:0.5rem 0; font-size:0.75rem; color:var(--text-tertiary); grid-column: span 3;">
-        +${items.length - MAX_ITEMS} more
-      </div>`);
-  }
+  const overlay = document.createElement("div");
+  overlay.className = "reminder-list-popup-overlay";
+  overlay.innerHTML = `
+    <div class="reminder-list-popup">
+      <div class="reminder-list-popup-header">
+        <h3>${escapeHtml(title)}</h3>
+        <button class="reminder-list-popup-close">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+      <div class="reminder-list-popup-body">
+        ${listHtml}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
 
-  // Click handler on each dashboard reminder item
-  container.querySelectorAll(".dash-reminder-item[data-trial-id]").forEach(el => {
+  overlay.querySelector(".reminder-list-popup-close").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.querySelectorAll(".dash-reminder-item[data-trial-id]").forEach(el => {
     el.addEventListener("click", () => {
-      const trialId = el.dataset.trialId;
-      const action = el.dataset.action;
-      const trial = (trialState.trials || []).find(t => t.id === trialId);
-      if (!trial) return;
-
-      const actionLabel = action === "observation" ? "Run Observation" : "Agronomy Monitoring";
-      const trialName = trial.name || "this trial";
-
-      if (typeof showConfirmModal === "function") {
-        showConfirmModal(
-          actionLabel,
-          `Go to ${actionLabel} for "${trialName}"?`,
-          () => {
-            if (typeof switchPage === "function") switchPage("trial");
-            if (action === "observation" && typeof startRunTrial === "function") {
-              startRunTrial(trialId);
-            } else if (action === "agronomy" && typeof startAgronomyMonitoring === "function") {
-              startAgronomyMonitoring(trialId);
-            }
-          },
-          "Go",
-          "btn-primary"
-        );
-      }
+      overlay.remove();
+      _handleDashReminderClick(el);
     });
   });
 }

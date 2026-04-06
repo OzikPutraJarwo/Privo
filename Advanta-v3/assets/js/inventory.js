@@ -1153,6 +1153,25 @@ async function initializeInventory(options = {}) {
     if (!isGuest) {
       const total = CATEGORIES.length;
       let done = 0;
+
+      // Load folders from Drive
+      if (typeof enqueueSync === 'function' && typeof loadInventoryFoldersFromGoogleDrive === 'function') {
+        enqueueSync({
+          label: 'Load Folders',
+          fileKey: 'inventory_folders',
+          run: async () => {
+            const driveFolders = await loadInventoryFoldersFromGoogleDrive();
+            if (driveFolders && typeof driveFolders === 'object') {
+              inventoryState.folders = driveFolders;
+              saveFoldersToCache();
+              if (inventoryState.currentCategory) {
+                switchCategory(inventoryState.currentCategory);
+              }
+            }
+          }
+        });
+      }
+
       for (const category of CATEGORIES) {
         const key = category.toLowerCase();
         
@@ -1283,50 +1302,55 @@ function switchCategory(category) {
 function getInventoryListColumns(category) {
   if (category === "crops") {
     return [
-      { key: "name", label: "Name", min: 180, width: 260 },
-      { key: "cropType", label: "Crop Type", min: 140, width: 180 },
-      { key: "entryType", label: "Entry Type", min: 120, width: 140 },
-      { key: "entries", label: "Entries", min: 90, width: 110 },
-      { key: "updated", label: "Updated", min: 130, width: 150 },
-      { key: "actions", label: "Actions", min: 150, width: 170, fixed: true },
+      { key: "name", label: "Name", min: 120, flex: true },
+      { key: "cropType", label: "Crop Type", min: 100, width: 140 },
+      { key: "entryType", label: "Entry Type", min: 90, width: 120 },
+      { key: "entries", label: "Entries", min: 70, width: 90 },
+      { key: "updated", label: "Updated", min: 100, width: 130 },
+      { key: "actions", label: "Actions", auto: true, fixed: true },
     ];
   }
 
   if (category === "locations") {
     return [
-      { key: "name", label: "Name", min: 180, width: 260 },
-      { key: "coordinates", label: "Coordinates", min: 200, width: 280 },
-      { key: "updated", label: "Updated", min: 130, width: 150 },
-      { key: "actions", label: "Actions", min: 150, width: 170, fixed: true },
+      { key: "name", label: "Name", min: 120, flex: true },
+      { key: "coordinates", label: "Coordinates", min: 140, width: 200 },
+      { key: "updated", label: "Updated", min: 100, width: 130 },
+      { key: "actions", label: "Actions", auto: true, fixed: true },
     ];
   }
 
   if (category === "parameters") {
     return [
-      { key: "name", label: "Name", min: 170, width: 240 },
-      { key: "initial", label: "Initial", min: 80, width: 100 },
-      { key: "type", label: "Type", min: 100, width: 120 },
-      { key: "unit", label: "Unit", min: 90, width: 110 },
-      { key: "samples", label: "Samples", min: 90, width: 110 },
-      { key: "updated", label: "Updated", min: 130, width: 150 },
-      { key: "actions", label: "Actions", min: 150, width: 170, fixed: true },
+      { key: "name", label: "Name", min: 120, flex: true },
+      { key: "initial", label: "Initial", min: 60, width: 80 },
+      { key: "type", label: "Type", min: 80, width: 100 },
+      { key: "unit", label: "Unit", min: 60, width: 80 },
+      { key: "samples", label: "Samples", min: 70, width: 90 },
+      { key: "updated", label: "Updated", min: 100, width: 130 },
+      { key: "actions", label: "Actions", auto: true, fixed: true },
     ];
   }
 
   return [
-    { key: "activity", label: "Activity", min: 180, width: 220 },
-    { key: "crops", label: "Crops", min: 220, width: 300 },
-    { key: "dap", label: "DAP", min: 80, width: 90 },
-    { key: "chemical", label: "Chemical", min: 140, width: 170 },
-    { key: "dose", label: "Dose", min: 110, width: 130 },
-    { key: "remark", label: "Remark", min: 180, width: 240 },
-    { key: "updated", label: "Updated", min: 130, width: 150 },
-    { key: "actions", label: "Actions", min: 150, width: 170, fixed: true },
+    { key: "activity", label: "Activity", min: 120, flex: true },
+    { key: "crops", label: "Crops", min: 140, width: 200 },
+    { key: "dap", label: "DAP", min: 60, width: 70 },
+    { key: "chemical", label: "Chemical", min: 100, width: 140 },
+    { key: "dose", label: "Dose", min: 80, width: 100 },
+    { key: "remark", label: "Remark", min: 120, width: 160 },
+    { key: "updated", label: "Updated", min: 100, width: 130 },
+    { key: "actions", label: "Actions", auto: true, fixed: true },
   ];
 }
 
-function getInventoryListTemplate(widths) {
-  return widths.map((w) => `${Math.max(60, Number(w) || 60)}px`).join(" ");
+function getInventoryListTemplate(widths, columns) {
+  return widths.map((w, i) => {
+    const col = columns?.[i];
+    if (col?.flex) return `minmax(${col.min || 80}px, 1fr)`;
+    if (col?.auto) return "auto";
+    return `${Math.max(60, Number(w) || 60)}px`;
+  }).join(" ");
 }
 
 function getInventoryListWidths(category, columns) {
@@ -1437,9 +1461,8 @@ function renderInventoryListCell(item, col, category) {
 }
 
 function applyInventoryListTemplate(container, template) {
-  container.querySelectorAll(".inventory-list-grid").forEach((row) => {
-    row.style.gridTemplateColumns = template;
-  });
+  const table = container.querySelector(".inventory-list-table");
+  if (table) table.style.gridTemplateColumns = template;
 }
 
 function setupInventoryListColumnResize(container, category, columns, widths) {
@@ -1460,7 +1483,7 @@ function setupInventoryListColumnResize(container, category, columns, widths) {
         const next = Math.max(minWidth, startWidth + (moveEvent.clientX - startX));
         widths[idx] = next;
         inventoryState.listColumnWidths[category] = [...widths];
-        applyInventoryListTemplate(container, getInventoryListTemplate(widths));
+        applyInventoryListTemplate(container, getInventoryListTemplate(widths, columns));
       };
 
       const onMouseUp = () => {
@@ -1510,10 +1533,10 @@ function renderInventoryListMode(container, items, folderCardsHtml) {
   const category = inventoryState.currentCategory;
   const columns = getInventoryListColumns(category);
   const widths = getInventoryListWidths(category, columns);
-  const template = getInventoryListTemplate(widths);
+  const template = getInventoryListTemplate(widths, columns);
 
   const headerHtml = `
-    <div class="inventory-list-header inventory-list-grid" style="grid-template-columns:${template}">
+    <div class="inventory-list-header">
       ${columns.map((col, idx) => `
         <div class="inventory-list-head-cell">
           <span>${escapeHtml(col.label)}</span>
@@ -1526,12 +1549,12 @@ function renderInventoryListMode(container, items, folderCardsHtml) {
   `;
 
   const rowsHtml = items.map((item) => `
-    <div class="inventory-list-row inventory-list-grid" data-id="${item.id}" style="grid-template-columns:${template}">
+    <div class="inventory-list-row" data-id="${item.id}">
       ${columns.map((col) => renderInventoryListCell(item, col, category)).join("")}
     </div>
   `).join("");
 
-  container.innerHTML = folderCardsHtml + `<div class="inventory-list-table">${headerHtml}${rowsHtml}</div>`;
+  container.innerHTML = folderCardsHtml + `<div class="inventory-list-table" style="grid-template-columns:${template}">${headerHtml}${rowsHtml}</div>`;
 
   attachFolderCardListeners(container);
   attachInventoryListActionListeners(container, category);
@@ -2045,6 +2068,15 @@ function saveFolder() {
   saveFoldersToCache();
   closeFolderModal();
   renderInventoryItems();
+
+  if (typeof enqueueSync === "function") {
+    const actionLabel = _editingFolderId ? "Update" : "Create";
+    enqueueSync({
+      label: `${actionLabel} Folder: ${name}`,
+      fileKey: "inventory_folders",
+      run: () => saveInventoryFoldersToGoogleDrive(inventoryState.folders),
+    });
+  }
 }
 
 function deleteFolder(folderId) {
@@ -2072,6 +2104,14 @@ function deleteFolder(folderId) {
   saveItemsToCache();
   closeFolderModal();
   renderInventoryItems();
+
+  if (typeof enqueueSync === "function") {
+    enqueueSync({
+      label: `Delete Folder: ${folder.name}`,
+      fileKey: "inventory_folders",
+      run: () => saveInventoryFoldersToGoogleDrive(inventoryState.folders),
+    });
+  }
 }
 
 function saveFoldersToCache() {

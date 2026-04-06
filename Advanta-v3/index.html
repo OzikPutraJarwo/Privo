@@ -151,9 +151,6 @@
             <h2 id="pageTitle">Dashboard</h2>
           </div>
           <div class="topbar-right">
-            <button id="loadDataBtn" class="sync-status" aria-label="Load latest data" title="Load Latest Data">
-              <span class="material-symbols-rounded">cloud_download</span>
-            </button>
             <button id="syncStatusBtn" class="sync-status" aria-label="Sync status" title="Synced">
               <span class="material-symbols-rounded">cached</span>
               <span id="syncQueueCount" class="sync-badge">0</span>
@@ -539,10 +536,16 @@
             <div class="inventory-container" id="trialManagementPanel">
                 <div class="inventory-header">
                   <h3>Trials</h3>
-                  <button id="addTrialBtn" class="btn btn-primary">
-                    <span class="material-symbols-rounded">add</span>
-                    <span>Create New Trial</span>
-                  </button>
+                  <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <button id="loadDataBtn" class="btn btn-secondary" aria-label="Load latest data" title="Load Latest Data">
+                      <span class="material-symbols-rounded">cloud_download</span>
+                      <span>Load Data</span>
+                    </button>
+                    <button id="addTrialBtn" class="btn btn-primary">
+                      <span class="material-symbols-rounded">add</span>
+                      <span>Create New Trial</span>
+                    </button>
+                  </div>
                 </div>
         
                 <div class="run-trial-list" id="trialList">
@@ -1850,8 +1853,8 @@
             </div>
 
             <div class="user-settings-tab" id="userSettingsTabAppearance">
-              <h4>Inventory View Mode</h4>
-              <p class="user-settings-hint">Choose default layout for Inventory, then override per section if needed.</p>
+              <h4>View Mode</h4>
+              <p class="user-settings-hint">Choose default layout for all sections, then override per section if needed.</p>
 
               <div class="user-settings-layout-panel">
                 <div class="user-settings-layout-block">
@@ -1874,7 +1877,23 @@
                   <div class="user-settings-layout-label">Per Section Override</div>
                   <div class="user-settings-hint" style="margin-top:0">Set to Default to follow global mode.</div>
 
-                  <div class="user-settings-subtitle" style="margin-top:1rem">Crops</div>
+                  <div class="user-settings-subtitle" style="margin-top:1rem">Reminders</div>
+                  <div class="user-settings-choice-grid user-settings-choice-grid-3">
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsViewReminders" value="default" checked>
+                      <span>Default</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsViewReminders" value="grid">
+                      <span>Grid</span>
+                    </label>
+                    <label class="user-settings-choice-card">
+                      <input type="radio" name="userSettingsViewReminders" value="list">
+                      <span>List</span>
+                    </label>
+                  </div>
+
+                  <div class="user-settings-subtitle" style="margin-top:1rem">Inventory: Crops</div>
                   <div class="user-settings-choice-grid user-settings-choice-grid-3">
                     <label class="user-settings-choice-card">
                       <input type="radio" name="userSettingsInventoryViewCrops" value="default" checked>
@@ -1890,7 +1909,7 @@
                     </label>
                   </div>
 
-                  <div class="user-settings-subtitle" style="margin-top:1rem">Locations</div>
+                  <div class="user-settings-subtitle" style="margin-top:1rem">Inventory: Locations</div>
                   <div class="user-settings-choice-grid user-settings-choice-grid-3">
                     <label class="user-settings-choice-card">
                       <input type="radio" name="userSettingsInventoryViewLocations" value="default" checked>
@@ -1906,7 +1925,7 @@
                     </label>
                   </div>
 
-                  <div class="user-settings-subtitle" style="margin-top:1rem">Parameters</div>
+                  <div class="user-settings-subtitle" style="margin-top:1rem">Inventory: Parameters</div>
                   <div class="user-settings-choice-grid user-settings-choice-grid-3">
                     <label class="user-settings-choice-card">
                       <input type="radio" name="userSettingsInventoryViewParameters" value="default" checked>
@@ -1922,7 +1941,7 @@
                     </label>
                   </div>
 
-                  <div class="user-settings-subtitle" style="margin-top:1rem">Agronomy</div>
+                  <div class="user-settings-subtitle" style="margin-top:1rem">Inventory: Agronomy</div>
                   <div class="user-settings-choice-grid user-settings-choice-grid-3">
                     <label class="user-settings-choice-card">
                       <input type="radio" name="userSettingsInventoryViewAgronomy" value="default" checked>

@@ -179,6 +179,35 @@ async function loadUserSettingsFromGoogleDrive() {
   }
 }
 
+async function saveInventoryFoldersToGoogleDrive(folders) {
+  try {
+    if (!driveState.inventoryFolderId) {
+      await initializeDriveStructure();
+    }
+    await upsertJsonFileInFolder("_folders.json", driveState.inventoryFolderId, folders || {});
+    return true;
+  } catch (error) {
+    handleDriveAuthError(error, "Google Drive session expired while saving folders");
+    console.error("Error saving inventory folders to Google Drive:", error);
+    throw error;
+  }
+}
+
+async function loadInventoryFoldersFromGoogleDrive() {
+  try {
+    if (!driveState.inventoryFolderId) {
+      await initializeDriveStructure();
+    }
+    const file = await findFile("_folders.json", driveState.inventoryFolderId);
+    if (!file) return null;
+    return await getFileContent(file.id);
+  } catch (error) {
+    handleDriveAuthError(error, "Google Drive session expired while loading folders");
+    console.error("Error loading inventory folders from Google Drive:", error);
+    throw error;
+  }
+}
+
 // Get or create folder in Google Drive
 async function getOrCreateFolder(folderName, parentFolderId = null) {
   try {

@@ -142,6 +142,7 @@
 - [x] `Trial > Observation` Save image as separated binary file
 - [x] `Library` Submenu for trial photos
 - [x] `Database` Removed
+- [x] `Data Analysis > Dataset` Load gradually with load more
 ### Bug Fixes, Redesign, etc
 - [x] `Inventory` Grid and list layout
 - [x] `Inventory > Parameters` Delete button for DoO
@@ -153,7 +154,6 @@
 - [x] `Trial > Report` Redesign
 
 ## UPCOMING PLANS
-- [ ] `Dataset` Load gradually with load more
 - [ ] Resize/reformat uploaded image dashboard
 - [ ] Reminder > checkbox > run only shows the checked
 - [ ] Notification on phone

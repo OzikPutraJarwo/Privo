@@ -1188,6 +1188,86 @@ function renderTrialPhotoList(container) {
   }
 }
 
+// ─── Library list mode helpers ───
+function getLibraryListColumns() {
+  return [
+    { key: "name", label: "Name", min: 120, flex: true },
+    { key: "type", label: "Type", min: 70, width: 90 },
+    { key: "size", label: "Size", min: 70, width: 90 },
+    { key: "date", label: "Date", min: 90, width: 110 },
+    { key: "actions", label: "Actions", auto: true, fixed: true },
+  ];
+}
+
+function getLibraryListTemplate(columns) {
+  return columns.map((col) => {
+    if (col.flex) return `minmax(${col.min || 80}px, 1fr)`;
+    if (col.auto) return "auto";
+    return `${col.width || 100}px`;
+  }).join(" ");
+}
+
+function renderLibraryListMode(container, displayItems) {
+  const columns = getLibraryListColumns();
+  const template = getLibraryListTemplate(columns);
+
+  const headerHtml = `
+    <div class="inventory-list-header">
+      ${columns.map((col) => `
+        <div class="inventory-list-head-cell"><span>${escapeHtml(col.label)}</span></div>
+      `).join("")}
+    </div>
+  `;
+
+  const rowsHtml = displayItems.map((file) => {
+    if (file.isUploading) {
+      const progress = Math.round(file.progress || 0);
+      return `
+        <div class="inventory-list-row">
+          <div class="inventory-list-cell">${escapeHtml(file.name)}</div>
+          <div class="inventory-list-cell">—</div>
+          <div class="inventory-list-cell">Uploading…</div>
+          <div class="inventory-list-cell">${progress}%</div>
+          <div class="inventory-list-cell inventory-list-cell-actions"></div>
+        </div>`;
+    }
+
+    const sizeLabel = file.size ? formatFileSize(Number(file.size)) : "-";
+    const dateLabel = file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString() : "-";
+    const category = typeof getFileCategory === "function" ? getFileCategory(file.mimeType) : "-";
+
+    return `
+      <div class="inventory-list-row" data-id="${file.id}" style="cursor:pointer">
+        <div class="inventory-list-cell" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
+        <div class="inventory-list-cell">${escapeHtml(category)}</div>
+        <div class="inventory-list-cell">${sizeLabel}</div>
+        <div class="inventory-list-cell">${dateLabel}</div>
+        <div class="inventory-list-cell inventory-list-cell-actions">
+          <div class="library-item-actions" style="opacity:1">
+            <button class="icon-btn view-btn" data-id="${file.id}" title="View"><span class="material-symbols-rounded">visibility</span></button>
+            <button class="icon-btn delete-btn" data-id="${file.id}" title="Delete"><span class="material-symbols-rounded">delete</span></button>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+
+  container.innerHTML = `<div class="inventory-list-table" style="grid-template-columns:${template}">${headerHtml}${rowsHtml}</div>`;
+
+  container.querySelectorAll(".inventory-list-row[data-id]").forEach((row) => {
+    row.addEventListener("click", (e) => {
+      if (!e.target.closest(".library-item-actions")) {
+        openLibraryDetail(row.dataset.id);
+      }
+    });
+  });
+  container.querySelectorAll(".view-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => { e.stopPropagation(); openLibraryDetail(btn.dataset.id); });
+  });
+  container.querySelectorAll(".delete-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => { e.stopPropagation(); deleteLibraryItem(btn.dataset.id); });
+  });
+}
+
 function renderLibraryList() {
   const container = document.getElementById("libraryList");
   if (!container) return;

@@ -521,6 +521,9 @@ const userSettingsState = {
     appearance: {
       inventoryViewMode: "grid",
       inventoryCategoryViews: {
+        trials: "default",
+        library: "default",
+        reminders: "default",
         crops: "default",
         locations: "default",
         parameters: "default",
@@ -583,6 +586,9 @@ function normalizeUserSettings(data) {
     appearance: {
       inventoryViewMode: normalizedInventoryViewMode,
       inventoryCategoryViews: {
+        trials: normalizeCategoryView(rawCategoryViews.trials),
+        library: normalizeCategoryView(rawCategoryViews.library),
+        reminders: normalizeCategoryView(rawCategoryViews.reminders),
         crops: normalizeCategoryView(rawCategoryViews.crops),
         locations: normalizeCategoryView(rawCategoryViews.locations),
         parameters: normalizeCategoryView(rawCategoryViews.parameters),
@@ -819,25 +825,41 @@ function renderUserSettingsAnalysisTab() {
   }
 }
 
+function getEffectiveViewMode(section) {
+  const cv = userSettingsState.data?.appearance?.inventoryCategoryViews?.[section];
+  if (cv === "grid" || cv === "list") return cv;
+  return userSettingsState.data?.appearance?.inventoryViewMode === "list" ? "list" : "grid";
+}
+
 function renderUserSettingsAppearanceTab() {
   const globalMode = userSettingsState.data?.appearance?.inventoryViewMode === "list"
     ? "list"
     : "grid";
 
   const categoryViews = userSettingsState.data?.appearance?.inventoryCategoryViews || {};
-  const categoryKeys = ["crops", "locations", "parameters", "agronomy"];
+  const categoryKeys = ["reminders", "crops", "locations", "parameters", "agronomy"];
 
   const globalInput = document.querySelector(
     `input[name="userSettingsInventoryGlobalView"][value="${globalMode}"]`,
   );
   if (globalInput) globalInput.checked = true;
 
+  const radioNameMap = {
+    reminders: "userSettingsViewReminders",
+    crops: "userSettingsInventoryViewCrops",
+    locations: "userSettingsInventoryViewLocations",
+    parameters: "userSettingsInventoryViewParameters",
+    agronomy: "userSettingsInventoryViewAgronomy",
+  };
+
   categoryKeys.forEach((key) => {
     const savedValue = categoryViews[key] === "grid" || categoryViews[key] === "list"
       ? categoryViews[key]
       : "default";
+    const inputName = radioNameMap[key];
+    if (!inputName) return;
     const input = document.querySelector(
-      `input[name="userSettingsInventoryView${key.charAt(0).toUpperCase() + key.slice(1)}"][value="${savedValue}"]`,
+      `input[name="${inputName}"][value="${savedValue}"]`,
     );
     if (input) input.checked = true;
   });
@@ -1800,6 +1822,7 @@ async function saveUserSettingsFromModal() {
   };
 
   const inventoryCategoryViews = {
+    reminders: readCategoryInventoryView("userSettingsViewReminders"),
     crops: readCategoryInventoryView("userSettingsInventoryViewCrops"),
     locations: readCategoryInventoryView("userSettingsInventoryViewLocations"),
     parameters: readCategoryInventoryView("userSettingsInventoryViewParameters"),
@@ -1829,6 +1852,8 @@ async function saveUserSettingsFromModal() {
   if (typeof applyInventoryUserSettings === "function") {
     applyInventoryUserSettings(userSettingsState.data.appearance || {});
   }
+  if (typeof renderObservationReminders === "function") renderObservationReminders();
+  if (typeof renderAgronomyReminders === "function") renderAgronomyReminders();
 
   saveUserSettingsLocalCache();
   enqueueUserSettingsSync();

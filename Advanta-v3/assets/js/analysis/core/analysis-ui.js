@@ -470,15 +470,24 @@
     }
   }
 
+  const ROWS_PER_BATCH = 1000;
+
   function renderTable(options = {}) {
-    const { preserveMenuForKey = null } = options;
+    const { preserveMenuForKey = null, loadMore = false } = options;
     const tableElement = document.getElementById("analysisTable");
     if (!tableElement) return;
 
     closeColumnMenus();
 
+    if (!loadMore) {
+      app.state._datasetRowLimit = ROWS_PER_BATCH;
+    }
+
     const visibleColumns = getVisibleColumns();
-    const rows = applySort(applyFilters(app.state.rows));
+    const allRows = applySort(applyFilters(app.state.rows));
+    const currentLimit = app.state._datasetRowLimit || ROWS_PER_BATCH;
+    const rows = allRows.slice(0, currentLimit);
+    const hasMore = allRows.length > currentLimit;
 
     const renderHeaderCell = (column, columnIndex) => `
       <th draggable="true"
@@ -513,6 +522,11 @@
               .join("")}</tr>`,
           )
           .join("")}
+        ${hasMore ? `<tr class="analysis-load-more-row"><td colspan="${visibleColumns.length}">
+          <button type="button" class="analysis-load-more-btn" onclick="window._loadMoreDatasetRows()">
+            Showing ${rows.length} of ${allRows.length} rows &mdash; Load More
+          </button>
+        </td></tr>` : ""}
       </tbody>
     `;
 
@@ -1521,6 +1535,10 @@
   window.toggleAnalysisColumnVisibilityMenu = openColumnVisibilityMenu;
   window.startAnalysisResize = startResize;
   window.openAnalysisColumnMenu = openColumnMenu;
+  window._loadMoreDatasetRows = function () {
+    app.state._datasetRowLimit = (app.state._datasetRowLimit || ROWS_PER_BATCH) + ROWS_PER_BATCH;
+    renderTable({ loadMore: true });
+  };
   window.handleAnalysisThDragStart = handleThDragStart;
   window.handleAnalysisThDragEnd = handleThDragEnd;
   window.handleAnalysisDropzoneDragOver = handleDropzoneDragOver;
