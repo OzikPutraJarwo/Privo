@@ -3717,6 +3717,11 @@ const loadDataBgState = {
   loadAllActive: false,
   loadAllLoaded: 0,
   loadAllTotal: 0,
+  /** Whether refresh/update all actions are running */
+  refreshAllActive: false,
+  updateAllActive: false,
+  updateAllDone: 0,
+  updateAllTotal: 0,
   /** Map of trialId~areaIdx~type -> boolean (remote newer data available) */
   updateFlags: {},
   checkingUpdates: false,
@@ -3739,6 +3744,18 @@ function _hasAreaTypeUpdate(trialId, areaIndex, type) {
 function _hasTrialUpdates(trialId) {
   const prefix = `${trialId}~`;
   return Object.keys(loadDataBgState.updateFlags).some((k) => k.startsWith(prefix));
+}
+
+function _isAnyTrialLoading() {
+  return Object.values(loadDataBgState.loadingTrials).some((info) => info?.status === "loading");
+}
+
+function _isLoadDataBusy() {
+  return loadDataBgState.loadAllActive
+    || loadDataBgState.refreshAllActive
+    || loadDataBgState.updateAllActive
+    || loadDataBgState.checkingUpdates
+    || _isAnyTrialLoading();
 }
 
 function _fileMatchesAreaType(fileName, areaIdx, type) {
@@ -3764,6 +3781,8 @@ async function checkLoadedTrialUpdates(options = {}) {
   if (trials.length === 0) return;
 
   loadDataBgState.checkingUpdates = true;
+  _updateLoadAllUI();
+  _updateLoadDataBtnAnimation();
   let anyNewUpdate = false;
 
   try {
@@ -3839,6 +3858,8 @@ async function checkLoadedTrialUpdates(options = {}) {
     console.warn("Failed checking trial updates:", error);
   } finally {
     loadDataBgState.checkingUpdates = false;
+    _updateLoadAllUI();
+    _updateLoadDataBtnAnimation();
   }
 }
 
@@ -3880,23 +3901,48 @@ function _updateTrialLoadUI(trialId, info) {
 
 /** Helper: update the "Load All" button UI if visible */
 function _updateLoadAllUI() {
-  const btn = document.getElementById("loadAllTrialsBtn");
-  if (!btn) return;
+  const loadBtn = document.getElementById("loadAllTrialsBtn");
+  const refreshBtn = document.getElementById("refreshAllTrialsBtn");
+  const trialTab = document.getElementById("loadDataTabTrial");
 
-  const hasActiveLoading = loadDataBgState.loadAllActive
-    || Object.values(loadDataBgState.loadingTrials).some((info) => info?.status === "loading");
+  const hasBusy = _isLoadDataBusy();
+  const anyTrialLoading = _isAnyTrialLoading();
 
-  if (hasActiveLoading) {
-    btn.disabled = true;
-    if (loadDataBgState.loadAllActive) {
-      btn.innerHTML = `<span class="spinner-sm"></span> ${loadDataBgState.loadAllLoaded}/${loadDataBgState.loadAllTotal}`;
-    } else {
-      btn.innerHTML = '<span class="spinner-sm"></span> Loading...';
-    }
-  } else {
-    btn.disabled = false;
-    btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Load All';
+  if (trialTab) {
+    trialTab.classList.toggle("is-busy", hasBusy);
+    trialTab.classList.toggle("is-refreshing", loadDataBgState.refreshAllActive || loadDataBgState.checkingUpdates);
+    trialTab.classList.toggle("is-updating", loadDataBgState.updateAllActive);
   }
+
+  if (loadBtn) {
+    if (loadDataBgState.loadAllActive) {
+      loadBtn.disabled = true;
+      loadBtn.classList.add("is-loading");
+      loadBtn.innerHTML = `<span class="spinner-sm"></span> ${loadDataBgState.loadAllLoaded}/${loadDataBgState.loadAllTotal}`;
+    } else if (anyTrialLoading) {
+      loadBtn.disabled = true;
+      loadBtn.classList.add("is-loading");
+      loadBtn.innerHTML = '<span class="spinner-sm"></span> Loading...';
+    } else {
+      loadBtn.disabled = hasBusy;
+      loadBtn.classList.remove("is-loading");
+      loadBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Load All';
+    }
+  }
+
+  if (refreshBtn) {
+    if (loadDataBgState.refreshAllActive || loadDataBgState.checkingUpdates) {
+      refreshBtn.disabled = true;
+      refreshBtn.classList.add("is-loading");
+      refreshBtn.innerHTML = '<span class="spinner-sm"></span> Refreshing...';
+    } else {
+      refreshBtn.disabled = loadDataBgState.loadAllActive || loadDataBgState.updateAllActive || anyTrialLoading;
+      refreshBtn.classList.remove("is-loading");
+      refreshBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px">sync</span> Refresh All';
+    }
+  }
+
+  _syncUpdateAllBtn();
 }
 
 /** Helper: toggle loading animation on #loadDataBtn */
@@ -3904,10 +3950,7 @@ function _updateLoadDataBtnAnimation() {
   const btn = document.getElementById("loadDataBtn");
   if (!btn) return;
 
-  const hasActiveLoading = loadDataBgState.loadAllActive ||
-    Object.values(loadDataBgState.loadingTrials).some(info => info.status === "loading");
-
-  btn.classList.toggle("loading", hasActiveLoading);
+  btn.classList.toggle("loading", _isLoadDataBusy());
 }
 
 function openLoadDataPanel(activeTab = "trial") {
@@ -3984,6 +4027,16 @@ function setupLoadDataPanelEvents() {
   const loadAllTrialsBtn = document.getElementById("loadAllTrialsBtn");
   if (loadAllTrialsBtn) {
     loadAllTrialsBtn.addEventListener("click", loadAllTrialResponses);
+  }
+
+  const refreshAllTrialsBtn = document.getElementById("refreshAllTrialsBtn");
+  if (refreshAllTrialsBtn) {
+    refreshAllTrialsBtn.addEventListener("click", refreshAllTrialUpdates);
+  }
+
+  const updateAllTrialsBtn = document.getElementById("updateAllTrialsBtn");
+  if (updateAllTrialsBtn) {
+    updateAllTrialsBtn.addEventListener("click", updateAllTrialData);
   }
 
   // Category refresh buttons
@@ -4389,7 +4442,7 @@ async function unloadSingleTrialFromPanel(trialId, btnEl) {
 }
 
 async function loadAllTrialResponses() {
-  if (loadDataBgState.loadAllActive) return;
+  if (loadDataBgState.loadAllActive || loadDataBgState.refreshAllActive || loadDataBgState.updateAllActive || loadDataBgState.checkingUpdates) return;
 
   const trials = (trialState.trials || []).filter(t => !t.archived && !t._responsesLoaded);
   if (trials.length === 0) {
@@ -4448,6 +4501,106 @@ async function loadAllTrialResponses() {
   if (typeof renderTrials === "function") renderTrials();
 
   showToast(`Loaded ${loaded} of ${trials.length} trial(s).`, loaded === trials.length ? "success" : "warning");
+}
+
+async function refreshAllTrialUpdates() {
+  if (loadDataBgState.checkingUpdates || loadDataBgState.refreshAllActive || loadDataBgState.updateAllActive) return;
+
+  loadDataBgState.refreshAllActive = true;
+  _updateLoadAllUI();
+  _updateLoadDataBtnAnimation();
+
+  try {
+    await checkLoadedTrialUpdates({ silent: false });
+  } finally {
+    loadDataBgState.refreshAllActive = false;
+    _updateLoadAllUI();
+    _updateLoadDataBtnAnimation();
+    _syncUpdateAllBtn();
+  }
+}
+
+async function updateAllTrialData() {
+  const updateBtn = document.getElementById("updateAllTrialsBtn");
+  if (loadDataBgState.updateAllActive || loadDataBgState.loadAllActive || loadDataBgState.refreshAllActive) return;
+
+  const flagKeys = Object.keys(loadDataBgState.updateFlags);
+  if (flagKeys.length === 0) return;
+
+  // Collect unique { trialId, areaIndex, type } entries
+  const tasks = flagKeys.map((key) => {
+    const [trialId, areaIdx, type] = key.split("~");
+    return { trialId, areaIndex: Number(areaIdx), type };
+  });
+
+  loadDataBgState.updateAllActive = true;
+  loadDataBgState.updateAllDone = 0;
+  loadDataBgState.updateAllTotal = tasks.length;
+  _updateLoadAllUI();
+  _updateLoadDataBtnAnimation();
+
+  let done = 0;
+  for (const task of tasks) {
+    try {
+      const areaKey = `${task.trialId}~${task.areaIndex}`;
+      _updateTrialLoadUI(task.trialId, {
+        status: "loading", percentage: 0, _areaKey: areaKey, _loadType: task.type, step: "Updating...",
+      });
+
+      await loadTrialAreaFromDrive(task.trialId, task.areaIndex, (info) => {
+        _updateTrialLoadUI(task.trialId, { status: "loading", ...info, _areaKey: areaKey, _loadType: task.type });
+      }, { type: task.type, force: true });
+
+      _setAreaTypeUpdateFlag(task.trialId, String(task.areaIndex), task.type, false);
+      delete loadDataBgState.loadingTrials[task.trialId];
+    } catch (err) {
+      console.error(`Error updating ${task.type} for area ${task.areaIndex} of trial ${task.trialId}:`, err);
+      delete loadDataBgState.loadingTrials[task.trialId];
+    }
+
+    done++;
+    loadDataBgState.updateAllDone = done;
+    _updateLoadAllUI();
+    renderLoadDataTrialList();
+  }
+
+  loadDataBgState.updateAllActive = false;
+  loadDataBgState.updateAllDone = 0;
+  loadDataBgState.updateAllTotal = 0;
+  if (updateBtn) updateBtn.classList.remove("is-loading");
+  _updateLoadDataBtnAnimation();
+  _updateLoadAllUI();
+  renderLoadDataTrialList();
+
+  if (typeof updateDashboardCounts === "function") updateDashboardCounts();
+  if (typeof renderDashboardTrialProgress === "function") renderDashboardTrialProgress();
+  if (typeof renderTrials === "function") renderTrials();
+
+  showToast(`Updated ${done} of ${tasks.length} item(s).`, done === tasks.length ? "success" : "warning");
+}
+
+function _syncUpdateAllBtn() {
+  const updateBtn = document.getElementById("updateAllTrialsBtn");
+  if (!updateBtn) return;
+
+  const anyTrialLoading = _isAnyTrialLoading();
+  if (loadDataBgState.updateAllActive) {
+    updateBtn.style.display = "";
+    updateBtn.disabled = true;
+    updateBtn.classList.add("is-loading");
+    updateBtn.innerHTML = `<span class="spinner-sm"></span> ${loadDataBgState.updateAllDone}/${loadDataBgState.updateAllTotal}`;
+    return;
+  }
+
+  updateBtn.classList.remove("is-loading");
+  const count = Object.keys(loadDataBgState.updateFlags).length;
+  if (count > 0) {
+    updateBtn.style.display = "";
+    updateBtn.disabled = loadDataBgState.loadAllActive || loadDataBgState.refreshAllActive || loadDataBgState.checkingUpdates || anyTrialLoading;
+    updateBtn.innerHTML = `<span class="material-symbols-rounded" style="font-size:16px">update</span> Update All (${count})`;
+  } else {
+    updateBtn.style.display = "none";
+  }
 }
 
 // ---- Category Tabs ----

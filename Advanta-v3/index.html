@@ -2109,9 +2109,17 @@
                   <h4>Trial Data</h4>
                   <p class="load-data-hint">Load trial observation &amp; agronomy responses from Google Drive.</p>
                 </div>
-                <button type="button" class="btn btn-primary btn-sm" id="loadAllTrialsBtn">
-                  <span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Load All
-                </button>
+                <div class="load-data-btn-group">
+                  <button type="button" class="btn btn-secondary btn-sm" id="refreshAllTrialsBtn" title="Check all loaded trials for newer data on Drive">
+                    <span class="material-symbols-rounded" style="font-size:16px">sync</span> Refresh All
+                  </button>
+                  <button type="button" class="btn btn-sm load-data-update-all-btn" id="updateAllTrialsBtn" style="display:none" title="Download all available updates">
+                    <span class="material-symbols-rounded" style="font-size:16px">update</span> Update All
+                  </button>
+                  <button type="button" class="btn btn-primary btn-sm" id="loadAllTrialsBtn">
+                    <span class="material-symbols-rounded" style="font-size:16px">cloud_download</span> Load All
+                  </button>
+                </div>
               </div>
               <div id="loadDataTrialList" class="load-data-list"></div>
             </div>
