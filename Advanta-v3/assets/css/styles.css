@@ -2736,7 +2736,7 @@ td.agronomy-table-actions .delete-btn:hover {
   flex: 1;
   min-height: 0;
   height: calc(100dvh - var(--topbar-height));
-  max-height: calc(100dvh - var(--topbar-height));
+  max-height: calc(100dvh - var(--topbar-height) + -5px);
 }
 
 .trial-editor .modal-content {
@@ -8765,6 +8765,103 @@ img.leaflet-tile {
   display: flex;
   justify-content: flex-end;
   margin-top: 0.6rem;
+}
+
+/* Notification Settings Tab */
+.notif-permission-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  margin-bottom: 1rem;
+}
+
+.notif-permission-banner .material-symbols-rounded {
+  font-size: 1.5rem;
+  color: var(--warning);
+  flex-shrink: 0;
+}
+
+.notif-permission-banner strong {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.notif-permission-banner p {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 0.15rem;
+}
+
+.notif-settings-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.notif-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.notif-toggle {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.notif-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.notif-select {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.notif-hours-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.notif-hours-row label {
+  flex-shrink: 0;
+}
+
+.notif-hours-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.notif-hour-select {
+  min-width: 72px;
 }
 
 /* Optimization Tab */

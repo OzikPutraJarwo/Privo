@@ -57,6 +57,14 @@ if ("serviceWorker" in navigator) {
       .then(reg => console.log("SW registered", reg))
       .catch(err => console.log("SW failed", err));
   });
+
+  // Listen for messages from SW (e.g. notification click)
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.action === "open-reminders") {
+      window.focus();
+      if (typeof switchPage === "function") switchPage("reminder");
+    }
+  });
 }
 
 // Loading & Caching Helpers
@@ -541,6 +549,11 @@ const userSettingsState = {
       hiddenSelectors: [],
       superuserActive: false,
     },
+    notifications: {
+      enabled: true,
+      overdue: { enabled: true, timesPerDay: 1, hours: [8] },
+      today: { enabled: true, timesPerDay: 1, hours: [7] },
+    },
   },
 };
 
@@ -614,6 +627,29 @@ function normalizeUserSettings(data) {
         : [],
       superuserActive: authority.superuserActive === true,
     },
+    notifications: _normalizeNotificationSettings(safe.notifications),
+  };
+}
+
+function _normalizeNotificationSettings(raw) {
+  const n = raw && typeof raw === "object" ? raw : {};
+  const defaults = typeof NotificationsModule !== "undefined"
+    ? NotificationsModule.DEFAULT_SETTINGS
+    : { enabled: true, overdue: { enabled: true, timesPerDay: 1, hours: [8] }, today: { enabled: true, timesPerDay: 1, hours: [7] } };
+
+  function normalizeType(src, def) {
+    const s = src && typeof src === "object" ? src : {};
+    const times = [1, 2, 3].includes(Number(s.timesPerDay)) ? Number(s.timesPerDay) : def.timesPerDay;
+    let hours = Array.isArray(s.hours) ? s.hours.map(Number).filter((h) => h >= 0 && h < 24) : [...def.hours];
+    while (hours.length < times) hours.push(hours[hours.length - 1] ?? def.hours[0]);
+    while (hours.length > times) hours.pop();
+    return { enabled: s.enabled !== false, timesPerDay: times, hours };
+  }
+
+  return {
+    enabled: n.enabled !== false,
+    overdue: normalizeType(n.overdue, defaults.overdue),
+    today: normalizeType(n.today, defaults.today),
   };
 }
 
@@ -865,8 +901,157 @@ function renderUserSettingsAppearanceTab() {
   });
 }
 
+// ---- Notification Settings Tab ----
+
+function _buildHourOptions(selectedHour) {
+  let html = "";
+  for (let h = 0; h < 24; h++) {
+    const label = String(h).padStart(2, "0") + ":00";
+    html += `<option value="${h}" ${h === selectedHour ? "selected" : ""}>${label}</option>`;
+  }
+  return html;
+}
+
+function _renderHourInputs(containerId, hours) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = hours.map((h, i) =>
+    `<select class="notif-select notif-hour-select" data-hour-index="${i}">${_buildHourOptions(h)}</select>`
+  ).join("");
+}
+
+function _syncHourInputsToCount(timesSelectId, hoursContainerId, currentHours) {
+  const sel = document.getElementById(timesSelectId);
+  const count = sel ? parseInt(sel.value, 10) : 1;
+  const hrs = Array.isArray(currentHours) ? [...currentHours] : [8];
+  while (hrs.length < count) hrs.push(hrs[hrs.length - 1] || 8);
+  while (hrs.length > count) hrs.pop();
+  _renderHourInputs(hoursContainerId, hrs);
+  return hrs;
+}
+
+function renderUserSettingsNotificationsTab() {
+  const settings = userSettingsState.data?.notifications || NotificationsModule.DEFAULT_SETTINGS;
+
+  // Permission banner
+  const banner = document.getElementById("notifPermissionBanner");
+  if (banner) {
+    const supported = NotificationsModule.isSupported();
+    const denied = supported && Notification.permission === "denied";
+    const needsGrant = supported && Notification.permission !== "granted";
+    banner.style.display = (denied || !supported) ? "flex" : "none";
+  }
+
+  // Enable toggle
+  const enabledToggle = document.getElementById("notifEnabledToggle");
+  if (enabledToggle) enabledToggle.checked = settings.enabled !== false;
+
+  const panel = document.getElementById("notifSchedulePanel");
+  if (panel) panel.style.display = (settings.enabled !== false) ? "" : "none";
+
+  // Overdue
+  const overdueEnabled = document.getElementById("notifOverdueEnabled");
+  if (overdueEnabled) overdueEnabled.checked = settings.overdue?.enabled !== false;
+
+  const overdueTimes = document.getElementById("notifOverdueTimes");
+  if (overdueTimes) overdueTimes.value = String(settings.overdue?.timesPerDay || 1);
+  _renderHourInputs("notifOverdueHoursInputs", settings.overdue?.hours || [8]);
+
+  // Today
+  const todayEnabled = document.getElementById("notifTodayEnabled");
+  if (todayEnabled) todayEnabled.checked = settings.today?.enabled !== false;
+
+  const todayTimes = document.getElementById("notifTodayTimes");
+  if (todayTimes) todayTimes.value = String(settings.today?.timesPerDay || 1);
+  _renderHourInputs("notifTodayHoursInputs", settings.today?.hours || [7]);
+
+  // Wire interactive behaviors (only once)
+  if (!panel?.dataset.notifBound) {
+    if (panel) panel.dataset.notifBound = "1";
+
+    if (enabledToggle) {
+      enabledToggle.addEventListener("change", () => {
+        if (panel) panel.style.display = enabledToggle.checked ? "" : "none";
+      });
+    }
+
+    const reqBtn = document.getElementById("notifRequestPermBtn");
+    if (reqBtn) {
+      reqBtn.addEventListener("click", () => {
+        NotificationsModule.requestPermission();
+        setTimeout(() => renderUserSettingsNotificationsTab(), 500);
+      });
+    }
+
+    if (overdueTimes) {
+      overdueTimes.addEventListener("change", () => {
+        const curHours = _collectHoursFrom("notifOverdueHoursInputs");
+        _syncHourInputsToCount("notifOverdueTimes", "notifOverdueHoursInputs", curHours);
+      });
+    }
+
+    if (todayTimes) {
+      todayTimes.addEventListener("change", () => {
+        const curHours = _collectHoursFrom("notifTodayHoursInputs");
+        _syncHourInputsToCount("notifTodayTimes", "notifTodayHoursInputs", curHours);
+      });
+    }
+
+    const testBtn = document.getElementById("notifTestBtn");
+    if (testBtn) {
+      testBtn.addEventListener("click", () => {
+        if (!NotificationsModule.isSupported()) {
+          showToast("Notifications not supported in this browser", "warning");
+          return;
+        }
+        if (Notification.permission !== "granted") {
+          NotificationsModule.requestPermission();
+          showToast("Please allow notifications first", "info");
+          return;
+        }
+        const { todayCount, overdueCount } = NotificationsModule.getReminderCounts();
+        const body = `Overdue: ${overdueCount} | Today: ${todayCount}`;
+        navigator.serviceWorker.ready.then((reg) => {
+          reg.showNotification("SPECTRA Test Notification", {
+            body,
+            icon: "icons/SPECTRA%20Logo.png",
+            badge: "icons/SPECTRA%20Logo.png",
+            tag: "spectra-test",
+          });
+        }).catch(() => {
+          new Notification("SPECTRA Test Notification", { body, icon: "icons/SPECTRA%20Logo.png" });
+        });
+        showToast("Test notification sent", "success");
+      });
+    }
+  }
+}
+
+function _collectHoursFrom(containerId) {
+  const selects = document.querySelectorAll(`#${containerId} .notif-hour-select`);
+  return Array.from(selects).map((s) => parseInt(s.value, 10));
+}
+
+function _collectNotificationSettings() {
+  const enabled = document.getElementById("notifEnabledToggle")?.checked !== false;
+
+  const overdueEnabled = document.getElementById("notifOverdueEnabled")?.checked !== false;
+  const overdueTimes = parseInt(document.getElementById("notifOverdueTimes")?.value, 10) || 1;
+  const overdueHours = _collectHoursFrom("notifOverdueHoursInputs");
+
+  const todayEnabled = document.getElementById("notifTodayEnabled")?.checked !== false;
+  const todayTimes = parseInt(document.getElementById("notifTodayTimes")?.value, 10) || 1;
+  const todayHours = _collectHoursFrom("notifTodayHoursInputs");
+
+  return {
+    enabled,
+    overdue: { enabled: overdueEnabled, timesPerDay: overdueTimes, hours: overdueHours },
+    today: { enabled: todayEnabled, timesPerDay: todayTimes, hours: todayHours },
+  };
+}
+
 function switchUserSettingsTab(tabKey = "analysis") {
-  const safeTabKey = ["authority", "analysis", "appearance", "optimization"].includes(tabKey)
+  const safeTabKey = ["authority", "analysis", "appearance", "notifications", "optimization"].includes(tabKey)
     ? tabKey
     : "analysis";
 
@@ -892,6 +1077,10 @@ function switchUserSettingsTab(tabKey = "analysis") {
 
   if (safeTabKey === "appearance") {
     renderUserSettingsAppearanceTab();
+  }
+
+  if (safeTabKey === "notifications") {
+    renderUserSettingsNotificationsTab();
   }
 }
 
@@ -1750,6 +1939,7 @@ function openUserSettingsModal(activeTab = null) {
 
   renderUserSettingsAppearanceTab();
   renderUserSettingsAnalysisTab();
+  renderUserSettingsNotificationsTab();
   switchUserSettingsTab(targetTab);
   modal.classList.remove("hidden");
   modal.classList.add("active");
@@ -1844,6 +2034,7 @@ async function saveUserSettingsFromModal() {
       pathDiagramDefaults: parsedPathDiagramDefaults,
       ggeBiplotDefaults: parsedGgeBiplotDefaults,
     },
+    notifications: _collectNotificationSettings(),
   });
 
   if (typeof applyAnalysisUserSettings === "function") {
@@ -4077,7 +4268,7 @@ async function loadSingleAreaTypeFromPanel(trialId, areaIndex, type) {
   try {
     await loadTrialAreaFromDrive(trialId, areaIndex, (info) => {
       _updateTrialLoadUI(trialId, { status: "loading", ...info, _areaKey: areaKey, _loadType: type });
-    }, { type });
+    }, { type, force: true });
 
     _setAreaTypeUpdateFlag(trialId, areaIdxStr, type, false);
 

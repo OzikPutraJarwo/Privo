@@ -1749,6 +1749,10 @@
               <span class="material-symbols-rounded">view_quilt</span>
               <span>Appearance</span>
             </button>
+            <button type="button" class="user-settings-nav-item" data-settings-tab="notifications">
+              <span class="material-symbols-rounded">notifications</span>
+              <span>Notifications</span>
+            </button>
             <button type="button" class="user-settings-nav-item" data-settings-tab="optimization">
               <span class="material-symbols-rounded">bolt</span>
               <span>Optimization</span>
@@ -1960,6 +1964,79 @@
               </div>
             </div>
 
+            <!-- NOTIFICATIONS TAB -->
+            <div class="user-settings-tab" id="userSettingsTabNotifications">
+              <h4>Notification Settings</h4>
+              <p class="user-settings-hint">Configure daily push notifications for reminders. Works on both mobile (installed PWA) and desktop browsers.</p>
+
+              <div id="notifPermissionBanner" class="notif-permission-banner" style="display:none">
+                <span class="material-symbols-rounded">notifications_off</span>
+                <div>
+                  <strong>Notifications are blocked</strong>
+                  <p>Enable notifications in your browser settings to receive daily reminders.</p>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="notifRequestPermBtn">Enable</button>
+              </div>
+
+              <div class="notif-settings-group">
+                <label class="notif-toggle-row">
+                  <span>Enable Notifications</span>
+                  <input type="checkbox" id="notifEnabledToggle" class="notif-toggle">
+                </label>
+              </div>
+
+              <div id="notifSchedulePanel">
+                <h4 class="user-settings-subtitle">Overdue Reminders</h4>
+                <p class="user-settings-hint">Get notified about overdue tasks. Choose how many times per day and at which hours.</p>
+                <div class="notif-settings-group">
+                  <label class="notif-toggle-row">
+                    <span>Notify for Overdue</span>
+                    <input type="checkbox" id="notifOverdueEnabled" class="notif-toggle">
+                  </label>
+                  <div class="notif-field-row">
+                    <label for="notifOverdueTimes">Times per day</label>
+                    <select id="notifOverdueTimes" class="notif-select">
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                    </select>
+                  </div>
+                  <div class="notif-hours-row" id="notifOverdueHoursRow">
+                    <label>Hour(s)</label>
+                    <div class="notif-hours-inputs" id="notifOverdueHoursInputs"></div>
+                  </div>
+                </div>
+
+                <h4 class="user-settings-subtitle">Today's Reminders</h4>
+                <p class="user-settings-hint">Get notified about tasks due today. Choose how many times per day and at which hours.</p>
+                <div class="notif-settings-group">
+                  <label class="notif-toggle-row">
+                    <span>Notify for Today</span>
+                    <input type="checkbox" id="notifTodayEnabled" class="notif-toggle">
+                  </label>
+                  <div class="notif-field-row">
+                    <label for="notifTodayTimes">Times per day</label>
+                    <select id="notifTodayTimes" class="notif-select">
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                    </select>
+                  </div>
+                  <div class="notif-hours-row" id="notifTodayHoursRow">
+                    <label>Hour(s)</label>
+                    <div class="notif-hours-inputs" id="notifTodayHoursInputs"></div>
+                  </div>
+                </div>
+
+                <h4 class="user-settings-subtitle">Test</h4>
+                <p class="user-settings-hint">Send a test notification to verify it works on this device.</p>
+                <button type="button" class="btn btn-secondary" id="notifTestBtn">
+                  <span class="material-symbols-rounded" style="font-size:16px">send</span>
+                  Send Test Notification
+                </button>
+              </div>
+            </div>
+
             <div class="user-settings-tab" id="userSettingsTabOptimization">
               <h4>Storage Health</h4>
               <p class="user-settings-hint">Monitor local storage usage and persistent storage status for long-term offline data.</p>
@@ -2161,6 +2238,7 @@
     <script src="assets/js/analysis/path-analysis/path-analysis.js"></script>
     <script src="assets/js/library.js"></script>
     <script src="assets/js/reminder.js"></script>
+    <script src="assets/js/notifications.js"></script>
     <script src="assets/js/app.js"></script>
   </body>
 

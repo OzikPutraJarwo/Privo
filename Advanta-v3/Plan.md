@@ -132,6 +132,7 @@
 - [x] `User Settings` Data cache change from localStorage to IndexedDB
 - [x] `User Settings` Checking for new data mechanism
 - [x] `User Settings` User authority (Field User, SuperUser)
+- [x] `User Settings > Notifications` Added
 - [x] `Inventory` Find for every items
 - [x] `Inventory` Folders for every items
 - [x] `Inventory > Parameter` Formula type use DoO too

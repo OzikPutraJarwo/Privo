@@ -4825,10 +4825,12 @@ async function loadTrialAreaFromDrive(trialId, areaIndex, onProgress, options = 
   if (!trial._loadSyncMarker) trial._loadSyncMarker = {};
   if (!trial._loadSyncMarker[areaIdx]) trial._loadSyncMarker[areaIdx] = {};
 
-  // Already loaded this area+type
-  if (loadType === "all" && trial._loadedAreas.includes(areaIdx)) return;
-  if (loadType === "observation" && trial._loadedAreaTypes[areaIdx].observation) return;
-  if (loadType === "agronomy" && trial._loadedAreaTypes[areaIdx].agronomy) return;
+  // Already loaded this area+type (skip unless force-refreshing)
+  if (!options.force) {
+    if (loadType === "all" && trial._loadedAreas.includes(areaIdx)) return;
+    if (loadType === "observation" && trial._loadedAreaTypes[areaIdx].observation) return;
+    if (loadType === "agronomy" && trial._loadedAreaTypes[areaIdx].agronomy) return;
+  }
 
   const totalAreas = (trial.areas || []).length;
   const areaNum = Number(areaIdx);
