@@ -1046,15 +1046,15 @@ function parseParamDooImport(raw) {
 
 // Update inventory filter controls based on current category
 function updateInventoryFilters() {
-  const container = document.getElementById('inventoryFilterContainer');
+  const wrapper = document.getElementById('inventoryFilterWrapper');
   const cropSelect = document.getElementById('inventoryFilterCrop');
   const sortSelect = document.getElementById('inventorySortBy');
-  if (!container) return;
+  if (!wrapper) return;
 
   const cat = inventoryState.currentCategory;
   // Show filters for parameters and agronomy
   if (cat === 'parameters' || cat === 'agronomy') {
-    container.style.display = 'flex';
+    wrapper.style.display = '';
     // Populate crop filter
     const crops = inventoryState.items.crops || [];
     cropSelect.innerHTML = '<option value="">All Crops</option>' +
@@ -1062,7 +1062,7 @@ function updateInventoryFilters() {
     cropSelect.value = inventoryState.filterCrop || '';
     sortSelect.value = inventoryState.sortBy || (cat === 'parameters' ? 'updatedAt' : 'name');
   } else {
-    container.style.display = 'none';
+    wrapper.style.display = 'none';
   }
 }
 
@@ -2017,11 +2017,13 @@ function openFolderModal(folderId) {
   }
 
   modal.classList.remove("hidden");
+  lockBodyScroll();
   setTimeout(() => nameInput.focus(), 100);
 }
 
 function closeFolderModal() {
   document.getElementById("folderModal").classList.add("hidden");
+  unlockBodyScroll();
   _editingFolderId = null;
 }
 
@@ -2181,10 +2183,12 @@ function openMoveToFolderModal(itemId) {
   });
 
   document.getElementById("moveToFolderModal").classList.remove("hidden");
+  lockBodyScroll();
 }
 
 function closeMoveToFolderModal() {
   document.getElementById("moveToFolderModal").classList.add("hidden");
+  unlockBodyScroll();
 }
 
 // Initialize folder system event listeners
@@ -2385,6 +2389,7 @@ function openAddModal() {
     populateAgronomyCropCheckboxes();
   }
   document.getElementById("itemModal").classList.add("active");
+  lockBodyScroll();
   document.getElementById("itemName").focus();
 }
 
@@ -2490,20 +2495,23 @@ function showCropLinesPopup(cropId) {
   `;
 
   document.body.appendChild(popup);
+  lockBodyScroll();
 
   // Close button
   popup.querySelector("#cropLinesCloseBtn").addEventListener("click", () => {
     popup.remove();
+    unlockBodyScroll();
   });
 
   // Click backdrop to close
   popup.addEventListener("click", (e) => {
-    if (e.target === popup) popup.remove();
+    if (e.target === popup) { popup.remove(); unlockBodyScroll(); }
   });
 
   // Add line button
   popup.querySelector("#cropLinesAddBtn").addEventListener("click", () => {
     popup.remove();
+    unlockBodyScroll();
     openAddLineForCropModal(crop);
   });
 
@@ -2515,6 +2523,7 @@ function showCropLinesPopup(cropId) {
   // Import lines button
   popup.querySelector("#cropLinesImportBtn").addEventListener("click", () => {
     popup.remove();
+    unlockBodyScroll();
     importCropLines(crop.id);
   });
 
@@ -2557,6 +2566,7 @@ function showCropLinesPopup(cropId) {
             showToast("Entry deleted", "success");
             // Re-open the crop lines popup to reflect changes
             popup.remove();
+            unlockBodyScroll();
             showCropLinesPopup(crop.id);
           } catch (error) {
             console.error("Error deleting entry:", error);
@@ -2751,6 +2761,7 @@ function openEditModal(itemId) {
     populateAgronomyCropCheckboxes(item.cropIds || []);
   }
   document.getElementById("itemModal").classList.add("active");
+  lockBodyScroll();
   document.getElementById("itemName").focus();
 }
 
@@ -2758,6 +2769,7 @@ function openEditModal(itemId) {
 function closeModal() {
   const modal = document.getElementById("itemModal");
   document.getElementById("itemModal").classList.remove("active");
+  unlockBodyScroll();
   inventoryState.editingItemId = null;
   // If we were editing/adding entries, switch back to crops view
   if (inventoryState.currentCategory === "entries") {
@@ -3586,11 +3598,11 @@ function getImportFields(category) {
 
 // --- Show/Hide IO buttons based on category ---
 function updateImportExportVisibility() {
-  const ioBtns = document.getElementById("inventoryIoBtns");
-  if (!ioBtns) return;
+  const wrapper = document.getElementById("inventoryIoWrapper");
+  if (!wrapper) return;
   const cat = inventoryState.currentCategory;
   const supported = ["locations", "crops", "parameters", "agronomy"];
-  ioBtns.style.display = supported.includes(cat) ? "flex" : "none";
+  wrapper.style.display = supported.includes(cat) ? "" : "none";
 }
 
 // ===========================
@@ -3856,6 +3868,7 @@ function openImportModal() {
   if (nextLabel) nextLabel.textContent = "Next";
   if (nextIcon) nextIcon.textContent = "arrow_forward";
   document.getElementById("importModal").classList.remove("hidden");
+  lockBodyScroll();
 
   // Setup drag-and-drop
   setupImportDropzone();
@@ -3863,6 +3876,7 @@ function openImportModal() {
 
 function closeImportModal() {
   document.getElementById("importModal").classList.add("hidden");
+  unlockBodyScroll();
   // Restore previous category if we were importing lines
   if (importState.returnCategory) {
     inventoryState.currentCategory = importState.returnCategory;

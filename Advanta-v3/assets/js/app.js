@@ -567,6 +567,10 @@ function normalizeUserSettings(data) {
     ? "list"
     : "grid";
 
+  const normalizedLibraryGridSize = ["small", "medium", "large"].includes(appearance.libraryGridSize)
+    ? appearance.libraryGridSize
+    : "small";
+
   const rawCategoryViews = appearance.inventoryCategoryViews && typeof appearance.inventoryCategoryViews === "object"
     ? appearance.inventoryCategoryViews
     : {};
@@ -598,6 +602,7 @@ function normalizeUserSettings(data) {
   return {
     appearance: {
       inventoryViewMode: normalizedInventoryViewMode,
+      libraryGridSize: normalizedLibraryGridSize,
       inventoryCategoryViews: {
         trials: normalizeCategoryView(rawCategoryViews.trials),
         library: normalizeCategoryView(rawCategoryViews.library),
@@ -635,7 +640,7 @@ function _normalizeNotificationSettings(raw) {
   const n = raw && typeof raw === "object" ? raw : {};
   const defaults = typeof NotificationsModule !== "undefined"
     ? NotificationsModule.DEFAULT_SETTINGS
-    : { enabled: true, overdue: { enabled: true, timesPerDay: 1, hours: [8] }, today: { enabled: true, timesPerDay: 1, hours: [7] } };
+    : { enabled: true, scope: "general", overdue: { enabled: true, timesPerDay: 1, hours: [8] }, today: { enabled: true, timesPerDay: 1, hours: [7] } };
 
   function normalizeType(src, def) {
     const s = src && typeof src === "object" ? src : {};
@@ -646,8 +651,12 @@ function _normalizeNotificationSettings(raw) {
     return { enabled: s.enabled !== false, timesPerDay: times, hours };
   }
 
+  const validScopes = ["general", "per-trial", "per-location"];
+  const scope = validScopes.includes(n.scope) ? n.scope : "general";
+
   return {
     enabled: n.enabled !== false,
+    scope,
     overdue: normalizeType(n.overdue, defaults.overdue),
     today: normalizeType(n.today, defaults.today),
   };
@@ -669,6 +678,9 @@ function applyUserSettingsToModules() {
   }
   if (typeof applyAnalysisUserSettings === "function") {
     applyAnalysisUserSettings(analysisPrefs);
+  }
+  if (typeof applyLibraryUserSettings === "function") {
+    applyLibraryUserSettings(appearancePrefs);
   }
   applyAuthorityHiddenSelectors();
 }
@@ -949,6 +961,10 @@ function renderUserSettingsNotificationsTab() {
   const panel = document.getElementById("notifSchedulePanel");
   if (panel) panel.style.display = (settings.enabled !== false) ? "" : "none";
 
+  // Scope
+  const scopeSelect = document.getElementById("notifScope");
+  if (scopeSelect) scopeSelect.value = settings.scope || "general";
+
   // Overdue
   const overdueEnabled = document.getElementById("notifOverdueEnabled");
   if (overdueEnabled) overdueEnabled.checked = settings.overdue?.enabled !== false;
@@ -1034,6 +1050,7 @@ function _collectHoursFrom(containerId) {
 
 function _collectNotificationSettings() {
   const enabled = document.getElementById("notifEnabledToggle")?.checked !== false;
+  const scope = document.getElementById("notifScope")?.value || "general";
 
   const overdueEnabled = document.getElementById("notifOverdueEnabled")?.checked !== false;
   const overdueTimes = parseInt(document.getElementById("notifOverdueTimes")?.value, 10) || 1;
@@ -1045,6 +1062,7 @@ function _collectNotificationSettings() {
 
   return {
     enabled,
+    scope,
     overdue: { enabled: overdueEnabled, timesPerDay: overdueTimes, hours: overdueHours },
     today: { enabled: todayEnabled, timesPerDay: todayTimes, hours: todayHours },
   };
@@ -1231,7 +1249,10 @@ function _removeAuthorityHiddenStyles() {
   }
 }
 
+let _authorityEventsSetUp = false;
 function setupAuthorityEvents() {
+  if (_authorityEventsSetUp) return;
+  _authorityEventsSetUp = true;
   const unlockBtn = document.getElementById("authorityUnlockBtn");
   const exitBtn = document.getElementById("authorityExitSuperuserBtn");
   const saveBtn = document.getElementById("authoritySaveSelectorsBtn");
@@ -1943,6 +1964,7 @@ function openUserSettingsModal(activeTab = null) {
   switchUserSettingsTab(targetTab);
   modal.classList.remove("hidden");
   modal.classList.add("active");
+  lockBodyScroll();
 }
 
 function closeUserSettingsModal() {
@@ -1950,6 +1972,7 @@ function closeUserSettingsModal() {
   if (!modal) return;
   modal.classList.remove("active");
   modal.classList.add("hidden");
+  unlockBodyScroll();
 }
 
 async function saveUserSettingsFromModal() {
@@ -2131,10 +2154,12 @@ function showAlert(message, type = "info", title = null) {
   btnEl.parentNode.replaceChild(oldBtn, btnEl);
   oldBtn.addEventListener("click", () => {
     modal.classList.remove("active");
+    unlockBodyScroll();
   });
   
   // Show modal
   modal.classList.add("active");
+  lockBodyScroll();
 }
 
 // ===========================
@@ -2270,7 +2295,7 @@ function updateSyncUI() {
       btn.setAttribute("title", "Syncing...");
     } else if (syncState.status === "error") {
       btn.classList.add("error");
-      iconSpan.textContent = "cached";
+      iconSpan.textContent = "error";
       btn.setAttribute("aria-label", "Sync error");
       btn.setAttribute("title", "Sync error - Click to retry or re-login");
     } else {
@@ -2307,12 +2332,12 @@ function updateSyncUI() {
                 : "pending";
         const statusLabel =
           item.status === "success"
-            ? `<span class="material-symbols-rounded">check_circle</span>`
+            ? `<span class="material-symbols-rounded" style="color:var(--success)">check_circle</span>`
             : item.status === "error"
-              ? `<span class="material-symbols-outlined"> error </span>`
+              ? `<span class="material-symbols-rounded" style="color:var(--danger)">error</span>`
               : item.status === "syncing"
-                ? `<span class="material-symbols-rounded">cached</span>`
-                : `<span class="material-symbols-rounded">schedule</span>`;
+                ? `<span class="spinner-sm"></span>`
+                : `<span class="material-symbols-rounded" style="color:var(--text-tertiary)">schedule</span>`;
         const errorHint =
           item.status === "error" && item.error ? ` - ${item.error}` : "";
         const syncDurationHint =
@@ -2330,7 +2355,10 @@ function updateSyncUI() {
   }
 }
 
+let _syncUISetUp = false;
 function setupSyncUI() {
+  if (_syncUISetUp) return;
+  _syncUISetUp = true;
   const btn = document.getElementById("syncStatusBtn");
   const panel = document.getElementById("syncPanel");
   const closeBtn = document.getElementById("syncPanelClose");
@@ -2479,8 +2507,7 @@ function navigateToView(item) {
       window.open(targetUrl, "_blank", "noopener,noreferrer");
     }
 
-    if (sidebar) sidebar.classList.remove("open");
-    if (sidebarOverlay) sidebarOverlay.classList.remove("active");
+    closeMobileSidebar();
     return;
   }
 
@@ -2542,8 +2569,7 @@ function navigateToView(item) {
   }
 
   // Close mobile sidebar after navigation
-  if (sidebar) sidebar.classList.remove("open");
-  if (sidebarOverlay) sidebarOverlay.classList.remove("active");
+  closeMobileSidebar();
 }
 
 // Helper function to navigate to a sub-view
@@ -2589,11 +2615,7 @@ function navigateToSubView(item) {
     syncLibraryNavState(section);
   }
 
-  const isMobile = window.matchMedia("(max-width: 768px)").matches;
-  if (isMobile && sidebar && sidebarOverlay) {
-    sidebar.classList.remove("open");
-    sidebarOverlay.classList.remove("active");
-  }
+  closeMobileSidebar();
 }
 
 // Show exit run trial confirmation modal
@@ -2601,6 +2623,7 @@ function showExitRunTrialConfirmation(onConfirm) {
   const modal = document.getElementById("exitRunTrialModal");
   if (modal) {
     modal.classList.add("active");
+    lockBodyScroll();
     window.pendingNavigation = onConfirm;
   }
 }
@@ -2828,19 +2851,39 @@ async function initializeApp() {
 }
 
 // Setup event listeners
+let _appEventsSetUp = false;
 function setupEventListeners() {
+  if (_appEventsSetUp) return;
+  _appEventsSetUp = true;
   // Mobile menu toggle
   const menuToggle = document.getElementById("menuToggle");
   const sidebar = document.querySelector(".sidebar");
   const sidebarOverlay = document.getElementById("sidebarOverlay");
+
+  function openMobileSidebar() {
+    if (!sidebar) return;
+    sidebar.classList.add("open");
+    if (sidebarOverlay) sidebarOverlay.classList.add("active");
+    lockBodyScroll();
+  }
+
+  window.closeMobileSidebar = function closeMobileSidebar() {
+    if (!sidebar || !sidebar.classList.contains("open")) return;
+    sidebar.classList.remove("open");
+    if (sidebarOverlay) sidebarOverlay.classList.remove("active");
+    unlockBodyScroll();
+  }
 
   if (menuToggle && sidebar) {
     menuToggle.addEventListener("click", () => {
       if (document.body.classList.contains("run-trial-active")) return;
       const isMobile = window.matchMedia("(max-width: 768px)").matches;
       if (isMobile) {
-        sidebar.classList.toggle("open");
-        if (sidebarOverlay) sidebarOverlay.classList.toggle("active");
+        if (sidebar.classList.contains("open")) {
+          closeMobileSidebar();
+        } else {
+          openMobileSidebar();
+        }
       } else {
         document.body.classList.toggle("sidebar-collapsed");
       }
@@ -2849,8 +2892,7 @@ function setupEventListeners() {
 
   if (sidebarOverlay && sidebar) {
     sidebarOverlay.addEventListener("click", () => {
-      sidebar.classList.remove("open");
-      sidebarOverlay.classList.remove("active");
+      closeMobileSidebar();
     });
   }
 
@@ -3025,12 +3067,14 @@ function setupEventListeners() {
   if (exitRunTrialCancelBtn) {
     exitRunTrialCancelBtn.addEventListener("click", () => {
       exitRunTrialModal.classList.remove("active");
+      unlockBodyScroll();
     });
   }
   
   if (exitRunTrialConfirmBtn) {
     exitRunTrialConfirmBtn.addEventListener("click", async () => {
       exitRunTrialModal.classList.remove("active");
+      unlockBodyScroll();
       
       // Auto-save progress before exiting
       if (typeof saveRunTrialProgress === "function") {
@@ -3076,6 +3120,31 @@ function setupEventListeners() {
     invSortBy.addEventListener("change", (e) => {
       inventoryState.sortBy = e.target.value;
       renderInventoryItems();
+    });
+  }
+
+  // Inventory toolbar dropdown triggers
+  const invFilterBtn = document.getElementById("inventoryFilterBtn");
+  if (invFilterBtn) {
+    invFilterBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleToolbarDropdown("inventoryFilterBtn", "inventoryFilterDropdown");
+    });
+  }
+  const invIoBtn = document.getElementById("inventoryIoBtn");
+  if (invIoBtn) {
+    invIoBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleToolbarDropdown("inventoryIoBtn", "inventoryIoDropdown");
+    });
+  }
+
+  // Trial detail actions dropdown trigger
+  const trialActionsBtn = document.getElementById("trialDetailActionsBtn");
+  if (trialActionsBtn) {
+    trialActionsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleToolbarDropdown("trialDetailActionsBtn", "trialDetailActionsDropdown");
     });
   }
 
@@ -3292,6 +3361,7 @@ function showDataTransfer(title, message) {
   if (msgEl) msgEl.textContent = message;
   if (bar) bar.style.width = "0%";
   if (overlay) overlay.classList.add("active");
+  lockBodyScroll();
 }
 
 function updateDataTransfer(message, percent) {
@@ -3304,6 +3374,7 @@ function updateDataTransfer(message, percent) {
 function hideDataTransfer() {
   const overlay = document.getElementById("dataTransferOverlay");
   if (overlay) overlay.classList.remove("active");
+  unlockBodyScroll();
 }
 
 // XOR-based obfuscation so the file can't be opened as plain text
@@ -3508,6 +3579,7 @@ function showDuplicateReview(duplicates, incoming, incomingTrials) {
     }).join("");
 
     modal.classList.add("active");
+    lockBodyScroll();
 
     // Handle per-item actions
     list.addEventListener("click", function handler(e) {
@@ -3544,6 +3616,7 @@ function showDuplicateReview(duplicates, incoming, incomingTrials) {
     // Apply
     document.getElementById("dupApplyBtn").onclick = async () => {
       modal.classList.remove("active");
+      unlockBodyScroll();
       await applyImport(incoming, incomingTrials, duplicates);
       resolve();
     };
@@ -3677,7 +3750,10 @@ async function applyImport(incoming, incomingTrials, duplicates) {
 }
 
 // Wire up import/export buttons
+let _dataTransferEventsSetUp = false;
 function setupDataTransferEvents() {
+  if (_dataTransferEventsSetUp) return;
+  _dataTransferEventsSetUp = true;
   const exportBtn = document.getElementById("exportDataBtn");
   const importBtn = document.getElementById("importDataBtn");
   const importInput = document.getElementById("importFileInput");
@@ -3744,6 +3820,81 @@ function _hasAreaTypeUpdate(trialId, areaIndex, type) {
 function _hasTrialUpdates(trialId) {
   const prefix = `${trialId}~`;
   return Object.keys(loadDataBgState.updateFlags).some((k) => k.startsWith(prefix));
+}
+
+/**
+ * Check a single trial for remote updates on its loaded areas.
+ * Returns true if any area has updates available.
+ */
+async function checkSingleTrialUpdates(trialId) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  if (!trial) return false;
+
+  const loadedAreaTypes = trial._loadedAreaTypes || {};
+  const areaIndexes = new Set([
+    ...Object.keys(loadedAreaTypes),
+    ...((trial._loadedAreas || []).map(x => String(x))),
+  ]);
+  if (areaIndexes.size === 0) return false;
+
+  const user = getCurrentUser?.();
+  if (!user || user.isGuest) return false;
+
+  try {
+    const rootFolderId = await getTrialsFolderId();
+    const trialFolder = await findFolder(trial.id, rootFolderId);
+    if (!trialFolder) return false;
+
+    const responsesFolder = await findFolder("responses", trialFolder.id);
+    const agronomyFolder = await findFolder("agronomy", trialFolder.id);
+
+    const [respFiles, agroFiles] = await Promise.all([
+      responsesFolder
+        ? gapi.client.drive.files.list({
+          q: `'${responsesFolder.id}' in parents and mimeType='application/json' and trashed=false`,
+          fields: "files(id,name,modifiedTime)",
+          pageSize: 1000,
+        }).then(r => r.result.files || [])
+        : Promise.resolve([]),
+      agronomyFolder
+        ? gapi.client.drive.files.list({
+          q: `'${agronomyFolder.id}' in parents and mimeType='application/json' and trashed=false`,
+          fields: "files(id,name,modifiedTime)",
+          pageSize: 1000,
+        }).then(r => r.result.files || [])
+        : Promise.resolve([]),
+    ]);
+
+    let anyUpdate = false;
+    for (const areaIdx of areaIndexes) {
+      const markerObs = trial._loadSyncMarker?.[areaIdx]?.observation;
+      const markerAgro = trial._loadSyncMarker?.[areaIdx]?.agronomy;
+      const obsLoaded = !!loadedAreaTypes[areaIdx]?.observation || !!trial._loadedAreas?.includes(String(areaIdx));
+      const agroLoaded = !!loadedAreaTypes[areaIdx]?.agronomy || !!trial._loadedAreas?.includes(String(areaIdx));
+
+      if (obsLoaded && markerObs) {
+        const hasObsUpdate = respFiles.some(f => {
+          if (!_fileMatchesAreaType(f.name, areaIdx, "observation")) return false;
+          return new Date(f.modifiedTime || 0).getTime() > new Date(markerObs).getTime();
+        });
+        _setAreaTypeUpdateFlag(trial.id, areaIdx, "observation", hasObsUpdate);
+        if (hasObsUpdate) anyUpdate = true;
+      }
+
+      if (agroLoaded && markerAgro) {
+        const hasAgroUpdate = agroFiles.some(f => {
+          if (!_fileMatchesAreaType(f.name, areaIdx, "agronomy")) return false;
+          return new Date(f.modifiedTime || 0).getTime() > new Date(markerAgro).getTime();
+        });
+        _setAreaTypeUpdateFlag(trial.id, areaIdx, "agronomy", hasAgroUpdate);
+        if (hasAgroUpdate) anyUpdate = true;
+      }
+    }
+    return anyUpdate;
+  } catch (err) {
+    console.warn("checkSingleTrialUpdates failed:", err);
+    return false;
+  }
 }
 
 function _isAnyTrialLoading() {
@@ -3965,6 +4116,7 @@ function openLoadDataPanel(activeTab = "trial") {
 
   modal.classList.remove("hidden");
   modal.classList.add("active");
+  lockBodyScroll();
 
   // Switch to requested tab
   switchLoadDataTab(activeTab);
@@ -3987,6 +4139,7 @@ function closeLoadDataPanel() {
   if (!modal) return;
   modal.classList.remove("active");
   modal.classList.add("hidden");
+  unlockBodyScroll();
 }
 
 function switchLoadDataTab(tabKey) {
@@ -4093,7 +4246,7 @@ function renderLoadDataTrialList() {
     let statusClass, statusIcon, statusLabel;
     if (isTrialLoading) {
       statusClass = "loading";
-      statusIcon = "cached";
+      statusIcon = "";
       statusLabel = trialLoadingInfo?.step || "Loading...";
     } else if (hasTrialUpdate) {
       statusClass = "partial";
@@ -4134,7 +4287,7 @@ function renderLoadDataTrialList() {
       let areaStatusClass, areaIcon;
       if (isAreaLoading) {
         areaStatusClass = "loading";
-        areaIcon = "cached";
+        areaIcon = "";
       } else if (areaLoaded) {
         areaStatusClass = "loaded";
         areaIcon = "check_circle";
@@ -4182,7 +4335,7 @@ function renderLoadDataTrialList() {
 
       return `
         <div class="load-data-area-row ${areaStatusClass}" data-area-key="${areaKey}">
-          <span class="load-data-area-icon material-symbols-rounded ${areaStatusClass}">${areaIcon}</span>
+          ${areaIcon ? `<span class="load-data-area-icon material-symbols-rounded ${areaStatusClass}">${areaIcon}</span>` : `<span class="spinner-sm"></span>`}
           <span class="load-data-area-name">${escapeHtml(area.name || `Area ${idx + 1}`)}</span>
           <div class="load-data-area-progress" style="display:${progressDisplay}">
             <div class="load-data-progress-bar"><div class="load-data-progress-fill" style="width:${progressPct}%"></div></div>
@@ -4214,7 +4367,7 @@ function renderLoadDataTrialList() {
             <div class="load-data-trial-meta">${escapeHtml(meta)}</div>
           </div>
           <span class="load-data-status ${statusClass}">
-            <span class="material-symbols-rounded">${statusIcon}</span>
+            ${statusIcon ? `<span class="material-symbols-rounded">${statusIcon}</span>` : `<span class="spinner-sm"></span>`}
             ${statusLabel}
           </span>
           ${trialActions}

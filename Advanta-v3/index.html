@@ -331,24 +331,40 @@
                     <span class="material-symbols-rounded inventory-search-icon">search</span>
                     <input type="text" id="inventorySearchInput" class="inventory-search-input" placeholder="Search..." autocomplete="off">
                   </div>
-                  <div class="inventory-filter-container" id="inventoryFilterContainer" style="display:none;">
-                    <select id="inventoryFilterCrop" class="inventory-filter-select">
-                      <option value="">All Crops</option>
-                    </select>
-                    <select id="inventorySortBy" class="inventory-filter-select">
-                      <option value="name">Sort by Name</option>
-                      <option value="updatedAt">Sort by Last Updated</option>
-                    </select>
+                  <div class="toolbar-dropdown-wrapper" id="inventoryFilterWrapper" style="display:none;">
+                    <button class="btn btn-secondary btn-icon" id="inventoryFilterBtn" title="Filter & Sort">
+                      <span class="material-symbols-rounded">tune</span>
+                    </button>
+                    <div class="toolbar-dropdown" id="inventoryFilterDropdown">
+                      <div class="toolbar-dropdown-group">
+                        <label class="toolbar-dropdown-label">Filter by Crop</label>
+                        <select id="inventoryFilterCrop" class="toolbar-dropdown-select">
+                          <option value="">All Crops</option>
+                        </select>
+                      </div>
+                      <div class="toolbar-dropdown-group">
+                        <label class="toolbar-dropdown-label">Sort By</label>
+                        <select id="inventorySortBy" class="toolbar-dropdown-select">
+                          <option value="name">Sort by Name</option>
+                          <option value="updatedAt">Sort by Last Updated</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
-                  <div class="inventory-io-btns" id="inventoryIoBtns" style="display:none;">
-                    <button class="btn btn-secondary btn-sm" onclick="exportInventoryData()" title="Export to Excel">
-                      <span class="material-symbols-rounded">download</span>
-                      <span>Export</span>
+                  <div class="toolbar-dropdown-wrapper" id="inventoryIoWrapper" style="display:none;">
+                    <button class="btn btn-secondary btn-icon" id="inventoryIoBtn" title="Import / Export">
+                      <span class="material-symbols-rounded">install_desktop</span>
                     </button>
-                    <button class="btn btn-secondary btn-sm" onclick="openImportModal()" title="Import from Excel/CSV">
-                      <span class="material-symbols-rounded">upload</span>
-                      <span>Import</span>
-                    </button>
+                    <div class="toolbar-dropdown" id="inventoryIoDropdown">
+                      <button class="toolbar-dropdown-item" onclick="exportInventoryData()">
+                        <span class="material-symbols-rounded">download</span>
+                        Export
+                      </button>
+                      <button class="toolbar-dropdown-item" onclick="openImportModal()">
+                        <span class="material-symbols-rounded">upload</span>
+                        Import
+                      </button>
+                    </div>
                   </div>
                   <button id="addFolderBtn" class="btn btn-secondary btn-icon" title="New Folder">
                     <span class="material-symbols-rounded">create_new_folder</span>
@@ -574,23 +590,31 @@
                       <h3 id="trialDetailTitle">Trial Details</h3>
                     </div>
                     <div class="library-detail-actions">
-                      <button class="btn btn-secondary" id="trialDetailDownloadBtn" onclick="downloadTrialDetailPdf()">
-                        <span class="material-symbols-rounded">download</span>
-                        <span>Download</span>
-                      </button>
-                      <button class="btn btn-secondary" id="trialDetailArchiveBtn" onclick="archiveTrialFromDetail()">
-                        <span class="material-symbols-rounded">archive</span>
-                        <span>Archive</span>
-                      </button>
-                      <button class="btn btn-secondary" id="trialDetailEditBtn" onclick="editTrialFromDetail()">
-                        <span class="material-symbols-rounded">edit</span>
-                        <span>Edit</span>
-                      </button>
-                      <button class="btn btn-secondary btn-text-danger" id="trialDetailDeleteBtn"
-                        onclick="deleteTrialFromDetail()">
-                        <span class="material-symbols-rounded">delete</span>
-                        <span>Delete</span>
-                      </button>
+                      <div class="toolbar-dropdown-wrapper">
+                        <button class="btn btn-secondary" id="trialDetailActionsBtn">
+                          <span class="material-symbols-rounded">more_horiz</span>
+                          <span>Actions</span>
+                        </button>
+                        <div class="toolbar-dropdown" id="trialDetailActionsDropdown">
+                          <button class="toolbar-dropdown-item" id="trialDetailEditBtn" onclick="editTrialFromDetail(); closeAllToolbarDropdowns();">
+                            <span class="material-symbols-rounded" style="color:var(--info)">edit</span>
+                            Edit
+                          </button>
+                          <button class="toolbar-dropdown-item" id="trialDetailDownloadBtn" onclick="downloadTrialDetailPdf(); closeAllToolbarDropdowns();">
+                            <span class="material-symbols-rounded">download</span>
+                            Download
+                          </button>
+                          <div class="toolbar-dropdown-divider"></div>
+                          <button class="toolbar-dropdown-item" id="trialDetailArchiveBtn" onclick="archiveTrialFromDetail(); closeAllToolbarDropdowns();">
+                            <span class="material-symbols-rounded" style="color:var(--warning)">archive</span>
+                            Archive
+                          </button>
+                          <button class="toolbar-dropdown-item toolbar-dropdown-item-danger" id="trialDetailDeleteBtn" onclick="deleteTrialFromDetail(); closeAllToolbarDropdowns();">
+                            <span class="material-symbols-rounded">delete</span>
+                            Delete
+                          </button>
+                        </div>
+                      </div>
                       <button class="btn btn-secondary" onclick="closeTrialDetailModal()">
                         <span class="material-symbols-rounded">close</span>
                       </button>
@@ -1249,7 +1273,7 @@
           <div id="libraryContent" class="page-content">
             <div class="inventory-container">
               <div class="inventory-header">
-                <h3>Library</h3>
+                <h3 id="libraryHeaderTitle" class="library-header-title">Library</h3>
                 <div class="library-toolbar">
                   <div class="library-search">
                     <span class="material-symbols-rounded">search</span>
@@ -1284,17 +1308,36 @@
                       </div>
                     </div>
                   </div>
-                  <div class="library-sort">
-                    <select id="librarySortBy" class="library-sort-select">
-                      <option value="modifiedTime">Sort by Date</option>
-                      <option value="name">Sort by Name</option>
-                      <option value="size">Sort by Size</option>
-                      <option value="type">Sort by Type</option>
-                    </select>
-                    <select id="librarySortDir" class="library-sort-select">
-                      <option value="desc">Descending</option>
-                      <option value="asc">Ascending</option>
-                    </select>
+                  <div class="toolbar-dropdown-wrapper" id="librarySortWrapper">
+                    <button class="library-sort-trigger" id="librarySortBtn" title="Sort & View">
+                      <span class="material-symbols-rounded">sort</span>
+                    </button>
+                    <div class="toolbar-dropdown" id="librarySortDropdown">
+                      <div class="toolbar-dropdown-group">
+                        <label class="toolbar-dropdown-label">Sort By</label>
+                        <select id="librarySortBy" class="toolbar-dropdown-select">
+                          <option value="modifiedTime">Sort by Date</option>
+                          <option value="name">Sort by Name</option>
+                          <option value="size">Sort by Size</option>
+                          <option value="type">Sort by Type</option>
+                        </select>
+                      </div>
+                      <div class="toolbar-dropdown-group">
+                        <label class="toolbar-dropdown-label">Direction</label>
+                        <select id="librarySortDir" class="toolbar-dropdown-select">
+                          <option value="desc">Descending</option>
+                          <option value="asc">Ascending</option>
+                        </select>
+                      </div>
+                      <div class="toolbar-dropdown-group" id="libraryGridSizeGroup">
+                        <label class="toolbar-dropdown-label">Grid Size</label>
+                        <select id="libraryGridSize" class="toolbar-dropdown-select" title="Uploaded files column size">
+                          <option value="small">Small columns</option>
+                          <option value="medium">Medium columns</option>
+                          <option value="large">Large columns</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
                   <input type="file" id="libraryUploadInput" multiple>
                   <button id="refreshLibraryBtn" class="btn btn-secondary" title="Refresh library (load new files only)">
@@ -1304,6 +1347,10 @@
                   <button id="uploadLibraryBtn" class="btn btn-primary">
                     <span class="material-symbols-rounded">upload</span>
                     <span>Upload</span>
+                  </button>
+                  <button id="createLibraryFolderBtn" class="btn btn-secondary" onclick="createLibraryFolder()">
+                    <span class="material-symbols-rounded">create_new_folder</span>
+                    <span>New Folder</span>
                   </button>
                   <div id="trialPhotoActionsContainer" class="hidden"></div>
                 </div>
@@ -1986,6 +2033,18 @@
               </div>
 
               <div id="notifSchedulePanel">
+                <div class="notif-settings-group">
+                  <div class="notif-field-row">
+                    <label for="notifScope">Notification Scope</label>
+                    <select id="notifScope" class="notif-select">
+                      <option value="general">General (total counts)</option>
+                      <option value="per-trial">Per Trial</option>
+                      <option value="per-location">Per Location</option>
+                    </select>
+                  </div>
+                  <p class="user-settings-hint" id="notifScopeHint">General sends a single summary notification. Per Trial or Per Location sends a separate notification for each.</p>
+                </div>
+
                 <h4 class="user-settings-subtitle">Overdue Reminders</h4>
                 <p class="user-settings-hint">Get notified about overdue tasks. Choose how many times per day and at which hours.</p>
                 <div class="notif-settings-group">
@@ -2225,6 +2284,34 @@
     <!-- PDF export helpers -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- Scroll-lock utilities & toolbar dropdowns (must load before all app scripts) -->
+    <script>
+      var _modalOpenCount = 0;
+      function lockBodyScroll() {
+        _modalOpenCount++;
+        document.body.classList.add('modal-open');
+      }
+      function unlockBodyScroll() {
+        _modalOpenCount = Math.max(0, _modalOpenCount - 1);
+        if (_modalOpenCount === 0) document.body.classList.remove('modal-open');
+      }
+
+      // Toolbar dropdown toggle
+      function toggleToolbarDropdown(triggerId, dropdownId) {
+        var dd = document.getElementById(dropdownId);
+        if (!dd) return;
+        var isOpen = dd.classList.contains('active');
+        closeAllToolbarDropdowns();
+        if (!isOpen) dd.classList.add('active');
+      }
+      function closeAllToolbarDropdowns() {
+        document.querySelectorAll('.toolbar-dropdown.active').forEach(function(d) { d.classList.remove('active'); });
+      }
+      document.addEventListener('click', function(e) {
+        if (!e.target.closest('.toolbar-dropdown-wrapper')) closeAllToolbarDropdowns();
+      });
+    </script>
 
     <!-- App Scripts -->
     <script src="assets/js/auth.js"></script>

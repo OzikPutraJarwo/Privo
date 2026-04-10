@@ -12,6 +12,7 @@ const NotificationsModule = (() => {
   // ---- Default schedule ----
   const DEFAULT_SETTINGS = {
     enabled: true,
+    scope: "general",
     overdue: {
       enabled: true,
       timesPerDay: 1,
@@ -89,6 +90,53 @@ const NotificationsModule = (() => {
     }
 
     return { todayCount, overdueCount };
+  }
+
+  /**
+   * Group reminder counts by trial or by location.
+   * Returns an array of { id, name, todayCount, overdueCount }.
+   */
+  function getReminderCountsGrouped(groupBy) {
+    const groups = {};
+
+    function addToGroup(groupId, groupName, items) {
+      if (!groups[groupId]) groups[groupId] = { id: groupId, name: groupName, todayCount: 0, overdueCount: 0 };
+      items.forEach((item) => {
+        if (item.status === "today") groups[groupId].todayCount++;
+        if (item.status === "overdue") groups[groupId].overdueCount++;
+      });
+    }
+
+    function processGroups(builders) {
+      builders.forEach((buildFn) => {
+        if (typeof buildFn !== "function") return;
+        try {
+          buildFn().forEach((tg) => {
+            const trial = tg.trial;
+            tg.areaGroups.forEach((ag) => {
+              if (groupBy === "per-trial") {
+                addToGroup(trial.id, trial.name, ag.items);
+              } else if (groupBy === "per-location") {
+                const locId = trial.locationId || "unknown";
+                const loc = (typeof inventoryState !== "undefined" && inventoryState.items?.locations || [])
+                  .find((l) => l.id === locId);
+                const locName = loc ? loc.name : (trial.locationName || "Unknown Location");
+                addToGroup(locId, locName, ag.items);
+              }
+            });
+          });
+        } catch (err) {
+          console.warn("NotificationsModule: grouped count error", err);
+        }
+      });
+    }
+
+    processGroups([
+      typeof buildObservationReminders === "function" ? buildObservationReminders : null,
+      typeof buildAgronomyReminders === "function" ? buildAgronomyReminders : null,
+    ].filter(Boolean));
+
+    return Object.values(groups).filter((g) => g.todayCount > 0 || g.overdueCount > 0);
   }
 
   // ---- Permission ----
@@ -185,26 +233,56 @@ const NotificationsModule = (() => {
     if (!isSupported()) return;
     if (Notification.permission !== "granted") return;
 
-    const { todayCount, overdueCount } = getReminderCounts();
+    const settings = getSettings();
+    const scope = settings.scope || "general";
 
-    // Overdue notification
-    if (overdueCount > 0 && shouldFire("overdue")) {
-      showNotification(
-        `\u26A0\uFE0F ${overdueCount} Overdue Reminder${overdueCount > 1 ? "s" : ""}`,
-        `You have ${overdueCount} overdue task${overdueCount > 1 ? "s" : ""}. Check your reminders!`,
-        "spectra-overdue",
-      );
-      markFired("overdue");
-    }
+    if (scope === "general") {
+      const { todayCount, overdueCount } = getReminderCounts();
 
-    // Today notification
-    if (todayCount > 0 && shouldFire("today")) {
-      showNotification(
-        `\uD83D\uDCCB ${todayCount} Task${todayCount > 1 ? "s" : ""} Due Today`,
-        `You have ${todayCount} reminder${todayCount > 1 ? "s" : ""} scheduled for today.`,
-        "spectra-today",
-      );
-      markFired("today");
+      if (overdueCount > 0 && shouldFire("overdue")) {
+        showNotification(
+          `\u26A0\uFE0F ${overdueCount} Overdue Reminder${overdueCount > 1 ? "s" : ""}`,
+          `You have ${overdueCount} overdue task${overdueCount > 1 ? "s" : ""}. Check your reminders!`,
+          "spectra-overdue",
+        );
+        markFired("overdue");
+      }
+
+      if (todayCount > 0 && shouldFire("today")) {
+        showNotification(
+          `\uD83D\uDCCB ${todayCount} Task${todayCount > 1 ? "s" : ""} Due Today`,
+          `You have ${todayCount} reminder${todayCount > 1 ? "s" : ""} scheduled for today.`,
+          "spectra-today",
+        );
+        markFired("today");
+      }
+    } else {
+      // Per-trial or per-location
+      const groups = getReminderCountsGrouped(scope);
+
+      if (shouldFire("overdue")) {
+        const overdueGroups = groups.filter((g) => g.overdueCount > 0);
+        overdueGroups.forEach((g) => {
+          showNotification(
+            `\u26A0\uFE0F ${g.name}: ${g.overdueCount} Overdue`,
+            `${g.overdueCount} overdue task${g.overdueCount > 1 ? "s" : ""} in ${g.name}.`,
+            `spectra-overdue-${g.id}`,
+          );
+        });
+        if (overdueGroups.length > 0) markFired("overdue");
+      }
+
+      if (shouldFire("today")) {
+        const todayGroups = groups.filter((g) => g.todayCount > 0);
+        todayGroups.forEach((g) => {
+          showNotification(
+            `\uD83D\uDCCB ${g.name}: ${g.todayCount} Due Today`,
+            `${g.todayCount} task${g.todayCount > 1 ? "s" : ""} due today in ${g.name}.`,
+            `spectra-today-${g.id}`,
+          );
+        });
+        if (todayGroups.length > 0) markFired("today");
+      }
     }
   }
 

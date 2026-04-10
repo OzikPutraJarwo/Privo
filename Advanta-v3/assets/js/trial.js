@@ -3200,6 +3200,7 @@ function openFieldMapPopup() {
   const popup = document.getElementById("fieldMapPopup");
   if (!popup) return;
   popup.classList.remove("hidden");
+  lockBodyScroll();
 
   // Populate location select
   populateTrialLocations();
@@ -3245,6 +3246,7 @@ function closeFieldMapPopup() {
 
   const popup = document.getElementById("fieldMapPopup");
   if (popup) popup.classList.add("hidden");
+  unlockBodyScroll();
 
   // Refresh areas list in the field section
   renderAreasList();
@@ -4536,12 +4538,13 @@ function showDeleteTrialModal(trial, linesList, callback) {
       </div>
       <div class="confirm-modal-footer">
         <button class="btn btn-secondary" id="deleteTrialCancelBtn">Cancel</button>
-        <button class="btn btn-primary btn-danger" id="deleteTrialConfirmBtn">Delete Trial</button>
+        <button class="btn btn-danger" id="deleteTrialConfirmBtn">Delete Trial</button>
       </div>
     </div>
   `;
   
   document.body.appendChild(modal);
+  lockBodyScroll();
   
   const cancelBtn = modal.querySelector('#deleteTrialCancelBtn');
   const confirmBtn = modal.querySelector('#deleteTrialConfirmBtn');
@@ -4549,6 +4552,7 @@ function showDeleteTrialModal(trial, linesList, callback) {
   
   const cleanup = () => {
     modal.remove();
+    unlockBodyScroll();
   };
   
   cancelBtn.addEventListener('click', cleanup);
@@ -4587,12 +4591,14 @@ function showConfirmModal(title, message, onConfirm, confirmButtonText = "Confir
   `;
   
   document.body.appendChild(modal);
+  lockBodyScroll();
   
   const cancelBtn = modal.querySelector('#confirmModalCancelBtn');
   const confirmBtn = modal.querySelector('#confirmModalConfirmBtn');
   
   const cleanup = () => {
     modal.remove();
+    unlockBodyScroll();
   };
   
   cancelBtn.addEventListener('click', cleanup);
@@ -5074,6 +5080,61 @@ async function loadTrialResponsesFromDrive(trialId, onProgress) {
       }
     });
   }
+}
+
+/**
+ * Prompt user to update data before running observation/agronomy.
+ * Returns true if user chooses to continue without updating, false to abort.
+ */
+function _promptTrialUpdateBeforeRun(trialId, mode) {
+  const trial = trialState.trials.find(t => t.id === trialId);
+  const trialName = trial ? escapeHtml(trial.name) : trialId;
+  const modeLabel = mode === "agronomy" ? "Agronomy Monitoring" : "Observation";
+
+  return new Promise((resolve) => {
+    const modal = document.createElement("div");
+    modal.className = "confirm-modal active";
+    modal.innerHTML = `
+      <div class="confirm-modal-content">
+        <div class="confirm-modal-header">
+          <h3>Update Available</h3>
+        </div>
+        <div class="confirm-modal-body">
+          <p>Newer data is available on Drive for <b>${trialName}</b>. Please update your data first before running ${modeLabel} to ensure you're working with the latest responses.</p>
+        </div>
+        <div class="confirm-modal-footer">
+          <button class="btn btn-secondary" id="_promptUpdateCancelBtn">Cancel</button>
+          <button class="btn btn-primary" id="_promptUpdateNowBtn"><span class="material-symbols-rounded" style="font-size:16px">system_update_alt</span> Open Load Data</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const cleanup = () => modal.remove();
+
+    modal.querySelector("#_promptUpdateCancelBtn").addEventListener("click", () => {
+      cleanup();
+      resolve(false);
+    });
+
+    modal.querySelector("#_promptUpdateNowBtn").addEventListener("click", async () => {
+      cleanup();
+      if (typeof openLoadDataPanel === "function") openLoadDataPanel("trial");
+      await new Promise(r => setTimeout(r, 100));
+      const group = document.querySelector(`.load-data-trial-group[data-trial-id="${trialId}"]`);
+      if (group && !group.classList.contains("expanded")) {
+        group.classList.add("expanded");
+      }
+      resolve(false);
+    });
+
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) {
+        cleanup();
+        resolve(false);
+      }
+    });
+  });
 }
 
 /**
@@ -6165,13 +6226,13 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
                 <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn" data-action="insert-col" data-rep-index="${repIndex}" title="Insert Column">
                   <span class="material-symbols-rounded">view_column</span>
                 </button>
-                <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn btn-danger" data-action="remove-col" data-rep-index="${repIndex}" title="Remove Column">
+                <button type="button" class="btn btn-danger btn-sm layouting-icon-btn" data-action="remove-col" data-rep-index="${repIndex}" title="Remove Column">
                   <span class="material-symbols-rounded">view_column</span>
                 </button>
                 <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn" data-action="insert-range" data-rep-index="${repIndex}" title="Insert Range">
                   <span class="material-symbols-rounded">table_rows_narrow</span>
                 </button>
-                <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn btn-danger" data-action="remove-range" data-rep-index="${repIndex}" title="Remove Range">
+                <button type="button" class="btn btn-danger btn-sm layouting-icon-btn" data-action="remove-range" data-rep-index="${repIndex}" title="Remove Range">
                   <span class="material-symbols-rounded">table_rows_narrow</span>
                 </button>
                 <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn" data-action="add-rep-empty" data-rep-index="${repIndex}" title="Add Empty Replication">
@@ -6180,7 +6241,7 @@ function createAreaLayoutingForm(area, areaIndex, options = {}) {
                 <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn" data-action="add-rep-duplicate" data-rep-index="${repIndex}" title="Duplicate Replication">
                   <span class="material-symbols-rounded">content_copy</span>
                 </button>
-                <button type="button" class="btn btn-secondary btn-sm layouting-icon-btn btn-danger" data-action="delete-rep" data-rep-index="${repIndex}" title="Delete Replication">
+                <button type="button" class="btn btn-danger btn-sm layouting-icon-btn" data-action="delete-rep" data-rep-index="${repIndex}" title="Delete Replication">
                   <span class="material-symbols-rounded">delete</span>
                 </button>
               </div>
@@ -7350,6 +7411,20 @@ async function startAgronomyMonitoring(trialId) {
   const loaded = await ensureTrialResponsesLoaded(trialId);
   if (!loaded) return;
 
+  // Check for remote updates before running
+  if (typeof checkSingleTrialUpdates === "function") {
+    try {
+      showToast("Checking for updates...", "info", 2000);
+      const hasUpdates = await checkSingleTrialUpdates(trialId);
+      if (hasUpdates) {
+        const proceed = await _promptTrialUpdateBeforeRun(trialId, "agronomy");
+        if (!proceed) return;
+      }
+    } catch (e) {
+      console.warn("Update check failed, continuing:", e);
+    }
+  }
+
   agronomyMonitoringState.currentTrialId = trialId;
   agronomyMonitoringState.currentTrial = trial;
   agronomyMonitoringState.responses = trial.agronomyResponses || {};
@@ -8013,6 +8088,7 @@ function openAgronomyPhotoPreview(idx) {
     }
     modal.classList.remove("hidden");
     modal.classList.add("active");
+    lockBodyScroll();
   }
 }
 
@@ -8246,6 +8322,20 @@ async function startRunTrial(trialId) {
   // Lazy-load responses from Drive if not yet loaded
   const loaded = await ensureTrialResponsesLoaded(trialId);
   if (!loaded) return;
+
+  // Check for remote updates before running
+  if (typeof checkSingleTrialUpdates === "function") {
+    try {
+      showToast("Checking for updates...", "info", 2000);
+      const hasUpdates = await checkSingleTrialUpdates(trialId);
+      if (hasUpdates) {
+        const proceed = await _promptTrialUpdateBeforeRun(trialId, "observation");
+        if (!proceed) return;
+      }
+    } catch (e) {
+      console.warn("Update check failed, continuing:", e);
+    }
+  }
 
   runTrialState.currentTrialId = trialId;
   runTrialState.currentTrial = trial;
@@ -9107,6 +9197,7 @@ function finishRunTrialLastQuestion() {
   });
   
   document.body.appendChild(overlay);
+  lockBodyScroll();
   requestAnimationFrame(() => overlay.classList.add('active'));
 }
 
@@ -9114,6 +9205,7 @@ function closeFinishTrialPopup() {
   const overlay = document.querySelector('.finish-trial-overlay');
   if (overlay) {
     overlay.classList.remove('active');
+    unlockBodyScroll();
     setTimeout(() => overlay.remove(), 200);
   }
 }
@@ -9441,6 +9533,7 @@ function openPhotoPreview(photoIndex = 0) {
     prevBtn.disabled = photoPreviewState.currentIndex === 0;
     nextBtn.disabled = photoPreviewState.currentIndex === photos.length - 1;
     modal.classList.remove("hidden");
+    lockBodyScroll();
   }
 }
 
@@ -9449,6 +9542,7 @@ function closePhotoPreview() {
   const modal = document.getElementById("photoPreviewModal");
   if (modal) {
     modal.classList.add("hidden");
+    unlockBodyScroll();
   }
   photoPreviewState.photos = [];
   photoPreviewState.currentIndex = 0;
@@ -10353,6 +10447,7 @@ function showTrialActionPopup(event, trialId) {
   });
   
   document.body.appendChild(overlay);
+  lockBodyScroll();
   requestAnimationFrame(() => overlay.classList.add('active'));
 }
 
@@ -10360,6 +10455,7 @@ function closeTrialActionPopup() {
   const overlay = document.querySelector('.trial-action-popup-overlay');
   if (overlay) {
     overlay.classList.remove('active');
+    unlockBodyScroll();
     setTimeout(() => overlay.remove(), 200);
   }
 }
@@ -11918,11 +12014,11 @@ function showTrialDetail(trialId) {
 
   if (archiveBtn) {
     if (trial.archived) {
-      archiveBtn.innerHTML = '<span class="material-symbols-rounded">unarchive</span><span>Unarchive</span>';
-      archiveBtn.onclick = unarchiveTrialFromDetail;
+      archiveBtn.innerHTML = '<span class="material-symbols-rounded" style="color:var(--warning)">unarchive</span> Unarchive';
+      archiveBtn.onclick = function() { unarchiveTrialFromDetail(); closeAllToolbarDropdowns(); };
     } else {
-      archiveBtn.innerHTML = '<span class="material-symbols-rounded">archive</span><span>Archive</span>';
-      archiveBtn.onclick = archiveTrialFromDetail;
+      archiveBtn.innerHTML = '<span class="material-symbols-rounded" style="color:var(--warning)">archive</span> Archive';
+      archiveBtn.onclick = function() { archiveTrialFromDetail(); closeAllToolbarDropdowns(); };
     }
     archiveBtn.style.display = '';
   }
@@ -12460,6 +12556,7 @@ function showTrialDetail(trialId) {
 
   // Show modal first, then initialize maps after a tick (so container is visible)
   modal.classList.add('active');
+  lockBodyScroll();
 
   // Initialize area maps after modal is fully laid out
   requestAnimationFrame(() => {
@@ -12488,6 +12585,7 @@ function closeTrialDetailModal() {
   const modal = document.getElementById('trialDetailModal');
   if (modal) {
     modal.classList.remove('active');
+    unlockBodyScroll();
     // Clean up all area preview maps
     if (window.trialDetailAreaMaps) {
       Object.values(window.trialDetailAreaMaps).forEach(map => {

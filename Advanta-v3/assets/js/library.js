@@ -9,8 +9,11 @@ let libraryState = {
   activeFilter: "all",
   sortBy: "modifiedTime",
   sortDir: "desc",
+  filesGridSize: "small", // "small" | "medium" | "large" for Uploaded Files
   section: "files", // "files" | "trial-photos"
   uploading: {}, // Track upload progress by file name: { filename: { progress: 0-100 } }
+  _filePreviewCache: {}, // fileId -> objectUrl for image thumbnails
+  _filePreviewPromises: {}, // fileId -> Promise while thumbnail is loading
   _driveLoaded: false, // Whether items have been loaded from Drive this session
   _trialPhotosLoaded: false,
   // Background scanning/conversion tracking
@@ -19,9 +22,10 @@ let libraryState = {
   _convertingInline: false,
   _convertProgress: null,
   _operationAbort: null,
-  // Bulk selection for trial photos
-  _selectedTrialPhotos: new Set(), // Track multiple selections
-  _bulkSelectionMode: false,
+  _openTrialPhotoFolderId: null, // Currently open trial folder for trial photos view
+  _openLibraryFolderId: null, // Currently open folder for uploaded files view
+  _openLibraryFolderName: null, // Name of the currently open folder
+  _libraryFolders: [], // Subfolders within Library drive folder
 };
 
 async function initializeLibrary(options = {}) {
@@ -57,7 +61,10 @@ async function initializeLibrary(options = {}) {
   }
 }
 
+let _libraryEventsSetUp = false;
 function setupLibraryEvents() {
+  if (_libraryEventsSetUp) return;
+  _libraryEventsSetUp = true;
   const uploadBtn = document.getElementById("uploadLibraryBtn");
   const uploadInput = document.getElementById("libraryUploadInput");
   const renameBtn = document.getElementById("libraryRenameBtn");
@@ -70,6 +77,7 @@ function setupLibraryEvents() {
   const filterItems = document.querySelectorAll(".library-filter-item");
   const sortBySelect = document.getElementById("librarySortBy");
   const sortDirSelect = document.getElementById("librarySortDir");
+  const gridSizeSelect = document.getElementById("libraryGridSize");
   if (uploadBtn && uploadInput) {
     uploadBtn.addEventListener("click", () => uploadInput.click());
     uploadInput.addEventListener("change", async (e) => {
@@ -153,6 +161,15 @@ function setupLibraryEvents() {
     });
   });
 
+  // Sort/View dropdown trigger
+  const sortBtn = document.getElementById("librarySortBtn");
+  if (sortBtn) {
+    sortBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleToolbarDropdown("librarySortBtn", "librarySortDropdown");
+    });
+  }
+
   if (sortBySelect) {
     sortBySelect.value = libraryState.sortBy;
     sortBySelect.addEventListener("change", (e) => {
@@ -167,6 +184,31 @@ function setupLibraryEvents() {
       libraryState.sortDir = e.target.value;
       renderLibraryList();
     });
+  }
+
+  if (gridSizeSelect) {
+    gridSizeSelect.value = libraryState.filesGridSize;
+    gridSizeSelect.addEventListener("change", (e) => {
+      const next = String(e.target.value || "small");
+      libraryState.filesGridSize = ["small", "medium", "large"].includes(next) ? next : "small";
+      renderLibraryList();
+      // Persist to user settings
+      if (typeof userSettingsState !== "undefined" && userSettingsState.data?.appearance) {
+        userSettingsState.data.appearance.libraryGridSize = libraryState.filesGridSize;
+        if (typeof saveUserSettingsLocalCache === "function") saveUserSettingsLocalCache();
+        if (typeof enqueueUserSettingsSync === "function") enqueueUserSettingsSync();
+      }
+    });
+  }
+}
+
+function applyLibraryUserSettings(appearancePrefs) {
+  if (!appearancePrefs) return;
+  const size = appearancePrefs.libraryGridSize;
+  if (["small", "medium", "large"].includes(size)) {
+    libraryState.filesGridSize = size;
+    const gridSizeSelect = document.getElementById("libraryGridSize");
+    if (gridSizeSelect) gridSizeSelect.value = size;
   }
 }
 
@@ -198,17 +240,24 @@ async function switchLibrarySection(section = "files") {
   const nextSection = section === "trial-photos" ? "trial-photos" : "files";
   libraryState.section = nextSection;
   libraryState.selectedId = null;
+  libraryState._openTrialPhotoFolderId = null;
+  libraryState._openLibraryFolderId = null;
+  libraryState._openLibraryFolderName = null;
 
   const uploadBtn = document.getElementById("uploadLibraryBtn");
   const uploadInput = document.getElementById("libraryUploadInput");
+  const createFolderBtn = document.getElementById("createLibraryFolderBtn");
   const filterContainer = document.querySelector(".library-filter-container");
+  const gridSizeGroup = document.getElementById("libraryGridSizeGroup");
   const searchInput = document.getElementById("librarySearchInput");
   const actionBarContainer = document.getElementById("trialPhotoActionsContainer");
 
   if (nextSection === "trial-photos") {
     if (uploadBtn) uploadBtn.classList.add("hidden");
     if (uploadInput) uploadInput.classList.add("hidden");
+    if (createFolderBtn) createFolderBtn.classList.add("hidden");
     if (filterContainer) filterContainer.classList.add("hidden");
+    if (gridSizeGroup) gridSizeGroup.classList.remove("hidden");
     if (actionBarContainer) actionBarContainer.classList.remove("hidden");
     libraryState.activeFilter = "all";
     if (searchInput) searchInput.placeholder = "Search trial photos...";
@@ -226,7 +275,9 @@ async function switchLibrarySection(section = "files") {
   } else {
     if (uploadBtn) uploadBtn.classList.remove("hidden");
     if (uploadInput) uploadInput.classList.remove("hidden");
+    if (createFolderBtn) createFolderBtn.classList.remove("hidden");
     if (filterContainer) filterContainer.classList.remove("hidden");
+    if (gridSizeGroup) gridSizeGroup.classList.remove("hidden");
     if (actionBarContainer) actionBarContainer.classList.add("hidden");
     if (searchInput) searchInput.placeholder = "Search files...";
     renderLibraryList();
@@ -234,6 +285,7 @@ async function switchLibrarySection(section = "files") {
     lazyLoadLibraryFromDrive().catch(() => {});
   }
 
+  updateLibraryHeaderTitle();
   closeLibraryDetail();
 }
 
@@ -249,9 +301,10 @@ function ensureLibrarySectionLoaded() {
 
 async function loadLibraryItems() {
   if (!libraryState.folderId) return;
+  const targetFolderId = libraryState._openLibraryFolderId || libraryState.folderId;
 
   const response = await gapi.client.drive.files.list({
-    q: `'${libraryState.folderId}' in parents and trashed=false`,
+    q: `'${targetFolderId}' in parents and trashed=false`,
     fields: "files(id, name, mimeType, modifiedTime, size)",
     orderBy: "modifiedTime desc",
     pageSize: 1000,
@@ -270,14 +323,15 @@ async function loadLibraryItems() {
  * Runs in background and updates inline status. Skips if already loaded this session.
  */
 async function lazyLoadLibraryFromDrive() {
-  if (libraryState._driveLoaded) return;
+  if (libraryState._driveLoaded && !libraryState._openLibraryFolderId) return;
   if (!libraryState.folderId) return;
+  const targetFolderId = libraryState._openLibraryFolderId || libraryState.folderId;
 
   setLibraryStatus("Loading uploaded files from Drive...", "loading");
 
   try {
     const response = await gapi.client.drive.files.list({
-      q: `'${libraryState.folderId}' in parents and trashed=false`,
+      q: `'${targetFolderId}' in parents and trashed=false`,
       fields: "files(id, name, mimeType, modifiedTime, size)",
       orderBy: "modifiedTime desc",
       pageSize: 1000,
@@ -285,10 +339,10 @@ async function lazyLoadLibraryFromDrive() {
 
     const files = response.result.files || [];
     libraryState.items = files;
-    libraryState._driveLoaded = true;
+    if (!libraryState._openLibraryFolderId) libraryState._driveLoaded = true;
     renderLibraryList();
 
-    if (typeof saveLocalCache === "function") {
+    if (!libraryState._openLibraryFolderId && typeof saveLocalCache === "function") {
       saveLocalCache("library", { items: libraryState.items });
     }
 
@@ -306,10 +360,11 @@ async function lazyLoadLibraryFromDrive() {
  */
 async function incrementalRefreshLibrary() {
   if (!libraryState.folderId) return;
+  const targetFolderId = libraryState._openLibraryFolderId || libraryState.folderId;
 
   try {
     const response = await gapi.client.drive.files.list({
-      q: `'${libraryState.folderId}' in parents and trashed=false`,
+      q: `'${targetFolderId}' in parents and trashed=false`,
       fields: "files(id, name, mimeType, modifiedTime, size)",
       orderBy: "modifiedTime desc",
       pageSize: 1000,
@@ -683,202 +738,6 @@ async function convertAllInlinePhotosToBinary() {
   await loadTrialPhotoItems({ force: true });
 }
 
-function clearBulkSelection() {
-  libraryState._selectedTrialPhotos.clear();
-  libraryState._bulkSelectionMode = false;
-  renderBulkActionBar();
-  renderLibraryList();
-}
-
-async function bulkConvertSelected() {
-  const selectedIds = Array.from(libraryState._selectedTrialPhotos);
-  const selectedItems = (libraryState.trialPhotos || []).filter((p) => selectedIds.includes(p.id));
-  const inlineItems = selectedItems.filter((p) => p.storageType === "inline-json");
-  
-  if (inlineItems.length === 0) {
-    showToast("No inline photos to convert in selection.", "info");
-    return;
-  }
-
-  libraryState._operationAbort = new AbortController();
-  libraryState._convertingInline = true;
-
-  const total = inlineItems.length;
-  let converted = 0;
-  let failed = 0;
-  setTrialPhotoProgress(0, `Converting selected: 0/${total}...`);
-
-  // Group by sourceFileId
-  const bySource = new Map();
-  for (const item of inlineItems) {
-    if (!bySource.has(item.sourceFileId)) bySource.set(item.sourceFileId, []);
-    bySource.get(item.sourceFileId).push(item);
-  }
-
-  for (const [sourceFileId, items] of bySource) {
-    if (libraryState._operationAbort?.signal.aborted) break;
-
-    let sourceData;
-    try {
-      sourceData = await getFileContent(sourceFileId);
-    } catch (_) {
-      failed += items.length;
-      continue;
-    }
-    if (!sourceData || typeof sourceData !== "object") {
-      failed += items.length;
-      continue;
-    }
-
-    let sourceModified = false;
-    const firstItem = items[0];
-
-    for (const item of items) {
-      if (libraryState._operationAbort?.signal.aborted) break;
-
-      const pct = Math.round(((converted + failed) / total) * 100);
-      setTrialPhotoProgress(pct, `Converting selected: ${converted + failed}/${total}...`);
-
-      try {
-        let node = sourceData;
-        for (const key of (item.pointerPath || [])) {
-          node = node?.[key];
-          if (!node) break;
-        }
-        if (!node || !Array.isArray(node.photos)) { failed++; continue; }
-
-        const rawPhoto = node.photos[item.photoIndex];
-        if (typeof rawPhoto !== "string" || !rawPhoto.startsWith("data:")) { converted++; continue; }
-
-        const { blob, width, height } = await compressPhotoToWebP(rawPhoto, 1000, 0.7);
-        const photosFolderId = await getOrCreateFolder("photos", item.trialFolderId);
-        const photoIdValue = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-        const fileName = `${photoIdValue}.webp`;
-        const newFileId = await uploadBinaryFileToDrive(fileName, photosFolderId, blob, "image/webp");
-
-        node.photos[item.photoIndex] = {
-          photoId: photoIdValue,
-          fileId: newFileId,
-          width,
-          height,
-          timestamp: node.timestamp || new Date().toISOString(),
-        };
-        sourceModified = true;
-        converted++;
-      } catch (err) {
-        console.warn("Convert failed for", item.id, err);
-        failed++;
-      }
-    }
-
-    if (sourceModified) {
-      try {
-        await updateJsonFileById(sourceFileId, firstItem.sourceFileName || "responses.json", sourceData);
-      } catch (err) {
-        console.warn("Failed to update source JSON:", err);
-      }
-    }
-  }
-
-  clearTrialPhotoProgress();
-  libraryState._convertingInline = false;
-  libraryState._operationAbort = null;
-  clearBulkSelection();
-  
-  showToast(`Conversion complete: ${converted} converted, ${failed} failed.`, converted > 0 ? "success" : "warning");
-  await loadTrialPhotoItems({ force: true });
-}
-
-async function bulkDeleteSelected() {
-  const selectedIds = Array.from(libraryState._selectedTrialPhotos);
-  const selectedItems = (libraryState.trialPhotos || []).filter((p) => selectedIds.includes(p.id));
-  
-  if (selectedItems.length === 0) return;
-
-  const confirmed = confirm(`Delete ${selectedItems.length} photo(s)?\n\nThis will remove them from the library. Inline photos will be removed from their source files, and binary photos will be deleted from Drive.`);
-  if (!confirmed) return;
-
-  let deleted = 0;
-  let failed = 0;
-  setTrialPhotoProgress(0, `Deleting: 0/${selectedItems.length}...`);
-
-  // For inline photos, remove from source
-  const inlineBySource = new Map();
-  const binaryIds = [];
-  
-  for (const item of selectedItems) {
-    if (item.storageType === "inline-json") {
-      if (!inlineBySource.has(item.sourceFileId)) {
-        inlineBySource.set(item.sourceFileId, []);
-      }
-      inlineBySource.get(item.sourceFileId).push(item);
-    } else {
-      binaryIds.push(item.driveFileId);
-    }
-  }
-
-  // Delete inline photos from source
-  for (const [sourceFileId, items] of inlineBySource) {
-    let sourceData;
-    try {
-      sourceData = await getFileContent(sourceFileId);
-    } catch (_) {
-      failed += items.length;
-      continue;
-    }
-    if (!sourceData || typeof sourceData !== "object") {
-      failed += items.length;
-      continue;
-    }
-
-    let sourceModified = false;
-    const firstItem = items[0];
-
-    for (const item of items) {
-      try {
-        let node = sourceData;
-        for (const key of (item.pointerPath || [])) {
-          node = node?.[key];
-          if (!node) break;
-        }
-        if (node && Array.isArray(node.photos)) {
-          node.photos.splice(item.photoIndex, 1);
-          sourceModified = true;
-          deleted++;
-        }
-      } catch (err) {
-        console.warn("Delete failed for", item.id, err);
-        failed++;
-      }
-    }
-
-    if (sourceModified) {
-      try {
-        await updateJsonFileById(sourceFileId, firstItem.sourceFileName || "responses.json", sourceData);
-      } catch (err) {
-        console.warn("Failed to update source JSON:", err);
-      }
-    }
-  }
-
-  // Delete binary photos from Drive
-  for (const fileId of binaryIds) {
-    try {
-      await gapi.client.drive.files.delete({ fileId });
-      deleted++;
-    } catch (err) {
-      console.warn("Failed to delete binary photo:", err);
-      failed++;
-    }
-  }
-
-  clearTrialPhotoProgress();
-  clearBulkSelection();
-  
-  showToast(`Deleted: ${deleted} photo(s)${failed > 0 ? `, ${failed} failed` : ""}.`, deleted > 0 ? "success" : "warning");
-  await loadTrialPhotoItems({ force: true });
-}
-
 function collectInlinePhotosFromJson(node, baseMeta, output, path = []) {
   if (!node || typeof node !== "object") return;
 
@@ -1024,6 +883,62 @@ function renderTrialPhotoPreview(item) {
   }
 }
 
+function renderTrialPhotoFolderIconGrid(photos, trialId) {
+  const latest = [...(photos || [])]
+    .sort((a, b) => new Date(b.modifiedTime || 0).getTime() - new Date(a.modifiedTime || 0).getTime())
+    .slice(0, 4);
+
+  const cells = [];
+  for (let i = 0; i < 4; i++) {
+    const photo = latest[i];
+    if (!photo) {
+      cells.push('<div class="library-folder-thumb-cell placeholder"></div>');
+      continue;
+    }
+
+    if (photo.storageType === "binary" && photo.driveFileId) {
+      cells.push(`
+        <div class="library-folder-thumb-cell">
+          <img
+            class="library-folder-thumb-img"
+            data-photo-fileid="${photo.driveFileId}"
+            alt="${escapeHtml(photo.name || "Photo")}" />
+        </div>
+      `);
+      continue;
+    }
+
+    const safeTrial = String(trialId || "trial").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const safePhoto = String(photo.id || i).replace(/[^a-zA-Z0-9_-]/g, "_");
+    const imgId = `trial-folder-thumb-${safeTrial}-${safePhoto}`;
+    cells.push(`
+      <div class="library-folder-thumb-cell">
+        <img
+          id="${imgId}"
+          class="library-folder-thumb-img"
+          data-loading="true"
+          alt="${escapeHtml(photo.name || "Photo")}" />
+      </div>
+    `);
+
+    setTimeout(() => {
+      getInlinePhotoDataUrl(photo).then((dataUrl) => {
+        const img = document.getElementById(imgId);
+        if (!img) return;
+        if (dataUrl) {
+          img.src = dataUrl;
+        }
+        img.dataset.loading = "false";
+      }).catch(() => {
+        const img = document.getElementById(imgId);
+        if (img) img.dataset.loading = "false";
+      });
+    }, 0);
+  }
+
+  return `<div class="library-folder-thumb-grid">${cells.join("")}</div>`;
+}
+
 function renderTrialPhotoActionBar() {
   const container = document.getElementById("trialPhotoActionsContainer");
   if (!container) return;
@@ -1043,38 +958,21 @@ function renderTrialPhotoActionBar() {
   container.innerHTML = actionBarHtml;
 }
 
-function renderBulkActionBar() {
-  const container = document.getElementById("trialPhotoActionsContainer");
-  if (!container) return;
+function renderTrialPhotoList(container) {
+  const allItems = libraryState.trialPhotos || [];
 
-  if (!libraryState._bulkSelectionMode || libraryState._selectedTrialPhotos.size === 0) {
-    renderTrialPhotoActionBar();
+  // If no folder is open, show folder view (grouped by trial)
+  if (!libraryState._openTrialPhotoFolderId) {
+    renderTrialPhotoFolders(container, allItems);
     return;
   }
 
-  const selectedIds = Array.from(libraryState._selectedTrialPhotos);
-  const selectedItems = (libraryState.trialPhotos || []).filter((p) => selectedIds.includes(p.id));
-  const inlineSelected = selectedItems.filter((p) => p.storageType === "inline-json");
-  
-  let actionBarHtml = `<div class="trial-photo-action-bar bulk-action-bar">`;
-  actionBarHtml += `<span class="bulk-selection-info">${selectedIds.length} selected</span>`;
-  
-  if (inlineSelected.length > 0) {
-    actionBarHtml += `<button class="btn btn-primary btn-sm" onclick="bulkConvertSelected()"><span class="material-symbols-rounded">conversion_path</span> Convert to Binary (${inlineSelected.length})</button>`;
-  }
-  
-  actionBarHtml += `<button class="btn btn-danger btn-sm" onclick="bulkDeleteSelected()"><span class="material-symbols-rounded">delete</span> Delete</button>`;
-  actionBarHtml += `<button class="btn btn-secondary btn-sm" onclick="clearBulkSelection()"><span class="material-symbols-rounded">close</span> Cancel</button>`;
-  actionBarHtml += `</div>`;
-
-  container.innerHTML = actionBarHtml;
-}
-
-function renderTrialPhotoList(container) {
-  const allItems = libraryState.trialPhotos || [];
+  // Show photos inside the selected trial folder
   const query = (libraryState.searchQuery || "").toLowerCase();
+  const folderId = libraryState._openTrialPhotoFolderId;
 
   let filtered = allItems.filter((item) => {
+    if (item.trialId !== folderId) return false;
     if (!query) return true;
     const haystack = [
       item.name,
@@ -1116,75 +1014,212 @@ function renderTrialPhotoList(container) {
     container.innerHTML = `
       <div class="empty-state">
         <span class="material-symbols-rounded">photo_library</span>
-        <p>No trial photos found for current filter.</p>
+        <p>No photos found in this trial.</p>
       </div>
     `;
     return;
   }
 
   container.classList.remove("library-grid-empty");
-  container.innerHTML = filtered.map((item) => {
+  const html = filtered.map((item) => {
     const dateLabel = item.modifiedTime ? new Date(item.modifiedTime).toLocaleDateString() : "-";
     const metaRight = item.storageType === "binary"
       ? `${formatFileSize(Number(item.size || 0))} · ${dateLabel}`
       : `${item.sourceScope || "json"} · ${item.sourceFileName || "source"}`;
-    const isSelected = libraryState._selectedTrialPhotos.has(item.id);
 
     return `
-      <div class="library-item ${isSelected ? "selected" : ""}" data-trial-photo-id="${item.id}">
-        <div class="library-item-checkbox">
-          <input type="checkbox" class="trial-photo-checkbox" data-trial-photo-id="${item.id}" ${isSelected ? "checked" : ""}>
-        </div>
+      <div class="library-item" data-trial-photo-id="${item.id}">
         <div class="library-item-icon">
           ${renderTrialPhotoPreview(item)}
         </div>
         <div class="library-item-info">
-          <div class="library-item-name">${escapeHtml(item.trialName || item.trialId || "Trial")}</div>
+          <div class="library-item-name">${escapeHtml(item.name || "Photo")}</div>
           <div class="library-item-meta">${escapeHtml(metaRight)}</div>
         </div>
         <div class="library-item-storage">${getTrialPhotoStorageBadge(item.storageType)}</div>
-        <div class="library-item-actions" style="opacity:1;">
-          <button class="icon-btn view-trial-photo-btn" data-trial-photo-id="${item.id}" title="Detail">
-            <span class="material-symbols-rounded">visibility</span>
-          </button>
+      </div>
+    `;
+  }).join("");
+
+  container.innerHTML = html;
+
+  // Load binary photos from Drive
+  loadExternalPhotos(container);
+
+  // Item click to view detail
+  container.querySelectorAll(".library-item[data-trial-photo-id]").forEach((row) => {
+    row.addEventListener("click", () => {
+      openTrialPhotoDetail(row.dataset.trialPhotoId);
+    });
+  });
+}
+
+function renderTrialPhotoFolders(container, allItems) {
+  const query = (libraryState.searchQuery || "").toLowerCase();
+
+  // Group photos by trialId
+  const trialMap = new Map();
+  for (const item of allItems) {
+    const tid = item.trialId || "unknown";
+    if (!trialMap.has(tid)) {
+      trialMap.set(tid, { trialId: tid, trialName: item.trialName || tid, photos: [] });
+    }
+    trialMap.get(tid).photos.push(item);
+  }
+
+  let folders = Array.from(trialMap.values());
+
+  // Filter folders by search query
+  if (query) {
+    folders = folders.filter(f => f.trialName.toLowerCase().includes(query));
+  }
+
+  // Sort folders by trial name
+  folders.sort((a, b) => a.trialName.localeCompare(b.trialName));
+
+  if (folders.length === 0) {
+    container.classList.add("library-grid-empty");
+    container.innerHTML = `
+      <div class="empty-state">
+        <span class="material-symbols-rounded">photo_library</span>
+        <p>${allItems.length === 0 ? "No trial photos found. Scan your trials to load photos." : "No trials match your search."}</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.classList.remove("library-grid-empty");
+  container.innerHTML = folders.map(f => {
+    const photoCount = f.photos.length;
+    const latestDate = f.photos.reduce((max, p) => {
+      const d = new Date(p.modifiedTime || 0).getTime();
+      return d > max ? d : max;
+    }, 0);
+    const dateLabel = latestDate ? new Date(latestDate).toLocaleDateString() : "";
+
+    return `
+      <div class="library-folder-card" data-trial-folder-id="${escapeHtml(f.trialId)}">
+        <div class="folder-card-icon">
+          ${renderTrialPhotoFolderIconGrid(f.photos, f.trialId)}
+        </div>
+        <div class="folder-card-meta">
+          <div class="folder-card-name">${escapeHtml(f.trialName)}</div>
+          <div class="folder-card-count">${photoCount} photo${photoCount !== 1 ? "s" : ""}${dateLabel ? " · " + dateLabel : ""}</div>
+        </div>
+        <div class="folder-card-actions">
+          <span class="material-symbols-rounded" style="color:var(--text-tertiary);font-size:20px;">chevron_right</span>
         </div>
       </div>
     `;
   }).join("");
 
-  // Load binary photos from Drive
+  // Load binary photo thumbs for folder icons
   loadExternalPhotos(container);
 
-  // Checkbox event handlers
-  container.querySelectorAll(".trial-photo-checkbox").forEach((checkbox) => {
-    checkbox.addEventListener("change", (e) => {
-      const itemId = checkbox.dataset.trialPhotoId;
-      if (checkbox.checked) {
-        libraryState._selectedTrialPhotos.add(itemId);
-      } else {
-        libraryState._selectedTrialPhotos.delete(itemId);
-      }
-      libraryState._bulkSelectionMode = libraryState._selectedTrialPhotos.size > 0;
-      renderBulkActionBar();
-      renderLibraryList();
+  container.querySelectorAll(".library-folder-card").forEach(card => {
+    card.addEventListener("click", () => {
+      openTrialPhotoFolder(card.dataset.trialFolderId);
     });
   });
+}
 
-  container.querySelectorAll(".view-trial-photo-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openTrialPhotoDetail(btn.dataset.trialPhotoId);
-    });
-  });
+function openTrialPhotoFolder(trialId) {
+  libraryState._openTrialPhotoFolderId = trialId;
+  renderLibraryList();
+}
 
-  // Item preview click only if not in bulk selection mode
-  if (!libraryState._bulkSelectionMode) {
-    container.querySelectorAll(".library-item[data-trial-photo-id]").forEach((row) => {
-      row.addEventListener("click", (e) => {
-        if (e.target.closest(".trial-photo-checkbox")) return;
-        openTrialPhotoDetail(row.dataset.trialPhotoId);
-      });
+function closeTrialPhotoFolder() {
+  libraryState._openTrialPhotoFolderId = null;
+  renderLibraryList();
+}
+
+// ─── Library folder navigation helpers ───
+function updateLibraryHeaderTitle() {
+  const titleEl = document.getElementById("libraryHeaderTitle");
+  if (!titleEl) return;
+
+  let pathHtml = "";
+  let baseTitleHtml = `<span class="library-header-main">Library</span>`;
+
+  if (libraryState.section === "files" && libraryState._openLibraryFolderId) {
+    const folderName = escapeHtml(libraryState._openLibraryFolderName || "Folder");
+    baseTitleHtml = "";
+    pathHtml = `
+      <button class="library-header-back" onclick="closeLibraryFolder()" title="Back">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="library-header-path">
+        <span class="library-header-root">Uploaded Files</span>
+        <span class="material-symbols-rounded library-header-sep">chevron_right</span>
+        <span class="library-header-current">${folderName}</span>
+      </span>
+    `;
+  } else if (libraryState.section === "trial-photos" && libraryState._openTrialPhotoFolderId) {
+    const trialName = escapeHtml(
+      libraryState.trialPhotos.find((item) => item.trialId === libraryState._openTrialPhotoFolderId)?.trialName ||
+      libraryState._openTrialPhotoFolderId
+    );
+    baseTitleHtml = "";
+    pathHtml = `
+      <button class="library-header-back" onclick="closeTrialPhotoFolder()" title="Back">
+        <span class="material-symbols-rounded">arrow_back</span>
+      </button>
+      <span class="library-header-path">
+        <span class="library-header-root">Trial Photos</span>
+        <span class="material-symbols-rounded library-header-sep">chevron_right</span>
+        <span class="library-header-current">${trialName}</span>
+      </span>
+    `;
+  }
+
+  titleEl.innerHTML = `${baseTitleHtml}${pathHtml}`;
+}
+
+function openLibraryFolder(folderId, folderName) {
+  libraryState._openLibraryFolderId = folderId;
+  libraryState._openLibraryFolderName = folderName;
+  libraryState.selectedId = null;
+  setLibraryDetailVisible(false);
+  updateLibraryHeaderTitle();
+  setLibraryStatus("Loading folder contents...", "loading");
+  loadLibraryItems().then(() => {
+    clearLibraryStatus(1500);
+  }).catch(() => {});
+}
+
+function closeLibraryFolder() {
+  libraryState._openLibraryFolderId = null;
+  libraryState._openLibraryFolderName = null;
+  libraryState.selectedId = null;
+  setLibraryDetailVisible(false);
+  updateLibraryHeaderTitle();
+  setLibraryStatus("Loading uploaded files...", "loading");
+  loadLibraryItems().then(() => {
+    clearLibraryStatus(1500);
+  }).catch(() => {});
+}
+
+async function createLibraryFolder() {
+  if (!libraryState.folderId) return;
+  const parentId = libraryState._openLibraryFolderId || libraryState.folderId;
+
+  const name = prompt("Enter folder name:");
+  if (!name || !name.trim()) return;
+
+  try {
+    await gapi.client.drive.files.create({
+      resource: {
+        name: name.trim(),
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentId],
+      },
+      fields: "id",
     });
+    showToast(`Folder "${name.trim()}" created.`, "success");
+    await loadLibraryItems();
+  } catch (err) {
+    console.error("Error creating folder:", err);
+    showToast("Failed to create folder.", "error");
   }
 }
 
@@ -1244,7 +1279,6 @@ function renderLibraryListMode(container, displayItems) {
         <div class="inventory-list-cell">${dateLabel}</div>
         <div class="inventory-list-cell inventory-list-cell-actions">
           <div class="library-item-actions" style="opacity:1">
-            <button class="icon-btn view-btn" data-id="${file.id}" title="View"><span class="material-symbols-rounded">visibility</span></button>
             <button class="icon-btn delete-btn" data-id="${file.id}" title="Delete"><span class="material-symbols-rounded">delete</span></button>
           </div>
         </div>
@@ -1260,9 +1294,6 @@ function renderLibraryListMode(container, displayItems) {
       }
     });
   });
-  container.querySelectorAll(".view-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => { e.stopPropagation(); openLibraryDetail(btn.dataset.id); });
-  });
   container.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => { e.stopPropagation(); deleteLibraryItem(btn.dataset.id); });
   });
@@ -1271,15 +1302,22 @@ function renderLibraryListMode(container, displayItems) {
 function renderLibraryList() {
   const container = document.getElementById("libraryList");
   if (!container) return;
+  updateLibraryHeaderTitle();
 
   if (libraryState.section === "trial-photos") {
+    container.classList.remove("library-grid-empty", "grid-small", "grid-medium", "grid-large");
+    container.classList.add("library-files-grid", `grid-${libraryState.filesGridSize}`);
     renderTrialPhotoList(container);
-    renderBulkActionBar();
+    renderTrialPhotoActionBar();
     return;
   }
 
-  // Combine items with uploading files
-  const allItems = [...libraryState.items];
+  // Separate folders from files
+  const FOLDER_MIME = "application/vnd.google-apps.folder";
+  const folders = libraryState.items.filter(f => f.mimeType === FOLDER_MIME);
+  const files = libraryState.items.filter(f => f.mimeType !== FOLDER_MIME);
+
+  // Combine files with uploading items
   const uploadingItems = Object.entries(libraryState.uploading).map(
     ([fileName, data]) => ({
       name: fileName,
@@ -1288,28 +1326,30 @@ function renderLibraryList() {
     })
   );
 
-  // Filter items based on search and filter
-  let filteredItems = allItems.filter((file) => {
-    // Search filter
+  // Filter files based on search and filter
+  let filteredFiles = files.filter((file) => {
     if (libraryState.searchQuery) {
       if (!file.name.toLowerCase().includes(libraryState.searchQuery)) {
         return false;
       }
     }
-
-    // Type filter
     if (libraryState.activeFilter !== "all") {
       const category = getFileCategory(file.mimeType);
       if (category !== libraryState.activeFilter) {
         return false;
       }
     }
-
     return true;
   });
 
+  // Filter folders by search
+  let filteredFolders = folders;
+  if (libraryState.searchQuery) {
+    filteredFolders = folders.filter(f => f.name.toLowerCase().includes(libraryState.searchQuery));
+  }
+
   const sortDir = libraryState.sortDir === "asc" ? 1 : -1;
-  filteredItems = filteredItems.sort((a, b) => {
+  filteredFiles = filteredFiles.sort((a, b) => {
     let aVal;
     let bVal;
 
@@ -1334,33 +1374,63 @@ function renderLibraryList() {
     }
   });
 
-  // Combine filtered items with uploading items at the top
-  const displayItems = [...uploadingItems, ...filteredItems];
+  // Sort folders by name
+  filteredFolders.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-  if (displayItems.length === 0) {
+  const displayItems = [...uploadingItems, ...filteredFiles];
+  const totalItems = displayItems.length + filteredFolders.length;
+
+  if (totalItems === 0) {
     const emptyMessage =
       libraryState.items.length === 0
-        ? "No files yet. Upload your first document to the library."
+        ? (libraryState._openLibraryFolderId ? "This folder is empty." : "No files yet. Upload your first document to the library.")
         : "No files match your search or filter.";
 
-    container.classList.add('library-grid-empty');
-    container.innerHTML = `
+    container.classList.add("library-grid-empty", "library-files-grid", `grid-${libraryState.filesGridSize}`);
+    let html = `
             <div class="empty-state">
                 <span class="material-symbols-rounded">folder_open</span>
                 <p>${emptyMessage}</p>
             </div>
         `;
+    container.innerHTML = html;
     setLibraryDetailVisible(false);
     return;
   }
 
   // Reset grid to normal when showing items
-  container.classList.remove('library-grid-empty');
+  container.classList.remove("library-grid-empty", "grid-small", "grid-medium", "grid-large");
+  container.classList.add("library-files-grid", `grid-${libraryState.filesGridSize}`);
 
-  container.innerHTML = displayItems
+  let html = "";
+
+  // Render folder cards (outside the grid)
+  if (filteredFolders.length > 0) {
+    html += `<div class="library-folder-list">`;
+    html += filteredFolders.map(folder => {
+      const dateLabel = folder.modifiedTime ? new Date(folder.modifiedTime).toLocaleDateString() : "";
+      return `
+        <div class="library-folder-card" data-folder-id="${folder.id}">
+          <div class="folder-card-icon">
+            <span class="material-symbols-rounded">folder</span>
+          </div>
+          <div class="folder-card-meta">
+            <div class="folder-card-name">${escapeHtml(folder.name)}</div>
+            <div class="folder-card-count">${dateLabel}</div>
+          </div>
+          <div class="folder-card-actions">
+            <span class="material-symbols-rounded" style="color:var(--text-tertiary);font-size:20px;">chevron_right</span>
+          </div>
+        </div>
+      `;
+    }).join("");
+    html += `</div>`;
+  }
+
+  // Render file items
+  html += displayItems
     .map((file) => {
       if (file.isUploading) {
-        // Render uploading item with progress
         const progress = Math.round(file.progress || 0);
         const circumference = 2 * Math.PI * 18;
         const strokeDashoffset = circumference - (progress / 100) * circumference;
@@ -1390,20 +1460,20 @@ function renderLibraryList() {
         : "-";
       const icon = getFileIcon(file.mimeType);
       const iconColor = getFileIconColor(file.mimeType);
+        const isImage = getFileCategory(file.mimeType) === "image";
 
       return `
             <div class="library-item ${libraryState.selectedId === file.id ? "selected" : ""}" data-id="${file.id}">
-                <div class="library-item-icon" style="color: ${iconColor}">
-                    <span class="material-symbols-rounded">${icon}</span>
+            <div class="library-item-icon ${isImage ? "library-uploaded-image-icon" : ""}" style="color: ${iconColor}">
+              ${isImage
+                ? `<img class="library-item-preview library-uploaded-preview" data-loading="true" data-library-fileid="${file.id}" alt="${escapeHtml(file.name)}" onerror="this.dataset.loading='false'; this.classList.add('error')" onload="this.dataset.loading='false'" />`
+                : `<span class="material-symbols-rounded">${icon}</span>`}
                 </div>
                 <div class="library-item-info">
                     <div class="library-item-name">${escapeHtml(file.name)}</div>
                     <div class="library-item-meta">${sizeLabel} · ${dateLabel}</div>
                 </div>
                 <div class="library-item-actions">
-                    <button class="icon-btn view-btn" data-id="${file.id}" title="View">
-                        <span class="material-symbols-rounded">visibility</span>
-                    </button>
                     <button class="icon-btn delete-btn" data-id="${file.id}" title="Delete">
                         <span class="material-symbols-rounded">delete</span>
                     </button>
@@ -1413,19 +1483,21 @@ function renderLibraryList() {
     })
     .join("");
 
+  container.innerHTML = html;
+
+  // Folder click handlers
+  container.querySelectorAll(".library-folder-card[data-folder-id]").forEach(card => {
+    card.addEventListener("click", () => {
+      openLibraryFolder(card.dataset.folderId, card.querySelector(".folder-card-name")?.textContent || "Folder");
+    });
+  });
+
   // Click on item to view
-  container.querySelectorAll(".library-item").forEach((item) => {
+  container.querySelectorAll(".library-item[data-id]").forEach((item) => {
     item.addEventListener("click", (e) => {
       if (!e.target.closest(".library-item-actions")) {
         openLibraryDetail(item.dataset.id);
       }
-    });
-  });
-
-  container.querySelectorAll(".view-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openLibraryDetail(btn.dataset.id);
     });
   });
 
@@ -1435,6 +1507,50 @@ function renderLibraryList() {
       deleteLibraryItem(btn.dataset.id);
     });
   });
+
+  loadUploadedImagePreviews(container);
+}
+
+async function loadUploadedImagePreviews(container) {
+  if (!container) return;
+
+  const imgs = Array.from(container.querySelectorAll("img[data-library-fileid]"));
+  for (const img of imgs) {
+    const fileId = String(img.dataset.libraryFileid || "");
+    if (!fileId) continue;
+
+    if (libraryState._filePreviewCache[fileId]) {
+      img.src = libraryState._filePreviewCache[fileId];
+      continue;
+    }
+
+    if (!libraryState._filePreviewPromises[fileId]) {
+      libraryState._filePreviewPromises[fileId] = fetchLibraryFileBlob(fileId)
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          libraryState._filePreviewCache[fileId] = url;
+          return url;
+        })
+        .catch((err) => {
+          console.warn("Failed to load uploaded file preview:", err);
+          return null;
+        })
+        .finally(() => {
+          delete libraryState._filePreviewPromises[fileId];
+        });
+    }
+
+    const url = await libraryState._filePreviewPromises[fileId];
+    if (!url) {
+      img.dataset.loading = "false";
+      img.classList.add("error");
+      continue;
+    }
+    // Guard: image might have been re-rendered.
+    if (document.body.contains(img)) {
+      img.src = url;
+    }
+  }
 }
 
 async function uploadLibraryFiles(files) {
@@ -1456,7 +1572,7 @@ async function uploadLibraryFile(file) {
   const metadata = {
     name: file.name,
     mimeType: file.type || "application/octet-stream",
-    parents: [libraryState.folderId],
+    parents: [libraryState._openLibraryFolderId || libraryState.folderId],
   };
 
   const body = new Blob([
@@ -1860,6 +1976,7 @@ function setLibraryDetailVisible(show) {
   const modal = document.getElementById("libraryPreviewModal");
   if (!modal) return;
   modal.classList.toggle("active", show);
+  if (show) lockBodyScroll(); else unlockBodyScroll();
 }
 
 async function renameLibraryItem(fileId = null) {
